@@ -86,9 +86,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Una sola vez, con n8n_execution_id e intento=0. Emite caso_creado, cluster_armado y pista_cargada en bitacora.\nSELECT c.caso_id, c.cluster_id, c.corrida_id,\n       $6::uuid AS investigacion_id, $4::text AS idempotency_key,\n       0 AS intento\n  FROM jsonb_to_record(forense.crear_caso($1::uuid, $2::uuid, 'pipeline', $3::text,\n                                          $4::text, $5::text))\n    AS c(ok boolean, creado boolean, caso_id uuid, cluster_id uuid, corrida_id uuid)",
+        "query": "-- Una sola vez, con n8n_execution_id e intento=0. Emite caso_creado, cluster_armado y pista_cargada en bitacora.\nSELECT c.caso_id, c.cluster_id, c.corrida_id,\n       $6::uuid AS investigacion_id, $4::text AS idempotency_key,\n       0 AS intento\n  FROM jsonb_to_record(forense.crear_caso($1::uuid, $2::uuid, $7::text, $3::text,\n                                          $4::text, $5::text))\n    AS c(ok boolean, creado boolean, caso_id uuid, cluster_id uuid, corrida_id uuid)",
         "options": {
-          "queryReplacement": "={{ $json.corrida_id }}, ={{ $json.cluster_id }}, ={{ $('Normalizar entrada').first().json.valor_untrusted }}, ={{ $json.idempotency_key }}, ={{ $execution.id }}, ={{ $json.investigacion_id }}"
+          "queryReplacement": "={{ $json.corrida_id }}, ={{ $json.cluster_id }}, ={{ $('Normalizar entrada').first().json.valor_untrusted }}, ={{ $json.idempotency_key }}, ={{ $execution.id }}, ={{ $json.investigacion_id }}, ={{ $('Normalizar entrada').first().json.origen }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -107,9 +107,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Resumen ≤40 RFC y pistas POR FAMILIA. R1 no recibe señales ajenas (17 §7); persiste ronda1 y ronda_inicio.\nSELECT x.caso_id, x.cluster_id, x.corrida_id, $2::uuid AS investigacion_id,\n       x.context_hash, x.version_contexto,\n       ARRAY(SELECT forense.rol_de_familia(f) FROM unnest(x.familias_evaluables) f)\n         AS roles_evaluables,\n       x.familias_evaluables\n  FROM jsonb_to_record(forense.preparar_contexto_ronda1($1::uuid))\n    AS x(ok boolean, caso_id uuid, cluster_id uuid, corrida_id uuid,\n         context_hash text, version_contexto int, familias_evaluables text[])",
+        "query": "-- Resumen ≤40 RFC y pistas POR FAMILIA. R1 no recibe señales ajenas (17 §7); persiste ronda1 y ronda_inicio.\nSELECT x.caso_id, $2::uuid AS cluster_id, $3::uuid AS corrida_id,\n       $4::uuid AS investigacion_id, x.context_hash,\n       coalesce(k.version_contexto, 1) AS version_contexto,\n       ARRAY(SELECT forense.rol_de_familia(f) FROM unnest(x.familias_evaluables) f)\n         AS roles_evaluables,\n       x.familias_evaluables\n  FROM jsonb_to_record(forense.preparar_contexto_ronda1($1::uuid))\n    AS x(ok boolean, caso_id uuid, context_hash text, familias_evaluables text[])\n  LEFT JOIN forense.clusters k ON k.id = $2::uuid",
         "options": {
-          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.investigacion_id }}"
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -128,7 +128,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Omite familias no evaluables con resultado.motivo_omision = no_evaluable. Devuelve el conjunto exacto de tarea_id.\nSELECT t.caso_id, $3::uuid AS cluster_id, $4::uuid AS corrida_id,\n       $5::uuid AS investigacion_id,\n       (x.value->>'tarea_id')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value->>'tarea_id')::uuid\n               FROM jsonb_array_elements(t.tareas) e) AS tarea_ids,\n       '{}'::bigint[] AS snapshot_senales,\n       (now() + interval '15 minutes') AS deadline, t.version_contexto\n  FROM jsonb_to_record(forense.crear_tareas_ronda($1::uuid, 1, $2::text[], 0))\n    AS t(ok boolean, caso_id uuid, ronda int, intento int, tareas jsonb,\n         version_contexto int),\n       jsonb_array_elements(t.tareas) AS x",
+        "query": "-- Omite familias no evaluables con resultado.motivo_omision = no_evaluable. Devuelve el conjunto exacto de tarea_id.\nSELECT t.caso_id, $3::uuid AS cluster_id, $4::uuid AS corrida_id,\n       $5::uuid AS investigacion_id,\n       (x.value #>> '{}')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value #>> '{}')::uuid\n               FROM jsonb_array_elements(t.tareas) e) AS tarea_ids,\n       '{}'::bigint[] AS snapshot_senales,\n       (now() + interval '15 minutes') AS deadline, t.version_contexto\n  FROM jsonb_to_record(forense.crear_tareas_ronda($1::uuid, 1,\n         ARRAY(SELECT jsonb_array_elements_text($2::jsonb))::text[], 0))\n    AS t(ok boolean, caso_id uuid, ronda int, intento int, tareas jsonb,\n         version_contexto int)\n  LEFT JOIN LATERAL jsonb_array_elements(t.tareas) AS x ON true",
         "options": {
           "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json.roles_evaluables) }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}"
         }
@@ -332,9 +332,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- La expansión usa la ÚNICA cuota del cluster e incrementa version_contexto; no vuelve a ronda 1 (07 §2.6–2.8).\nSELECT $1::uuid AS caso_id, $4::uuid AS cluster_id, $5::uuid AS corrida_id,\n       $6::uuid AS investigacion_id,\n       (x.value->>'tarea_id')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value->>'tarea_id')::uuid\n               FROM jsonb_array_elements(r.tareas) e) AS tarea_ids,\n       r.version_contexto,\n       (now() + interval '15 minutes') AS deadline\n  FROM jsonb_to_record(forense.expandir_y_crear_tareas_r2($1::uuid, $2::text[], $3::text[]))\n    AS r(ok boolean, expandidos text[], tareas jsonb, version_contexto int, motivo text),\n       jsonb_array_elements(r.tareas) AS x",
+        "query": "-- La expansión usa la ÚNICA cuota del cluster e incrementa version_contexto; no vuelve a ronda 1 (07 §2.6–2.8).\nSELECT $1::uuid AS caso_id, $4::uuid AS cluster_id, $5::uuid AS corrida_id,\n       $6::uuid AS investigacion_id,\n       (x.value #>> '{}')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value #>> '{}')::uuid\n               FROM jsonb_array_elements(v.tareas) e) AS tarea_ids,\n       coalesce((v.r->'ronda2'->>'version_contexto')::int, 1) AS version_contexto,\n       (now() + interval '15 minutes') AS deadline\n  FROM (SELECT forense.expandir_y_crear_tareas_r2($1::uuid,\n                 ARRAY(SELECT jsonb_array_elements_text($2::jsonb))::text[],\n                 ARRAY(SELECT jsonb_array_elements_text($3::jsonb))::text[]) AS r) v0\n  CROSS JOIN LATERAL (SELECT v0.r AS r,\n                             coalesce(v0.r->'ronda2'->'tareas', v0.r->'tareas',\n                                      '[]'::jsonb) AS tareas) v\n  LEFT JOIN LATERAL jsonb_array_elements(v.tareas) AS x ON true",
         "options": {
-          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json.despertados) }}, ={{ JSON.stringify($json.frontera) }}"
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json.despertados) }}, ={{ JSON.stringify($json.frontera) }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
