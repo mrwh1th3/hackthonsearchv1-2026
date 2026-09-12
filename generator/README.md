@@ -69,6 +69,8 @@ pistas no se podía medir.
 | `capas` | 4 saltos en 20 días | 4 saltos en **6 min**, mismo día y **mismo mes** que en gen-v1 |
 | `carrusel` | ciclo en días | ciclo en **6 min** (3 nodos → 2 saltos: T2(a) no lo captura, y es deliberado) |
 | trampa de T2(a) | — | el **grupo corporativo** timbra su cierre intercompañía en una corrida del ERP: 4 encadenadas en 6 min. Ráfaga **legítima**, declarada en `ground_truth` |
+| trampa 9 (nueva) | — | **cadena de suministro de proyecto único**: 4 comercializadoras, 3 saltos en 6 min → T2, alta reciente + trimestre único + silencio → T1. **Dos pistas de UNA familia** |
+| contribuyentes del padrón | 100 | **104** (la trampa 9 se **añade**, no sustituye) |
 | horas distintas en `cfdi` | 1 | 818 |
 | `dataset_hash` | `17a3e1ceb787d56d…` | cambia con la versión de las ráfagas |
 
@@ -92,3 +94,38 @@ vez**; la aleatorización vive en `factura()`, no en `ts()`, así que
 
 `gen-v2` entra **siempre como corrida nueva**, con su nombre, su
 `dataset_hash` y su `fecha_corte`. La corrida `gen-v1` no se toca.
+
+### El diferencial baseline-vs-selector, medido sobre gen-v2
+
+La trampa 9 existe por una razón medible: con T2 evaluable, el **grupo
+corporativo** pasa a dos familias (R+T) y entra al selector, así que el
+baseline de dos pistas y el selector de dos familias quedaban **idénticos** y
+se perdía el argumento de que exigir dos FAMILIAS filtra mejor que exigir dos
+pistas. No se recupera borrando la ráfaga del grupo —un grupo real comparte
+domicilio **y** timbra en lote; quitar esa co-ocurrencia sería medir un
+dataset más fácil— sino añadiendo un comportamiento que también ocurre: una
+cadena de suministro legítima que timbra su cierre en una sola corrida y
+dispara **dos pistas de una sola familia**.
+
+| gen-v2 (104 RFC · 17 fraude · 19 trampas) | sin trampa 9 | **con trampa 9** |
+|---|---|---|
+| baseline dos pistas — TP/FP/FN/TN | 17/8/0/75 | 17/**12**/0/75 |
+| baseline — precisión | 68.0% | **58.6%** |
+| baseline — FPR sobre trampas | 4/19 = 21.1% | **8/19 = 42.1%** |
+| selector dos familias — TP/FP/FN/TN | 17/8/0/75 | 17/8/0/**79** |
+| selector — precisión | 68.0% | **68.0%** |
+| selector — FPR sobre trampas | 4/19 = 21.1% | **4/19 = 21.1%** |
+
+El baseline **sube** y el selector **no se mueve**: el selector vuelve a ser
+estrictamente mejor (68.0% vs 58.6% de precisión, la mitad de falsos
+positivos sobre trampas). Los 4 RFC del consorcio salen con
+`codigos = T1,T2`, `familias = 1` y `score_entidad = false`: verificado, no
+supuesto. Si el selector llegara a marcarlos, la trampa estaría mal sembrada.
+
+**Colisión medida y resuelta moviendo el giro, no el umbral.** El primer
+intento puso el consorcio en *construcción*, el giro de la tipología `capas`.
+Resultado: 9 de 17 RFC del giro en ráfaga (0.53) y la guarda relativa al giro
+de `db/019_pista_t2.sql` —que existe justamente para eso— suprimió la pierna
+(a) en **todo** el giro, `capas` incluida: la trampa tapaba al fraude.
+Comercializadora tiene 16 pares y ninguno en ráfaga, así que el consorcio
+queda en 4/20 = 0.20. Se movió el giro; el umbral de la pista no se tocó.
