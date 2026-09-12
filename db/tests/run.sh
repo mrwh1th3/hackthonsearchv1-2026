@@ -69,6 +69,7 @@ aplicar "$DBDIR/001_schema.sql" "001_schema.sql"
 aplicar "$DBDIR/002_views.sql"  "002_views.sql"
 aplicar "$DBDIR/003_pistas.sql" "003_pistas.sql"
 aplicar "$DBDIR/004_clusters.sql" "004_clusters.sql"
+aplicar "$DBDIR/005_rpc.sql" "005_rpc.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 
@@ -77,7 +78,7 @@ aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 echo "== reaplicación (idempotencia) =="
 reaplicar_ok=true
 for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" \
-         "$DBDIR/004_clusters.sql" "$DBDIR/seeds/seed_fake.sql"; do
+         "$DBDIR/004_clusters.sql" "$DBDIR/005_rpc.sql" "$DBDIR/seeds/seed_fake.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
   else
@@ -93,6 +94,7 @@ echo "== aserciones =="
 aplicar "$HERE/assertions.sql" "tests/assertions.sql"
 aplicar "$HERE/assertions_003.sql" "tests/assertions_003.sql"
 aplicar "$HERE/assertions_004.sql" "tests/assertions_004.sql"
+aplicar "$HERE/assertions_005.sql" "tests/assertions_005.sql"
 
 echo "== snapshot gen-v1 (opcional: GEN=0 lo omite) =="
 GEN="${GEN:-auto}"
@@ -125,6 +127,16 @@ if command -v node >/dev/null 2>&1 && [ -d "$RAIZ/contracts/node_modules" ]; the
     anotar "las pistas se proyectan al contrato entities.pista v1" true "validado con ajv"
   else
     anotar "las pistas se proyectan al contrato entities.pista v1" false "ver salida de ajv"
+    fallos=$((fallos + 1))
+  fi
+
+  "$PSQL" -d "$DB" -X -t -A -c "
+    select coalesce(jsonb_agg(jsonb_build_object('tool', tool, 'envelope', envelope)), '[]'::jsonb)
+      from pruebas.envelopes" > "$TMP/envelopes.json" 2>"$LOG"
+  if node "$HERE/contrato_envelope.mjs" "$TMP/envelopes.json" "$RAIZ/contracts/index.mjs"; then
+    anotar "cada RPC de 005 devuelve el envelope de tools.envelope v1" true "validado con ajv"
+  else
+    anotar "cada RPC de 005 devuelve el envelope de tools.envelope v1" false "ver salida de ajv"
     fallos=$((fallos + 1))
   fi
 else
