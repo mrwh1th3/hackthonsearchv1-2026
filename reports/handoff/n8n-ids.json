@@ -1,0 +1,98 @@
+{
+  "base": "https://n8n.srv1550651.hstgr.cloud",
+  "actualizado": "2026-09-12T16:57:54.697Z",
+  "ids": {
+    "FORENSE_ejecutar_agente": "haHlIxNpUFEHEio8",
+    "FORENSE_reintento": "RpWmAx4dkJSeVIBC",
+    "FORENSE_editar_expediente": "gA5ixBwH0g01Whqq",
+    "FORENSE_investigar_cluster": "6B5Jn12ZCKyBWwCv",
+    "FORENSE_corrida": "BhB9ALAsr1NR7fTY",
+    "FORENSE_inyectar": "eDoF6frXEcrGNQjD",
+    "FORENSE_notificar_completada": "DG6HjcFZaXyMcVbD",
+    "FORENSE_resultado_llamada": "7gkvkBxzaPC6lzao",
+    "FORENSE_reconciliador": "cPXfol7DO0nkJOAh",
+    "FORENSE_errores": "Yh6AlrOm7ULKSkQk"
+  },
+  "resumen": [
+    {
+      "nombre": "FORENSE_ejecutar_agente",
+      "id": "haHlIxNpUFEHEio8",
+      "nodos": 32,
+      "sinResolver": [],
+      "estado": "creado+ids",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_reintento",
+      "id": "RpWmAx4dkJSeVIBC",
+      "nodos": 16,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_editar_expediente",
+      "id": "gA5ixBwH0g01Whqq",
+      "nodos": 10,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_investigar_cluster",
+      "id": "6B5Jn12ZCKyBWwCv",
+      "nodos": 38,
+      "sinResolver": [],
+      "estado": "creado+ids",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_corrida",
+      "id": "BhB9ALAsr1NR7fTY",
+      "nodos": 22,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_inyectar",
+      "id": "eDoF6frXEcrGNQjD",
+      "nodos": 14,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_notificar_completada",
+      "id": "DG6HjcFZaXyMcVbD",
+      "nodos": 10,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_resultado_llamada",
+      "id": "7gkvkBxzaPC6lzao",
+      "nodos": 6,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_reconciliador",
+      "id": "cPXfol7DO0nkJOAh",
+      "nodos": 8,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    },
+    {
+      "nombre": "FORENSE_errores",
+      "id": "Yh6AlrOm7ULKSkQk",
+      "nodos": 5,
+      "sinResolver": [],
+      "estado": "creado",
+      "active": false
+    }
+  ]
+}

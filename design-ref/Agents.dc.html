@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#ffffff; }
+  a { color:#141413; text-decoration:none; }
+  a:hover { color:#5a5852; }
+  input::placeholder { color:#a3a09a; }
+  @keyframes insp-spin { to { transform: rotate(360deg); } }
+</style>
+</helmet>
+<div style="position:relative;min-height:100vh;max-height:{{ rootMax }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:{{ rootGap }};background:#ffffff;font-family:'Instrument Sans',Helvetica,sans-serif;color:#141413;padding:{{ rootPad }};box-sizing:border-box;overflow:hidden">
+
+  <button type="button" onClick="{{ openLeft }}" style="position:absolute;top:20px;left:22px;z-index:3;display:{{ triggerDisplay }};height:38px;padding:0;align-items:center;border:none;background:transparent;cursor:pointer"><img src="assets/inspector-wordmark.png" alt="Inspector" style="height:22px;width:auto;display:block"></button>
+
+  <div onClick="{{ closePanel }}" style="position:absolute;inset:0;z-index:4;background:rgba(20,20,19,.12);opacity:{{ panelOpacity }};pointer-events:{{ panelEvents }};transition:opacity .2s"></div>
+
+  <aside style="position:absolute;top:0;bottom:0;left:0;z-index:5;width:300px;max-width:86vw;display:flex;flex-direction:column;background:#ffffff;border-right:1px solid #ebe8e2;box-shadow:0 0 30px rgba(20,20,19,.06);transform:{{ panelTransform }};transition:transform .24s cubic-bezier(.22,.7,.3,1)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 16px 14px;border-bottom:1px solid #f0eee9">
+      <img src="assets/inspector-wordmark.png" alt="Inspector" style="height:19px;width:auto;display:block">
+      <button type="button" onClick="{{ closePanel }}" style="flex:none;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M9.5 4v16"></path><path d="M16.5 9.5 14 12l2.5 2.5"></path></svg>
+      </button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:14px 10px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 2px 8px;height:32px;padding:0 11px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;transition:border-color .15s" style-focus-within="border-color:#c9c5bd">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3a09a" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.4" y1="15.4" x2="20.5" y2="20.5"></line></svg>
+        <input value="{{ threadQuery }}" onChange="{{ onThreadQuery }}" placeholder="Search investigations" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:inherit;font-size:12.5px;color:#141413">
+      </div>
+      <span style="padding:0 8px 6px;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:#6b6862">Investigations</span>
+      <sc-for list="{{ threads }}" as="t" hint-placeholder-count="5">
+        <button type="button" onClick="{{ t.onOpen }}" style="display:flex;align-items:center;gap:9px;text-align:left;padding:9px 10px;border:none;border-radius:9px;background:transparent;font-family:inherit;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">
+          <sc-if value="{{ t.loading }}" hint-placeholder-val="{{ false }}">
+            <span style="flex:none;width:16px;height:16px;border:2px solid #e3e0da;border-top-color:#141413;border-radius:50%;box-sizing:border-box;animation:insp-spin .8s linear infinite"></span>
+          </sc-if>
+          <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+            <span style="font-size:13.5px;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">{{ t.title }}</span>
+            <span style="font-size:11.5px;color:#6b6862">{{ t.status }}</span>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+    <div style="padding:12px;border-top:1px solid #f0eee9">
+      <a href="Login.dc.html" style="display:flex;align-items:center;justify-content:center;height:38px;border:1px solid #ebe8e2;border-radius:10px;font-size:13px;font-weight:500;color:#5a5852;transition:background .15s" style-hover="background:#f7f6f4">Sign in</a>
+    </div>
+  </aside>
+
+  <sc-if value="{{ showHero }}" hint-placeholder-val="{{ true }}">
+  <h1 style="margin:0;max-width:640px;text-align:center;font-size:34px;font-weight:500;letter-spacing:-0.025em;line-height:1.25;color:#3d3b37;text-wrap:pretty">{{ greeting }}</h1>
+  </sc-if>
+
+  <sc-if value="{{ showPicker }}" hint-placeholder-val="{{ true }}">
+  <section style="width:100%;max-width:700px;display:flex;flex-direction:column;gap:12px;max-height:{{ dataMax }};opacity:{{ dataOpacity }};filter:{{ dataBlur }};transform:{{ dataScale }};pointer-events:{{ dataEvents }};overflow:hidden;transition:max-height .42s cubic-bezier(.22,.7,.3,1),opacity .3s ease,filter .32s ease,transform .42s cubic-bezier(.22,.7,.3,1)">
+
+    <div style="display:flex;align-items:stretch;gap:12px">
+      <button type="button" onClick="{{ openUploadAsk }}" style="flex:none;width:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:36px 22px;border:1px dashed #ddd9d1;border-radius:18px;background:#fcfbfa;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#f7f6f4;border-color:#c9c5bd">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#141413" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V5"></path><path d="M6.5 10.5 12 5l5.5 5.5"></path><path d="M4 19h16"></path></svg>
+        <span style="font-size:15px;font-weight:500;color:#141413">Upload data</span>
+        <span style="font-size:12.5px;color:#6b6862;text-align:center;line-height:1.4">CSV, JSON or live database</span>
+      </button>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;transition:border-color .15s" style-focus-within="border-color:#c9c5bd">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a3a09a" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.4" y1="15.4" x2="20.5" y2="20.5"></line></svg>
+        <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search datasets" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:inherit;font-size:13px;color:#141413">
+      </div>
+      <button type="button" onClick="{{ toggleSort }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:13px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16"></path><path d="M3.5 16.5 7 20l3.5-3.5"></path><path d="M17 20V4"></path><path d="M13.5 7.5 17 4l3.5 3.5"></path></svg>
+        {{ sortLabel }}
+      </button>
+    </div>
+      <div style="position:relative;min-width:0">
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:196px;overflow-y:auto;padding-right:4px;padding-bottom:14px;scrollbar-width:thin">
+        <sc-for list="{{ visible }}" as="d" hint-placeholder-count="5">
+          <button type="button" onClick="{{ d.onSelect }}" style="flex:none;display:flex;align-items:center;gap:10px;text-align:left;width:100%;box-sizing:border-box;padding:9px 13px;border:1px solid {{ d.border }};border-radius:11px;background:{{ d.bg }};font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s" style-hover="border-color:#dcd8d0">
+            <span style="width:7px;height:7px;flex:none;border-radius:{{ d.dot }};background:#141413"></span>
+            <span style="flex:1;min-width:0;font-size:13px;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.name }}</span>
+            <sc-if value="{{ d.dynamic }}" hint-placeholder-val="{{ false }}">
+              <span style="flex:none;display:flex;align-items:center;gap:5px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:#1f6b3a;background:#eaf7ee;border:1px solid #bfe3cb;border-radius:5px;padding:2px 7px"><span style="width:5px;height:5px;border-radius:50%;background:#1f8a4c"></span>Dynamic</span>
+            </sc-if>
+            <span style="flex:none;font-size:11.5px;color:#6b6862">{{ d.size }}</span>
+          </button>
+        </sc-for>
+        <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+          <p style="margin:0;padding:20px 0;text-align:center;font-size:13px;color:#6b6862">No datasets match “{{ query }}”.</p>
+        </sc-if>
+      </div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:34px;pointer-events:none;background:linear-gradient(to bottom,rgba(255,255,255,0),#ffffff 78%);backdrop-filter:blur(1.5px);mask-image:linear-gradient(to bottom,transparent,#000 60%)"></div>
+      </div>
+    </div>
+    </div>
+
+    <button type="button" onClick="{{ openManage }}" style="width:100%;height:36px;display:flex;align-items:center;justify-content:center;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:12.5px;font-weight:500;color:#5a5852;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#f7f6f4;border-color:#dcd8d0">Manage data</button>
+  </section>
+  </sc-if>
+
+  <sc-if value="{{ showComposer }}" hint-placeholder-val="{{ true }}">
+    <form onSubmit="{{ onSubmit }}" style="width:100%;max-width:700px;display:flex;flex-direction:column;gap:10px;animation:none">
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+        <span style="display:flex;align-items:center;gap:7px;max-width:280px;height:30px;padding:0 12px;border:1px solid #e3e0da;border-radius:999px;background:#fcfbfa;font-size:12.5px;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          <span style="width:6px;height:6px;flex:none;border-radius:{{ selectedDot }};background:#141413"></span>{{ selectedName }}
+        </span>
+        <button type="button" onClick="{{ clearSelection }}" style="height:30px;padding:0 12px;border:1px solid #ebe8e2;border-radius:999px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Change dataset</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0;padding:14px;border:1px solid #e6e3dd;border-radius:24px;background:#ffffff;box-shadow:0 1px 3px rgba(20,20,19,.05)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <button type="button" onClick="{{ togglePrompt }}" style="display:flex;align-items:center;gap:9px;height:32px;padding:0 13px;border:1px solid #ebe8e2;border-radius:999px;background:{{ promptBg }};font-family:inherit;font-size:12.5px;color:#5a5852;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#f7f6f4;border-color:#dcd8d0">
+            Context
+            <span style="width:1px;height:14px;background:#dcd8d0"></span>
+            Filters
+          </button>
+          <button type="submit" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 15px;border:none;border-radius:999px;background:#141413;color:#ffffff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s" style-hover="background:#2e2d2a">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="transform:scaleX(-1)"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.4" y1="15.4" x2="20.5" y2="20.5"></line></svg>
+            Inspect
+          </button>
+        </div>
+        <div style="overflow:hidden auto;max-height:{{ promptMax }};opacity:{{ promptOpacity }};transition:max-height .7s cubic-bezier(.22,.7,.3,1),opacity .5s ease">
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid #f0eee9">
+            <textarea value="{{ promptText }}" onChange="{{ onPrompt }}" rows="8" placeholder="Add context for this inspection…" style="width:100%;box-sizing:border-box;resize:none;min-height:180px;max-height:40vh;border:1px solid #ebe8e2;border-radius:14px;padding:11px 13px;background:#fcfbfa;font-family:inherit;font-size:13.5px;line-height:1.5;color:#141413;outline:none;transition:border-color .15s" style-focus="border-color:#141413;background:#ffffff"></textarea>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+              <input type="date" value="{{ dateFrom }}" min="{{ dataMin }}" max="{{ dateTo }}" onChange="{{ onFrom }}" style="height:30px;padding:0 10px;border:1px solid #ebe8e2;border-radius:9px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#141413;outline:none" style-focus="border-color:#141413">
+              <span style="font-size:12.5px;color:#6b6862">to</span>
+              <input type="date" value="{{ dateTo }}" min="{{ dateFrom }}" max="{{ dataMax2 }}" onChange="{{ onTo }}" style="height:30px;padding:0 10px;border:1px solid #ebe8e2;border-radius:9px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#141413;outline:none" style-focus="border-color:#141413">
+              <button type="button" onClick="{{ resetRange }}" style="height:30px;padding:0 11px;border:1px solid #ebe8e2;border-radius:9px;background:#ffffff;font-family:inherit;font-size:12px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Full span</button>
+              <span style="width:1px;height:18px;background:#ebe8e2"></span>
+          <div style="position:relative;display:flex;align-items:center;gap:8px;margin-left:8px;flex:1;min-width:0">
+            <button type="button" ref="{{ colsBtnRef }}" onClick="{{ toggleCols }}" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 13px;border:1px solid #ebe8e2;border-radius:999px;background:{{ colsBg }};font-family:inherit;font-size:12.5px;color:#5a5852;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#f7f6f4;border-color:#dcd8d0">
+              Columns
+              <span style="font-size:11.5px;color:#6b6862">{{ colsCount }}</span>
+            </button>
+            <sc-if value="{{ colsOpen }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ closeCols }}" style="position:fixed;inset:0;z-index:29"></div>
+            <div style="position:fixed;left:{{ colsLeft }};bottom:{{ colsBottom }};width:300px;z-index:60;display:flex;flex-direction:column;gap:8px;padding:12px;background:#ffffff;border:1px solid #ebe8e2;border-radius:16px;box-shadow:0 12px 50px rgba(20,20,19,.18)">
+              <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 11px;border:1px solid #ebe8e2;border-radius:10px;background:#fcfbfa" style-focus-within="border-color:#141413">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3a09a" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.4" y1="15.4" x2="20.5" y2="20.5"></line></svg>
+                <input value="{{ colQuery }}" onChange="{{ onColQuery }}" placeholder="Search columns" style="flex:1;min-width:0;border:none;outline:none;background:transparent;font-family:inherit;font-size:12.5px;color:#141413">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;max-height:240px;overflow-y:auto;scrollbar-width:thin">
+                <sc-for list="{{ columns }}" as="c" hint-placeholder-count="6">
+                  <button type="button" onClick="{{ c.onToggle }}" style="display:flex;align-items:center;gap:9px;text-align:left;padding:7px 9px;border:none;border-radius:9px;background:transparent;font-family:inherit;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">
+                    <span style="width:14px;height:14px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid {{ c.boxBorder }};border-radius:4px;background:{{ c.boxBg }};color:#ffffff;font-size:9px;box-sizing:border-box">{{ c.mark }}</span>
+                    <span style="flex:1;min-width:0;font-size:12.5px;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
+                    <span style="flex:none;font-size:11px;color:#6b6862">{{ c.type }}</span>
+                  </button>
+                </sc-for>
+                <sc-if value="{{ noCols }}" hint-placeholder-val="{{ false }}">
+                  <p style="margin:0;padding:14px 0;text-align:center;font-size:12.5px;color:#6b6862">No columns match.</p>
+                </sc-if>
+              </div>
+            </div>
+            </sc-if>
+          </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+  </sc-if>
+
+  <sc-if value="{{ boardOpen }}" hint-placeholder-val="{{ false }}">
+    <section style="width:100%;height:100dvh;max-height:100dvh;display:flex;flex-direction:column;gap:10px;padding:20px 22px 18px;box-sizing:border-box;overflow:hidden">
+      <div style="position:relative;display:flex;align-items:center;gap:12px;height:38px;flex:none">
+        <button type="button" onClick="{{ openLeft }}" style="flex:none;display:flex;align-items:center;border:none;background:transparent;padding:0;cursor:pointer">
+          <img src="assets/inspector-wordmark.png" alt="Inspector" style="height:22px;width:auto;display:block">
+        </button>
+        <div style="position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:9px">
+          <span style="flex:none;display:flex;align-items:center;gap:7px;max-width:200px;height:30px;padding:0 12px;border:1px solid #e3e0da;border-radius:999px;background:#fcfbfa;font-size:12.5px;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <span style="width:6px;height:6px;flex:none;border-radius:{{ selectedDot }};background:#141413"></span>{{ selectedName }}
+          </span>
+        </div>
+        <div style="flex:1"></div>
+        <button type="button" onClick="{{ openResults }}" style="flex:none;height:32px;padding:0 13px;border:none;border-radius:10px;background:#141413;font-family:inherit;font-size:12.5px;font-weight:500;color:#ffffff;cursor:pointer;transition:background .15s" style-hover="background:#2e2d2a">View results</button>
+        <button type="button" onClick="{{ closeBoard }}" style="flex:none;height:32px;padding:0 13px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Back</button>
+      </div>
+      <div style="position:relative;flex:1;min-height:0;height:100%;border:1px solid #ebe8e2;border-radius:20px;background:#fcfbfa;background-image:radial-gradient(#e6e3dd 1px,transparent 1px);background-size:22px 22px;overflow:hidden">
+        <span style="position:absolute;top:14px;left:16px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#6b6862">Canvas</span>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{ resultsOpen }}" hint-placeholder-val="{{ false }}">
+    <section style="width:100%;height:100dvh;max-height:100dvh;display:flex;flex-direction:column;gap:10px;padding:20px 22px 18px;box-sizing:border-box;overflow:hidden">
+      <div style="position:relative;display:flex;align-items:center;gap:12px;height:38px;flex:none">
+        <button type="button" onClick="{{ openLeft }}" style="flex:none;display:flex;align-items:center;border:none;background:transparent;padding:0;cursor:pointer">
+          <img src="assets/inspector-wordmark.png" alt="Inspector" style="height:22px;width:auto;display:block">
+        </button>
+        <div style="position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:9px">
+          <span style="flex:none;display:flex;align-items:center;gap:7px;max-width:200px;height:30px;padding:0 12px;border:1px solid #e3e0da;border-radius:999px;background:#fcfbfa;font-size:12.5px;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <span style="width:6px;height:6px;flex:none;border-radius:{{ selectedDot }};background:#141413"></span>{{ selectedName }}
+          </span>
+        </div>
+        <div style="flex:1"></div>
+        <button type="button" onClick="{{ backToBoard }}" style="flex:none;height:32px;padding:0 13px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Back</button>
+      </div>
+      <div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:14px">
+        <div style="display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;padding-right:2px">
+                    <sc-if value="{{ docOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-height:0;display:flex;flex-direction:column;background:#f5f4f1;border:1px solid #ebe8e2;border-radius:18px;overflow:hidden" data-comment-anchor="b272bc6833-div">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;background:#ffffff;border-bottom:1px solid #f0eee9">
+                <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                  <span style="font-size:12.5px;font-weight:500;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ docTitle }}</span>
+                  <span style="font-size:11.5px;color:#6b6862">Saved</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <sc-for list="{{ docTools }}" as="tl" hint-placeholder-count="4">
+                    <span style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;color:#5a5852;background:transparent">{{ tl.label }}</span>
+                  </sc-for>
+                  <button type="button" onClick="{{ closeDoc }}" style="height:26px;padding:0 10px;border:1px solid #ebe8e2;border-radius:8px;background:#ffffff;font-family:inherit;font-size:11.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Close</button>
+                </div>
+              </div>
+              <div style="flex:1;min-height:0;overflow-y:auto;padding:18px;display:flex;flex-direction:column;align-items:center;gap:18px">
+                <div style="width:min(620px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:14px;padding:44px 46px;background:#ffffff;border:1px solid #ebe8e2;border-radius:4px;box-shadow:0 1px 4px rgba(20,20,19,.06)">
+                  <h3 style="margin:0;font-size:20px;font-weight:600;letter-spacing:-0.015em;color:#141413">{{ docTitle }}</h3>
+                  <p style="margin:0;font-size:12.5px;color:#6b6862">{{ runMetaLine }}</p>
+                  <p style="margin:0;font-size:14px;line-height:1.7;color:#141413;text-wrap:pretty">{{ resultSummary }}</p>
+                  <h4 style="margin:8px 0 0;font-size:15px;font-weight:600;color:#141413">Method</h4>
+                  <p style="margin:0;font-size:13.5px;line-height:1.75;color:#3d3b37;text-wrap:pretty">{{ docMethod }}</p>
+                  <h4 style="margin:8px 0 0;font-size:15px;font-weight:600;color:#141413">Findings</h4>
+                  <sc-for list="{{ findings }}" as="fd" hint-placeholder-count="4">
+                    <div style="display:flex;flex-direction:column;gap:5px">
+                      <h4 style="margin:0;font-size:14.5px;font-weight:600;color:#141413">{{ fd.title }}</h4>
+                      <p style="margin:0;font-size:13.5px;line-height:1.7;color:#3d3b37;text-wrap:pretty">{{ fd.detail }}</p>
+                    </div>
+                  </sc-for>
+                  <h4 style="margin:8px 0 0;font-size:15px;font-weight:600;color:#141413">Recommendations</h4>
+                  <sc-for list="{{ docRecs }}" as="rc" hint-placeholder-count="3">
+                    <p style="margin:0;font-size:13.5px;line-height:1.75;color:#3d3b37;text-wrap:pretty">{{ rc.text }}</p>
+                  </sc-for>
+                </div>
+                <div style="width:min(620px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:14px;padding:44px 46px;background:#ffffff;border:1px solid #ebe8e2;border-radius:4px;box-shadow:0 1px 4px rgba(20,20,19,.06)">
+                  <h4 style="margin:0;font-size:15px;font-weight:600;color:#141413">Appendix — run log</h4>
+                  <sc-for list="{{ timeline }}" as="ap" hint-placeholder-count="5">
+                    <div style="display:flex;gap:12px">
+                      <span style="flex:none;width:56px;font-size:12.5px;color:#6b6862">{{ ap.when }}</span>
+                      <span style="flex:1;min-width:0;font-size:13.5px;line-height:1.7;color:#3d3b37">{{ ap.title }} — {{ ap.detail }}</span>
+                    </div>
+                  </sc-for>
+                  <h4 style="margin:8px 0 0;font-size:15px;font-weight:600;color:#141413">Data notes</h4>
+                  <p style="margin:0;font-size:13.5px;line-height:1.75;color:#3d3b37;text-wrap:pretty">{{ docNotes }}</p>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ findingsVisible }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid #e6e3dd;border-radius:18px;background:#f5f4f1;overflow-y:auto" data-comment-anchor="89d00ef5c1-div">
+
+            <button type="button" onClick="{{ openDoc }}" style="flex:none;width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;border:1px solid #e0ddd6;border-radius:13px;background:#ffffff;font-family:inherit;text-align:left;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#faf9f7;border-color:#c9c5bd">
+              <span style="display:flex;align-items:center;gap:9px;min-width:0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#141413" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg>
+                <span style="font-size:12.5px;font-weight:500;color:#141413">Full investigation</span>
+              </span>
+              <span style="flex:none;font-size:11.5px;color:#6b6862">Open</span>
+            </button>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+              <sc-for list="{{ stats }}" as="st" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:6px;padding:11px 13px;border:1px solid #f0eee9;border-radius:13px;background:#ffffff">
+                  <span style="font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:#6b6862">{{ st.label }}</span>
+                  <span style="font-size:19px;font-weight:600;letter-spacing:-0.02em;color:#141413">{{ st.value }}</span>
+                  <span style="height:5px;border-radius:3px;background:#f0eee9;overflow:hidden;display:block">
+                    <span style="display:block;height:100%;width:{{ st.bar }};background:#141413;border-radius:3px"></span>
+                  </span>
+                  <span style="font-size:11.5px;color:#6b6862">{{ st.note }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;padding:13px;border:1px solid #f0eee9;border-radius:14px;background:#ffffff" data-comment-anchor="cc12a100f0-div">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <span style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#6b6862">Timeline</span>
+                <button type="button" onClick="{{ toggleTimeline }}" style="height:26px;padding:0 10px;border:1px solid #ebe8e2;border-radius:8px;background:#ffffff;font-family:inherit;font-size:11.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">{{ timelineToggleLabel }}</button>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{ timeline }}" as="tm" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:74px 14px minmax(0,1fr);align-items:start;gap:10px">
+                    <span style="font-size:11.5px;color:#6b6862;padding-top:1px">{{ tm.when }}</span>
+                    <span style="display:flex;flex-direction:column;align-items:center;gap:2px;height:100%">
+                      <span style="width:8px;height:8px;border-radius:50%;background:{{ tm.dotBg }};border:1.5px solid #141413;box-sizing:border-box;margin-top:3px"></span>
+                      <span style="flex:1;width:1px;background:#ebe8e2;min-height:14px"></span>
+                    </span>
+                    <span style="display:flex;flex-direction:column;gap:2px;padding-bottom:12px">
+                      <span style="font-size:13px;color:#141413">{{ tm.title }}</span>
+                      <span style="font-size:11.5px;color:#6b6862">{{ tm.detail }}</span>
+                      <sc-if value="{{ tm.expanded }}" hint-placeholder-val="{{ false }}">
+                        <span style="display:flex;flex-direction:column;gap:3px;margin-top:5px;padding:9px 11px;border:1px solid #f0eee9;border-radius:10px;background:#fcfbfa">
+                          <sc-for list="{{ tm.steps }}" as="sp" hint-placeholder-count="2">
+                            <span style="display:flex;gap:8px;font-size:11.5px;line-height:1.5;color:#3d3b37">
+                              <span style="flex:none;color:#6b6862">{{ sp.k }}</span>
+                              <span style="flex:1;min-width:0">{{ sp.v }}</span>
+                            </span>
+                          </sc-for>
+                        </span>
+                      </sc-if>
+                    </span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <sc-for list="{{ findings }}" as="fi" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:4px;padding:12px 14px;border:1px solid #f0eee9;border-radius:14px;background:#fcfbfa">
+                <span style="font-size:13.5px;font-weight:500;color:#141413">{{ fi.title }}</span>
+                <span style="font-size:12.5px;line-height:1.5;color:#6b6862">{{ fi.detail }}</span>
+              </div>
+            </sc-for>
+          </div>
+          </sc-if>
+        </div>
+        <div style="display:flex;flex-direction:column;min-height:0;padding-left:14px;background:transparent">
+          <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 12px">
+            <input value="{{ chatName }}" onChange="{{ onChatName }}" style="flex:1;min-width:0;height:26px;padding:0 7px;margin-left:-7px;border:1px solid transparent;border-radius:8px;background:transparent;font-family:inherit;font-size:12.5px;font-weight:500;color:#141413;outline:none;transition:background .15s,border-color .15s" style-focus="background:#ffffff;border-color:#dcd8d0">
+            <button type="button" onClick="{{ toggleHistory }}" style="flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:{{ historyBg }};color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 8v4l3 2"></path></svg>
+            </button>
+          </div>
+          <sc-if value="{{ historyOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:none;display:flex;flex-direction:column;gap:2px;margin-bottom:10px;padding:8px;border:1px solid #ebe8e2;border-radius:14px;background:#fcfbfa">
+              <span style="padding:2px 6px 6px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:#6b6862">Chat history</span>
+              <sc-for list="{{ chatHistory }}" as="h" hint-placeholder-count="3">
+                <button type="button" onClick="{{ h.onOpen }}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;border:none;border-radius:9px;background:transparent;font-family:inherit;text-align:left;cursor:pointer;transition:background .15s" style-hover="background:#f2f1ee">
+                  <span style="flex:1;min-width:0;font-size:12px;color:#141413;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.title }}</span>
+                  <span style="flex:none;font-size:11px;color:#6b6862">{{ h.when }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="flex:1;min-height:0;overflow-y:auto;padding:0 2px;display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ messages }}" as="m" hint-placeholder-count="3">
+              <div style="align-self:{{ m.align }};max-width:92%;padding:8px 11px;border-radius:{{ m.radius }};background:{{ m.bg }};color:{{ m.color }};font-size:12.5px;line-height:1.5;text-wrap:pretty">{{ m.text }}</div>
+            </sc-for>
+          </div>
+          <div style="flex:none;display:flex;flex-direction:column;gap:8px;padding-top:12px">
+            <div style="display:flex;gap:7px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin">
+              <sc-for list="{{ suggestions }}" as="s" hint-placeholder-count="2">
+                <button type="button" onClick="{{ s.onPick }}" style="flex:none;white-space:nowrap;height:26px;padding:0 10px;border:none;border-radius:999px;background:#f5f4f1;font-family:inherit;font-size:11.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">{{ s.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid #ebe8e2;border-radius:16px;background:#ffffff;transition:border-color .15s" style-focus-within="border-color:#c9c5bd">
+              <textarea value="{{ chatDraft }}" onChange="{{ onChatDraft }}" onKeyDown="{{ onChatKey }}" rows="2" placeholder="Ask anything about this run…" style="width:100%;box-sizing:border-box;resize:none;border:none;background:transparent;font-family:inherit;font-size:12.5px;line-height:1.5;color:#141413;outline:none"></textarea>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <button type="button" style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:none;border-radius:50%;background:transparent;color:#6b6862;font-family:inherit;font-size:15px;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">+</button>
+                <button type="button" onClick="{{ sendChat }}" style="flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:none;border-radius:50%;background:#141413;color:#ffffff;cursor:pointer;transition:background .15s" style-hover="background:#2e2d2a">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="transform:scaleX(-1)"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.4" y1="15.4" x2="20.5" y2="20.5"></line></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{ manageOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;z-index:9;display:flex;padding:10px;box-sizing:border-box;background:rgba(20,20,19,.18)">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#ffffff;border:1px solid #ebe8e2;border-radius:20px;box-shadow:0 18px 60px rgba(20,20,19,.14);overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px;border-bottom:1px solid #f0eee9">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <h2 style="margin:0;font-size:17px;font-weight:600;letter-spacing:-0.015em">Manage data</h2>
+            <span style="font-size:12.5px;color:#6b6862">{{ manageCount }} datasets · dynamic first</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 11px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff" style-focus-within="border-color:#141413">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a3a09a" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.4" y1="15.4" x2="20.5" y2="20.5"></line></svg>
+              <input value="{{ manageQuery }}" onChange="{{ onManageQuery }}" placeholder="Search datasets" style="width:150px;border:none;outline:none;background:transparent;font-family:inherit;font-size:12.5px;color:#141413">
+            </div>
+            <button type="button" onClick="{{ openUploadAsk }}" style="height:34px;padding:0 14px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:13px;font-weight:500;color:#141413;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Add dataset</button>
+            <button type="button" onClick="{{ closeManage }}" style="height:34px;padding:0 14px;border:none;border-radius:10px;background:#141413;color:#ffffff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s" style-hover="background:#2e2d2a">Done</button>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid #f0eee9;border-radius:14px;background:#fcfbfa">
+              <span style="width:8px;height:8px;flex:none;border-radius:{{ r.dot }};background:#141413"></span>
+              <input value="{{ r.name }}" onChange="{{ r.onRename }}" style="flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid transparent;border-radius:9px;background:transparent;font-family:inherit;font-size:13.5px;color:#141413;outline:none;transition:background .15s,border-color .15s" style-focus="background:#ffffff;border-color:#dcd8d0">
+              <sc-if value="{{ r.dynamic }}" hint-placeholder-val="{{ false }}">
+                <span style="flex:none;display:flex;align-items:center;gap:5px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:#1f6b3a;background:#eaf7ee;border:1px solid #bfe3cb;border-radius:5px;padding:2px 7px"><span style="width:5px;height:5px;border-radius:50%;background:#1f8a4c"></span>Dynamic</span>
+              </sc-if>
+              <span style="flex:none;font-size:12px;color:#6b6862;white-space:nowrap">{{ r.size }}</span>
+              <span style="flex:none;font-size:12px;color:#6b6862;white-space:nowrap">{{ r.updated }}</span>
+              <button type="button" onClick="{{ r.onConnect }}" style="flex:none;height:30px;padding:0 11px;border:1px solid #ebe8e2;border-radius:9px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">{{ r.connectLabel }}</button>
+              <button type="button" onClick="{{ r.onRefresh }}" style="flex:none;height:30px;padding:0 11px;border:1px solid #ebe8e2;border-radius:9px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Update</button>
+              <button type="button" onClick="{{ r.onDelete }}" style="flex:none;height:30px;padding:0 11px;border:1px solid #ebe8e2;border-radius:9px;background:#ffffff;font-family:inherit;font-size:12.5px;color:#a33a2b;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#fdf4f2;border-color:#e9c9c2">Delete</button>
+            </div>
+          </sc-for>
+          <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0;padding:28px 0;text-align:center;font-size:13px;color:#6b6862">No datasets. Add one to get started.</p>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ askOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeAsk }}" style="position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:rgba(20,20,19,.22)">
+      <div onClick="{{ stop }}" style="width:360px;max-width:100%;display:flex;flex-direction:column;gap:14px;padding:20px;background:#ffffff;border:1px solid #ebe8e2;border-radius:18px;box-shadow:0 18px 60px rgba(20,20,19,.16)">
+        <h3 style="margin:0;font-size:15px;font-weight:600;letter-spacing:-0.015em">Dataset type</h3>
+        <div style="display:flex;gap:10px">
+          <button type="button" onClick="{{ addStatic }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:9px;padding:20px 14px;border:1px solid #ebe8e2;border-radius:14px;background:#ffffff;font-family:inherit;font-size:13.5px;font-weight:500;color:#141413;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#f7f6f4;border-color:#141413">
+            <span style="width:14px;height:14px;border:1.6px solid #141413;border-radius:3px;box-sizing:border-box"></span>Static
+          </button>
+          <button type="button" onClick="{{ startDynamic }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:9px;padding:20px 14px;border:1px solid #ebe8e2;border-radius:14px;background:#ffffff;font-family:inherit;font-size:13.5px;font-weight:500;color:#141413;cursor:pointer;transition:background .15s,border-color .15s" style-hover="background:#f7f6f4;border-color:#141413">
+            <span style="width:14px;height:14px;border:1.6px solid #141413;border-radius:50%;box-sizing:border-box"></span>Dynamic
+          </button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ connectOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeConnect }}" style="position:fixed;inset:0;z-index:11;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:rgba(20,20,19,.22)">
+      <div onClick="{{ stop }}" style="width:440px;max-width:100%;display:flex;flex-direction:column;gap:16px;padding:22px;background:#ffffff;border:1px solid #ebe8e2;border-radius:18px;box-shadow:0 18px 60px rgba(20,20,19,.16)">
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <h3 style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.015em">Connect database</h3>
+          <p style="margin:0;font-size:13px;line-height:1.5;color:#6b6862">{{ connectSubtitle }}</p>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <sc-for list="{{ engines }}" as="e" hint-placeholder-count="4">
+            <button type="button" onClick="{{ e.onPick }}" style="padding:7px 13px;border:1px solid {{ e.border }};border-radius:999px;background:{{ e.bg }};font-family:inherit;font-size:12.5px;color:#141413;cursor:pointer;transition:background .15s,border-color .15s">{{ e.label }}</button>
+          </sc-for>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12.5px;font-weight:500;color:#4a4842">Connection string</span>
+          <input value="{{ connString }}" onChange="{{ onConnString }}" placeholder="postgres://user:pass@host:5432/db" style="height:40px;padding:0 12px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:13px;color:#141413;outline:none;box-sizing:border-box;transition:border-color .15s" style-focus="border-color:#141413">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span style="font-size:12.5px;font-weight:500;color:#4a4842">Table or query</span>
+          <input value="{{ connTable }}" onChange="{{ onConnTable }}" placeholder="public.events" style="height:40px;padding:0 12px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:13px;color:#141413;outline:none;box-sizing:border-box;transition:border-color .15s" style-focus="border-color:#141413">
+        </label>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button type="button" onClick="{{ closeConnect }}" style="height:34px;padding:0 13px;border:1px solid #ebe8e2;border-radius:10px;background:#ffffff;font-family:inherit;font-size:13px;color:#5a5852;cursor:pointer;transition:background .15s" style-hover="background:#f7f6f4">Cancel</button>
+          <button type="button" onClick="{{ confirmConnect }}" style="height:34px;padding:0 15px;border:none;border-radius:10px;background:#141413;color:#ffffff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s" style-hover="background:#2e2d2a">Connect</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:760},&quot;greeting&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;What should we work on?&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;userName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Invitado&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;userPlan&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Modo preview&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const SCHEMAS = {
+  support_calls_q3: [["call_id","string"],["agent_name","string"],["started_at","timestamp"],["duration_s","int"],["csat","float"],["transcript","text"],["resolved","bool"]],
+  pricing_competitors: [["vendor","string"],["plan","string"],["price_usd","float"],["seats_min","int"],["scraped_at","date"]],
+  crm_live: [["account_id","uuid"],["mrr","numeric"],["stage","enum"],["owner_email","string"],["updated_at","timestamptz"]],
+  user_interviews: [["participant","string"],["segment","string"],["date","date"],["notes","text"]],
+  tts_latency_bench: [["model","string"],["p50_ms","int"],["p95_ms","int"],["run_at","timestamp"]],
+  crm_export_sep: [["account_id","uuid"],["arr","numeric"],["region","string"],["closed_at","date"],["churn_risk","float"]],
+  churn_signals: [["user_id","uuid"],["last_seen","date"],["score","float"],["reason","enum"]],
+};
+const SPANS = {
+  support_calls_q3: ["2026-07-01","2026-09-30"],
+  pricing_competitors: ["2026-01-15","2026-09-08"],
+  crm_live: ["2025-03-01","2026-09-11"],
+  user_interviews: ["2026-04-02","2026-08-20"],
+  tts_latency_bench: ["2026-06-01","2026-09-01"],
+  crm_export_sep: ["2025-09-01","2026-09-09"],
+  churn_signals: ["2026-02-01","2026-09-04"],
+};
+const DEFAULT_SCHEMA = [["id","uuid"],["created_at","timestamp"],["name","string"],["value","numeric"],["status","enum"]];
+
+const SEED = [
+  { name: "support_calls_q3", size: "12 MB · CSV", updated: "Updated 2h ago", dynamic: false, ts: 6 },
+  { name: "pricing_competitors", size: "840 KB · JSON", updated: "Updated yesterday", dynamic: false, ts: 5 },
+  { name: "crm_live", size: "Postgres · live", updated: "Syncing", dynamic: true, ts: 7 },
+  { name: "user_interviews", size: "3.1 MB · PDF", updated: "Updated Mon", dynamic: false, ts: 4 },
+  { name: "tts_latency_bench", size: "220 KB · CSV", updated: "Updated Sep 12", dynamic: false, ts: 3 },
+  { name: "crm_export_sep", size: "48 MB · CSV", updated: "Updated Sep 9", dynamic: false, ts: 2 },
+  { name: "churn_signals", size: "1.7 MB · JSON", updated: "Updated Sep 4", dynamic: false, ts: 1 },
+];
+
+class Component extends DCLogic {
+  state = {
+    panel: false, manage: false, ask: false, connect: false, connectIndex: null,
+    engine: "Postgres", connString: "", connTable: "",
+    query: "", sort: "recent", selected: null, sent: false,
+    prompt: false, promptText: "", range: "Full span", dateFrom: "", dateTo: "", threadQuery: "",
+    cols: false, colQuery: "", colsOff: {}, board: false, results: false, chat: [], chatDraft: "",
+    datasets: SEED.slice(),
+  };
+
+  sendChat() {
+    const t = (this.state.chatDraft || "").trim();
+    if (!t) return;
+    const base = this.state.chat && this.state.chat.length ? this.state.chat : [
+      { role: "ai", text: "Inspection finished. Four signals stand out — ask me anything about them." },
+    ];
+    this.setState({
+      chatDraft: "",
+      chat: base.concat([
+        { role: "user", text: t },
+        { role: "ai", text: "Looking at the filtered rows for that: the effect concentrates in the last three weeks of the range and in the billing queue." },
+      ]),
+    });
+  }
+
+  patch(i, obj) {
+    this.setState((s) => ({ datasets: s.datasets.map((x, j) => (j === i ? { ...x, ...obj } : x)) }));
+  }
+
+  renderVals() {
+    const { datasets, query, sort, selected } = this.state;
+    const q = query.trim().toLowerCase();
+
+    const indexed = datasets.map((d, i) => ({ ...d, i }));
+    const filtered = indexed.filter((d) => !q || d.name.toLowerCase().includes(q));
+    const byTime = filtered.slice().sort((a, b) => (sort === "recent" ? b.ts - a.ts : a.ts - b.ts));
+
+    const visible = byTime.map((d) => ({
+      name: d.name,
+      size: d.size,
+      dynamic: d.dynamic,
+      dot: d.dynamic ? "50%" : "2px",
+      bg: selected === d.i ? "#f2f1ee" : "#ffffff",
+      border: selected === d.i ? "#141413" : "#ebe8e2",
+      onSelect: () => this.setState((s) => ({ selected: s.selected === d.i ? null : d.i })),
+    }));
+
+    const manageOrder = indexed
+      .slice()
+      .sort((a, b) => (b.dynamic - a.dynamic) || (sort === "recent" ? b.ts - a.ts : a.ts - b.ts));
+
+    const mq = (this.state.manageQuery || "").trim().toLowerCase();
+    const rows = manageOrder.filter((d) => !mq || d.name.toLowerCase().includes(mq)).map((d) => ({
+      name: d.name,
+      size: d.size,
+      updated: d.updated,
+      dynamic: d.dynamic,
+      dot: d.dynamic ? "50%" : "2px",
+      connectLabel: d.dynamic ? "Edit source" : "Make dynamic",
+      onRename: (e) => this.patch(d.i, { name: e.target.value }),
+      onRefresh: () => this.patch(d.i, { updated: "Updated just now" }),
+      onDelete: () => this.setState((s) => ({
+        datasets: s.datasets.filter((_, j) => j !== d.i),
+        selected: null,
+      })),
+      onConnect: () => this.setState({ connect: true, connectIndex: d.i, connString: "", connTable: "" }),
+    }));
+
+    const sel = selected != null ? datasets[selected] : null;
+    const key = sel ? sel.name.replace(/_\d+$/, "") : "";
+    const schema = (sel && (SCHEMAS[key] || DEFAULT_SCHEMA)) || [];
+    const span = (sel && (SPANS[key] || ["2026-01-01", "2026-09-11"])) || ["", ""];
+    const off = this.state.colsOff || {};
+    const cq = this.state.colQuery.trim().toLowerCase();
+    const cols = schema
+      .filter(([n]) => !cq || n.toLowerCase().includes(cq))
+      .map(([n, t]) => {
+        const on = !off[n];
+        return {
+          name: n, type: t, mark: on ? "\u2713" : "",
+          boxBg: on ? "#141413" : "#ffffff",
+          boxBorder: on ? "#141413" : "#dcd8d0",
+          onToggle: () => this.setState((s) => {
+            const next = { ...(s.colsOff || {}) };
+            if (next[n]) delete next[n]; else next[n] = true;
+            return { colsOff: next };
+          }),
+        };
+      });
+    const hiddenAware = schema.filter(([n]) => !off[n]).length;
+
+    return {
+      greeting: sel != null ? "Let's get to work" : (this.props.greeting ?? "What should we work on?"),
+      userName: this.props.userName ?? "Guest",
+      userPlan: this.props.userPlan ?? "Preview mode",
+      initials: (this.props.userName ?? "Guest").slice(0, 2).toUpperCase(),
+      threadQuery: this.state.threadQuery,
+      onThreadQuery: (e) => this.setState({ threadQuery: e.target.value }),
+      threads: [
+        { title: "Voice agent market 2026", when: "2h ago", done: false },
+        { title: "TTS latency benchmark", when: "Yesterday", done: true },
+        { title: "Competitor pricing", when: "Yesterday", done: true },
+        { title: "Support call summary", when: "Mon", done: false },
+        { title: "User interview notes", when: "Sep 12", done: true },
+      ].slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0)).map((t) => ({
+        ...t,
+        loading: !t.done,
+        status: t.done ? "Done · " + t.when : "Inspecting…",
+        onOpen: () => this.setState((s) => {
+          const i = s.datasets.findIndex((d) => d.dynamic) >= 0 ? s.datasets.findIndex((d) => d.dynamic) : 0;
+          const k = s.datasets[i].name.replace(/_\d+$/, "");
+          const sp = SPANS[k] || ["2026-01-01", "2026-09-11"];
+          return { panel: false, board: true, selected: i, dateFrom: sp[0], dateTo: sp[1], promptText: t.title };
+        }),
+      })).filter((t) => !this.state.threadQuery.trim() || t.title.toLowerCase().includes(this.state.threadQuery.trim().toLowerCase())),
+      openLeft: () => this.setState((s) => ({ panel: !s.panel })),
+      closePanel: () => this.setState({ panel: false }),
+      panelTransform: this.state.panel ? "translateX(0)" : "translateX(-100%)",
+      panelOpacity: this.state.panel ? 1 : 0,
+      panelEvents: this.state.panel ? "auto" : "none",
+
+      query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      toggleSort: () => this.setState((s) => ({ sort: s.sort === "recent" ? "oldest" : "recent" })),
+      sortLabel: sort === "recent" ? "Newest" : "Oldest",
+      visible,
+      noResults: visible.length === 0,
+
+      hasSelection: sel != null,
+      selectedName: sel ? sel.name : "",
+      selectedDot: sel && sel.dynamic ? "50%" : "2px",
+      clearSelection: () => this.setState({ selected: null, sent: false, prompt: false, cols: false, colsOff: {}, colQuery: "" }),
+      togglePrompt: () => this.setState((s) => ({ prompt: !s.prompt, cols: false })),
+      promptMax: this.state.prompt ? "64vh" : "0px",
+      promptOpacity: this.state.prompt ? 1 : 0,
+      promptBg: this.state.prompt ? "#f2f1ee" : "#ffffff",
+      promptBorder: this.state.prompt ? "#141413" : "#ebe8e2",
+      promptText: this.state.promptText,
+      onPrompt: (e) => this.setState({ promptText: e.target.value }),
+      dateFrom: this.state.dateFrom || span[0],
+      dateTo: this.state.dateTo || span[1],
+      onFrom: (e) => this.setState({ dateFrom: e.target.value, range: "Custom" }),
+      onTo: (e) => this.setState({ dateTo: e.target.value, range: "Custom" }),
+      dataMin: span[0],
+      dataMax2: span[1],
+      spanLabel: span[0] + " → " + span[1],
+      colsCount: schema.length ? hiddenAware + "/" + schema.length : "",
+      colsBg: this.state.cols ? "#f2f1ee" : "#ffffff",
+      colsOpen: this.state.cols,
+      closeCols: () => this.setState({ cols: false }),
+      colsBtnRef: (el) => { this.colsBtn = el; },
+      colsLeft: (this.state.colsRect ? this.state.colsRect.left : 0) + "px",
+      colsBottom: (this.state.colsRect ? this.state.colsRect.bottom : 0) + "px",
+      toggleCols: () => {
+        const r = this.colsBtn ? this.colsBtn.getBoundingClientRect() : null;
+        const rect = r ? { left: Math.max(10, Math.min(r.left, window.innerWidth - 310)), bottom: window.innerHeight - r.top + 8 } : null;
+        this.setState((s) => ({ cols: !s.cols, colsRect: rect }));
+      },
+      colQuery: this.state.colQuery,
+      onColQuery: (e) => this.setState({ colQuery: e.target.value }),
+      columns: cols,
+      noCols: cols.length === 0,
+      resetRange: () => this.setState({ dateFrom: span[0], dateTo: span[1] }),
+      dataMax: sel != null || this.state.board ? "0px" : "600px",
+      dataOpacity: sel != null ? 0 : 1,
+      dataBlur: sel != null ? "blur(10px)" : "blur(0px)",
+      dataScale: sel != null ? "scale(.97)" : "scale(1)",
+      dataEvents: sel != null ? "none" : "auto",
+      onSubmit: (e) => { e.preventDefault(); this.setState({ board: true, cols: false }); },
+      boardOpen: this.state.board && !this.state.results,
+      resultsOpen: this.state.board && this.state.results,
+      openResults: () => this.setState({ results: true, cols: false, prompt: false }),
+      backToBoard: () => this.setState({ results: false }),
+      resultSummary: "Across " + (sel ? sel.name : "the dataset") + " between " + (this.state.dateFrom || span[0]) + " and " + (this.state.dateTo || span[1]) + ", the inspection surfaced 4 signals worth review. Two are concentrated in the last three weeks.",
+      findings: [
+        { title: "Resolution time up 18%", detail: "Median handling grew from 4m12s to 4m58s, driven by the billing queue." },
+        { title: "CSAT dip on transfers", detail: "Conversations with one or more transfers score 0.7 points lower." },
+        { title: "Repeat contacts cluster", detail: "11% of accounts appear three or more times within 48 hours." },
+        { title: "Coverage gap after 19:00", detail: "Queue depth doubles in the last two hours of the shift." },
+      ],
+      chatName: this.state.chatName ?? "New chat",
+      onChatName: (e) => this.setState({ chatName: e.target.value }),
+      historyOpen: !!this.state.history,
+      historyBg: this.state.history ? "#f2f1ee" : "transparent",
+      toggleHistory: () => this.setState((s) => ({ history: !s.history })),
+      chatHistory: [
+        { title: "CSAT dip follow-up", when: "2h" },
+        { title: "Billing queue drill-down", when: "Yesterday" },
+        { title: "Repeat contacts cohort", when: "Mon" },
+      ].map((h) => ({ ...h, onOpen: () => this.setState({ chatName: h.title, history: false }) })),
+      stats: [
+        { label: "Rows scanned", value: "48,210", bar: "100%", note: "All rows in range" },
+        { label: "Signals", value: "4", bar: "45%", note: "2 high confidence" },
+        { label: "Median handling", value: "4m 58s", bar: "68%", note: "+18% vs prior" },
+        { label: "CSAT", value: "4.1", bar: "82%", note: "−0.7 on transfers" },
+      ],
+      timeline: [
+        { when: "00:00", title: "Run started", detail: (sel ? sel.name : "dataset") + " loaded", dotBg: "#141413",
+          steps: [{ k: "Source", v: sel ? sel.name : "—" }, { k: "Rows", v: "48,210 read" }] },
+        { when: "00:12", title: "Schema mapped", detail: hiddenAware + " of " + schema.length + " columns in scope", dotBg: "#ffffff",
+          steps: [{ k: "Types", v: "3 timestamps, 2 numerics inferred" }, { k: "Excluded", v: (schema.length - hiddenAware) + " columns" }] },
+        { when: "00:41", title: "Anomaly sweep", detail: "Handling time drift flagged", dotBg: "#ffffff",
+          steps: [{ k: "Test", v: "Rolling median vs prior period" }, { k: "Result", v: "+18% drift, p<0.01" }] },
+        { when: "01:09", title: "Cohort pass", detail: "Repeat contacts clustered", dotBg: "#ffffff",
+          steps: [{ k: "Window", v: "48 hours" }, { k: "Cohort", v: "11% of accounts, 3+ contacts" }] },
+        { when: "01:42", title: "Report written", detail: "4 findings, 1 recommendation", dotBg: "#141413",
+          steps: [{ k: "Output", v: "Full investigation document" }, { k: "Duration", v: "1m 42s total" }] },
+      ].map((t) => ({ ...t, expanded: !!this.state.timelineOpen })),
+      toggleTimeline: () => this.setState((s) => ({ timelineOpen: !s.timelineOpen })),
+      timelineToggleLabel: this.state.timelineOpen ? "Collapse" : "Expand",
+      findingsVisible: !this.state.doc,
+      docMethod: "Rows were filtered to the selected range, then grouped by queue and agent. Each metric was compared against the equivalent prior window of the same length; only differences outside two standard deviations were kept as signals.",
+      docRecs: [
+        { text: "Staff the billing queue through 21:00 for two weeks and re-measure handling time." },
+        { text: "Route transfer-prone intents to a single owner to protect CSAT." },
+        { text: "Flag accounts with three or more contacts in 48 hours for proactive outreach." },
+      ],
+      docNotes: "Timestamps are normalized to the workspace timezone. Rows missing a resolution state (0.4%) were excluded from handling-time statistics but kept for volume counts.",
+      docOpen: !!this.state.doc,
+      openDoc: () => this.setState({ doc: true }),
+      closeDoc: () => this.setState({ doc: false }),
+      docTitle: (sel ? sel.name : "investigation") + " — full report",
+      docTools: [{ label: "B" }, { label: "I" }, { label: "U" }, { label: "¶" }],
+      runMetaLine: (this.state.dateFrom || span[0]) + " → " + (this.state.dateTo || span[1]),
+      chatDraft: this.state.chatDraft || "",
+      onChatDraft: (e) => this.setState({ chatDraft: e.target.value }),
+      onChatKey: (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); this.sendChat(); } },
+      sendChat: () => this.sendChat(),
+      suggestions: ["Why did CSAT dip?", "Show the repeat contacts"].map((label) => ({
+        label, onPick: () => this.setState({ chatDraft: label }),
+      })),
+      messages: (this.state.chat && this.state.chat.length ? this.state.chat : [
+        { role: "ai", text: "Inspection finished. Four signals stand out — ask me anything about them." },
+      ]).map((m) => ({
+        text: m.text,
+        align: m.role === "user" ? "flex-end" : "flex-start",
+        bg: m.role === "user" ? "#141413" : "#fcfbfa",
+        color: m.role === "user" ? "#ffffff" : "#141413",
+        border: m.role === "user" ? "#141413" : "#ebe8e2",
+        radius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+      })),
+      runMeta: [
+        { k: "Dataset", v: sel ? sel.name : "—" },
+        { k: "Range", v: (this.state.dateFrom || span[0]) + " → " + (this.state.dateTo || span[1]) },
+        { k: "Columns", v: hiddenAware + "/" + schema.length },
+        { k: "Duration", v: "1m 42s" },
+      ],
+      closeBoard: () => this.setState({ board: false, results: false, selected: null, prompt: false, cols: false, colsOff: {}, colQuery: "", promptText: "" }),
+      showComposer: sel != null && !this.state.board,
+      showHero: !this.state.board,
+      showPicker: !this.state.board,
+      rootPad: this.state.board ? "0" : "56px 24px",
+      rootMax: this.state.board ? "100dvh" : "none",
+      triggerDisplay: this.state.board ? "none" : "flex",
+      rootGap: this.state.board ? "0px" : "30px",
+      sent: this.state.sent,
+
+      manageOpen: this.state.manage,
+      manageCount: datasets.length,
+      manageQuery: this.state.manageQuery || "",
+      onManageQuery: (e) => this.setState({ manageQuery: e.target.value }),
+      openManage: (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ manage: true }); },
+      closeManage: () => this.setState({ manage: false }),
+      rows,
+      isEmpty: rows.length === 0,
+
+      askOpen: this.state.ask,
+      openUploadAsk: () => this.setState({ ask: true }),
+      closeAsk: () => this.setState({ ask: false }),
+      stop: (e) => e.stopPropagation(),
+      addStatic: () => this.setState((s) => ({
+        ask: false,
+        selected: s.datasets.length,
+        datasets: s.datasets.concat([{
+          name: "new_upload_" + (s.datasets.length + 1),
+          size: "1.2 MB · CSV",
+          updated: "Updated just now",
+          dynamic: false,
+          ts: 100 + s.datasets.length,
+        }]),
+      })),
+      startDynamic: () => this.setState({ ask: false, connect: true, connectIndex: null, connString: "", connTable: "" }),
+
+      connectOpen: this.state.connect,
+      connectSubtitle: this.state.connectIndex == null
+        ? "The dataset will stay in sync with the source you connect."
+        : "Turn this dataset into a live source.",
+      engines: ["Postgres", "MySQL", "BigQuery", "Snowflake"].map((label) => ({
+        label,
+        bg: this.state.engine === label ? "#f2f1ee" : "#ffffff",
+        border: this.state.engine === label ? "#141413" : "#ebe8e2",
+        onPick: () => this.setState({ engine: label }),
+      })),
+      connString: this.state.connString,
+      connTable: this.state.connTable,
+      onConnString: (e) => this.setState({ connString: e.target.value }),
+      onConnTable: (e) => this.setState({ connTable: e.target.value }),
+      closeConnect: () => this.setState({ connect: false }),
+      confirmConnect: () => {
+        const { connectIndex, engine, connTable, datasets: ds } = this.state;
+        const label = engine + " · live";
+        if (connectIndex == null) {
+          this.setState({
+            connect: false,
+            selected: ds.length,
+            datasets: ds.concat([{
+              name: (connTable || "live_source").replace(/[^a-z0-9_]+/gi, "_"),
+              size: label,
+              updated: "Syncing",
+              dynamic: true,
+              ts: 100 + ds.length,
+            }]),
+          });
+        } else {
+          this.setState({ connect: false });
+          this.patch(connectIndex, { dynamic: true, size: label, updated: "Syncing" });
+        }
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>
