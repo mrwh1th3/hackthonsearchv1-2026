@@ -54,17 +54,30 @@ export function expandirColaToolsNodo(x) {
     : cola.map((t) => t.tool_use_id);
   if (pendientes.length === 0) throw new Error('rama de herramientas sin tool_use pendientes: el paso no debió entrar aquí');
 
-  const permitidas = TOOLS_POR_ROL[rol] || [];
+  // Misma regla que `toolsPorRol` de n8n/prompts/ensamblar.mjs, que es lo que
+  // el system le promete al modelo: la base del rol MÁS `forense_leer_senal`
+  // cuando un especialista está en ronda informada. Si las dos listas se
+  // separan, el prompt autoriza una herramienta que el worker rechaza.
+  const permitidas = (TOOLS_POR_ROL[rol] || []).slice();
+  if (ESPECIALISTAS.indexOf(rol) >= 0 && ronda >= 2 && permitidas.indexOf(SOLO_RONDA_INFORMADA) < 0) {
+    permitidas.push(SOLO_RONDA_INFORMADA);
+  }
   const items = [];
   let orden = 0;
   for (const id of pendientes) {
     const entrada = cola.filter((t) => t.tool_use_id === id)[0];
     if (!entrada) throw new Error(`tool_use_id ${id} pendiente sin entrada en la cola del checkpoint`);
     const nombre = entrada.nombre;
-    // La allowlist es del backend: una herramienta fuera de ella NO se llama,
-    // se devuelve como tool_result de error tipificado (17 §5.5).
-    const autorizada = permitidas.indexOf(nombre) >= 0
-      && !(nombre === SOLO_RONDA_INFORMADA && ESPECIALISTAS.indexOf(rol) >= 0 && ronda < 2);
+    // La allowlist es del backend. Que el modelo pida una herramienta que no
+    // tiene es una violación del protocolo, no un resultado: el paso FALLA aquí
+    // y no se llama a la RPC. No se puede devolver un tool_result de error solo
+    // para esa herramienta sin bifurcar el grafo, y bifurcar rompería el lote
+    // (ver MANIFEST §2.1). El backend vuelve a comprobar la ACL en la RPC (06):
+    // esto es la primera barrera, no la única.
+    const autorizada = permitidas.indexOf(nombre) >= 0;
+    if (!autorizada) {
+      throw new Error(`herramienta no permitida para ${rol} en ronda ${ronda}: ${nombre}`);
+    }
     const argumentosModelo = entrada.argumentos && typeof entrada.argumentos === 'object' ? entrada.argumentos : {};
     // Identidad fijada por backend: el modelo nunca elige caso, tarea ni
     // operación (06 §ACL, 17 §1). p_operacion = (tarea_id, paso, tool_use_id).
@@ -89,7 +102,6 @@ export function expandirColaToolsNodo(x) {
       nombre,
       orden,
       autorizada,
-      motivo_denegada: autorizada ? null : `herramienta no permitida para ${rol} en ronda ${ronda}`,
       argumentos_backend,
       base_rest: x.base_rest || null,
       total_en_lote: pendientes.length,

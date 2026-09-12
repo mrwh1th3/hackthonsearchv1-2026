@@ -10,7 +10,7 @@ Postgres 17 con las migraciones 001–003:
 
 | Comando | Resultado |
 |---|---|
-| `node --test "n8n/tests/*.test.mjs"` | 317 pasan, 0 fallan |
+| `node --test "n8n/tests/*.test.mjs"` | 326 pasan, 0 fallan |
 | `node n8n/runtime/generar-code-nodes.mjs --check` | sin deriva |
 | `node n8n/runtime/generar-workflows.mjs --check` | sin deriva |
 | `node n8n/tests/preparar-sql.mjs forense_runtime` | `ok=25 pendiente_004_005=48 falla=0` |
@@ -121,7 +121,9 @@ uno a uno; el resumen:
    JSON ya la llama con tres. **Hasta que 004/005 la publique con tres
    argumentos, el worker falla al cerrar un paso terminal.**
 2. **Dos valores nuevos en el check `ck_bitacora_tipo_evento`:** `paso_en_cola` y
-   `paso_checkpoint`. Comprobado contra la base local: no están. Los usan
+   `paso_checkpoint`. Comprobado con un INSERT real contra la base local:
+   `ERROR: new row for relation "bitacora" violates check constraint
+   "ck_bitacora_tipo_evento"`. Los usan
    `Registrar en_cola` y `Registrar paso guardado`, que existen porque la regla 2
    de CLAUDE.md exige rastro también en la rama que no cierra. Si el coordinador
    prefiere no ampliar el enum, el cambio alternativo es de una línea por nodo
@@ -156,7 +158,10 @@ para que el repo no se separe de la instancia.
 2. Ningún nodo muestra credencial en rojo (todas creadas y asignadas por nombre).
 3. En `FORENSE_ejecutar_agente`, el nodo `POST /v1/messages` tiene
    «Retry on Fail» **apagado**: el reintento lo hace el propio grafo respetando
-   `Retry-After` (17 §6).
+   `Retry-After` (17 §6), y el backoff vuelve por `Reservar request` para que
+   cada reenvío quede registrado como un `intento_transporte` más. Si alguien
+   reconecta el backoff directo al HTTP, el contador se congela y el bucle gira
+   hasta el deadline del paso.
 4. Los webhooks responden por nodo (202 diferido), no con la respuesta inmediata.
 5. `Cada 10 s` del reconciliador sigue **inactivo**: encenderlo antes del smoke
    redespacha pasos de una máquina que aún no existe.

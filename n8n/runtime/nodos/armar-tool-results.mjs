@@ -16,9 +16,22 @@ export function armarToolResultsNodo(x) {
   if (faltantes.length > 0) throw new Error(`faltan tool_result para: ${faltantes.join(', ')}`);
   const content = cola.map((t) => {
     const r = porId.get(t.tool_use_id);
-    const esError = (r.error !== null && r.error !== undefined) || r.is_error === true;
+    // El grafo publica `estado` ('completado'|'error') desde el ledger; el
+    // proveedor simulado de los tests usa `error`/`is_error`. Las tres formas
+    // cuentan: un 5xx de la RPC tiene que llegar al modelo COMO ERROR tipificado
+    // (17 §5.5), no como un tool_result normal.
+    const esError = (r.error !== null && r.error !== undefined)
+      || r.is_error === true
+      || r.estado === 'error';
     const payload = esError
-      ? { ok: false, error: r.error ?? { codigo: 'error_herramienta', mensaje: 'error sin detalle', reintentable: false } }
+      ? {
+        ok: false,
+        error: r.error ?? {
+          codigo: 'error_herramienta',
+          mensaje: r.resultado && r.resultado.message ? String(r.resultado.message) : 'la herramienta devolvió error',
+          reintentable: false,
+        },
+      }
       : r.resultado;
     const bloque = {
       type: 'tool_result',

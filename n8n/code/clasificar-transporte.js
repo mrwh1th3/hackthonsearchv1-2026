@@ -5,7 +5,7 @@
 const ejecucion = $('Cargar ejecución').first().json;
 const respuesta = $input.first().json;
 const x = Object.assign({}, respuesta, {
-  intento: Number($('Reservar request').first().json.intento_transporte ?? 0) + 1,
+  intento: Number($('Reservar request').item.json.intento_transporte ?? 0) + 1,
   deadline_at: ejecucion.deadline_at,
 });
 const BASE_BACKOFF_MS = 500;

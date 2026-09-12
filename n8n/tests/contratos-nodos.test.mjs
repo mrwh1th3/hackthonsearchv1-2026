@@ -9,6 +9,14 @@
 // LO QUE NO PRUEBA: que las funciones SQL existan o devuelvan esas columnas
 // (004/005 son de forense-db; aquí la tabla `CONTRATOS_NODOS` es la
 // especificación que deben cumplir), ni nada de conectividad. Eso es el smoke.
+//
+// LÍMITE CONOCIDO de la comprobación: los campos disponibles para un nodo son la
+// UNIÓN de los que publican sus antecesores inmediatos, no la intersección. Con
+// ramas excluyentes (un switch por modo, por ejemplo) basta con que UNA de ellas
+// publique el campo para que pase. La intersección sería más estricta pero es
+// inviable aquí: hay ciclos legítimos (`Espera barrera → Esperar barrera R1`,
+// `Backoff → Reservar request`) cuyo corte devuelve el conjunto vacío y dejaría
+// todo en falso positivo.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -234,4 +242,31 @@ test('worker: ninguna función de 17 §4 se llama con la firma vieja', () => {
   // La bitácora se escribe con forense.log; forense.registrar_evento no existe.
   assert.equal(/registrar_evento/.test(sql), false);
   assert.match(sql, /forense\.log\(/);
+});
+
+test('worker: el backoff vuelve por la RESERVA, no directo al HTTP (17 §4)', () => {
+  const wf = cargar('FORENSE_ejecutar_agente');
+  // Cada reenvío es un intento registrado: reserve_request con el mismo
+  // request_id incrementa intento_transporte sin consumir cuota nueva, y ese
+  // contador es lo que corta el bucle en `Clasificar transporte`. Volviendo
+  // directo al HTTP, el intento se quedaba en 1 y el backoff giraba hasta el
+  // deadline del paso contra una cuenta con rate limit.
+  assert.deepEqual(wf.connections.Backoff.main[0].map((d) => d.node), ['Reservar request']);
+  const clasificador = wf.nodes.find((n) => n.name === 'Clasificar transporte');
+  assert.match(
+    clasificador.parameters.jsCode,
+    /\$\('Reservar request'\)\.item\.json\.intento_transporte/,
+    'con varias ejecuciones del nodo hace falta el ítem actual, no .first()',
+  );
+});
+
+test('worker: el evento de paso en cola resuelve su identidad desde la ejecución', () => {
+  const wf = cargar('FORENSE_ejecutar_agente');
+  const nodo = wf.nodes.find((n) => n.name === 'Registrar en_cola');
+  // forense.bitacora.corrida_id es NOT NULL y claim_step, cuando falla, no
+  // devuelve caso_id ni corrida_id: tomarlos del payload del claim rompía justo
+  // el evento que la regla 2 exige para la rama en cola.
+  assert.match(nodo.parameters.query, /FROM forense\.ejecuciones_agente e WHERE e\.id = \$1::uuid/);
+  assert.equal(/p_caso => \$1/.test(nodo.parameters.query), false, 'la identidad no sale del parámetro');
+  assert.match(nodo.parameters.options.queryReplacement, /\$json\.execution_id/);
 });

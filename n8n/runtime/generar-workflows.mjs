@@ -313,14 +313,26 @@ export function workerEjecutarAgente() {
   add(sql(
     'Registrar en_cola',
     [
-      'WITH ev AS (',
+      '-- La identidad se resuelve DESDE LA EJECUCIÓN, no desde la respuesta del',
+      '-- claim: cuando claim_step falla devuelve {ok:false, error} y ni caso_id',
+      '-- ni corrida_id vienen en el payload. forense.bitacora.corrida_id es NOT',
+      '-- NULL, así que confiar en ese payload rompía justo el evento que la',
+      '-- regla 2 exige para la rama en cola.',
+      'WITH id AS (',
+      '  SELECT e.caso_id, e.corrida_id, e.tarea_id, e.rol',
+      '    FROM forense.ejecuciones_agente e WHERE e.id = $1::uuid',
+      '), ev AS (',
       '  SELECT forense.log(',
-      "           p_caso => $1::uuid, p_agente => 'sistema', p_tipo => 'paso_en_cola',",
-      '           p_payload => $2::jsonb, p_tarea => $3::uuid, p_corrida => $4::uuid)',
+      "           p_caso => id.caso_id, p_agente => coalesce(id.rol, 'sistema'),",
+      "           p_tipo => 'paso_en_cola', p_payload => $2::jsonb,",
+      '           p_tarea => id.tarea_id, p_corrida => id.corrida_id)',
+      '    FROM id',
       ')',
-      "SELECT $1::uuid AS caso_id, 'paso_en_cola'::text AS tipo_evento, true AS registrado FROM ev",
+      "SELECT id.caso_id, id.corrida_id, id.tarea_id, 'paso_en_cola'::text AS tipo_evento,",
+      '       true AS registrado',
+      '  FROM id, ev',
     ].join('\n'),
-    '={{ $json.caso_id }}, ={{ JSON.stringify({ execution_id: $json.execution_id, motivo: $json.motivo }) }}, ={{ $json.tarea_id }}, ={{ $json.corrida_id }}',
+    '={{ $json.execution_id }}, ={{ JSON.stringify({ execution_id: $json.execution_id, motivo: $json.motivo, owner: $json.owner }) }}',
     "Sin evento persistido no hay progreso visible (regla 2; 21 §3.3). 'paso_en_cola' PENDE del check de bitacora: ver IMPORT.md §Variables.",
   ));
 
@@ -607,7 +619,13 @@ export function workerEjecutarAgente() {
     ['Ruta de transporte', 'Backoff', 1],
     ['Ruta de transporte', 'Marcar desconocido', 2],
     ['Ruta de transporte', 'Marcar error de request', 3],
-    ['Backoff', 'POST /v1/messages'],
+    // El backoff vuelve por la RESERVA, no directo al HTTP: 17 §4 exige que
+    // «cada HTTP nuevo es un intento registrado, aunque sea reparación o
+    // retry». `reserve_request` con el mismo request_id incrementa
+    // `intento_transporte` sin consumir cuota nueva, y ese contador es el que
+    // frena el bucle en `Clasificar transporte`. Saltándose este nodo, el
+    // intento se quedaba congelado en 1 y el backoff giraba hasta el deadline.
+    ['Backoff', 'Reservar request'],
     ['Marcar desconocido', 'Guardar checkpoint'],
     ['Marcar error de request', 'Guardar checkpoint'],
     ['Interpretar respuesta', 'Validar salida contra contrato'],
@@ -1932,7 +1950,7 @@ export const CONTRATOS_NODOS = Object.freeze({
       'estado_interno', 'rol', 'tarea_id', 'caso_id', 'corrida_id', 'editor_operacion_id',
       'checkpoint', 'deadline_at', 'owner'],
     'Paso no reclamable': ['estado', 'motivo', 'execution_id', 'caso_id', 'corrida_id', 'tarea_id', 'owner'],
-    'Registrar en_cola': ['caso_id', 'tipo_evento', 'registrado'],
+    'Registrar en_cola': ['caso_id', 'corrida_id', 'tarea_id', 'tipo_evento', 'registrado'],
     'Cargar ejecución': ['execution_id', 'owner', 'fencing_token', 'revision', 'paso', 'estado_interno',
       'rol', 'tarea_id', 'caso_id', 'corrida_id', 'editor_operacion_id', 'checkpoint', 'deadline_at',
       'modelo', 'prompt_hash', 'context_hash', 'paquete', 'ronda', 'intento', 'agente', 'paso_pipeline'],
@@ -1953,7 +1971,7 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Validar salida contra contrato': ['salida_valida', 'errores', 'estado_interno', 'checkpoint'],
     'Completar request': ['request_id', 'estado', 'estado_interno', 'checkpoint'],
     'Expandir cola de tools': [...IDENTIDAD_PASO, 'tool_use_id', 'nombre', 'orden', 'autorizada',
-      'motivo_denegada', 'argumentos_backend', 'base_rest', 'total_en_lote'],
+      'argumentos_backend', 'base_rest', 'total_en_lote'],
     'Reclamar tool': ['ok', 'duplicado', 'tool_ejecucion_id', 'estado', 'resultado_ref', 'error',
       'tool_use_id', 'nombre', 'args_hash'],
     'Llamar RPC forense': ['statusCode', 'headers', 'body'],

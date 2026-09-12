@@ -70,7 +70,9 @@ export const GENERADOS = [
       EJECUCION,
       'const respuesta = $input.first().json;',
       'const x = Object.assign({}, respuesta, {',
-      "  intento: Number($('Reservar request').first().json.intento_transporte ?? 0) + 1,",
+      // `.item` (no `.first()`): el backoff vuelve a pasar por la reserva, así
+      // que hay varias ejecuciones del nodo y hace falta la del ítem actual.
+      "  intento: Number($('Reservar request').item.json.intento_transporte ?? 0) + 1,",
       '  deadline_at: ejecucion.deadline_at,',
       '});',
     ].join('\n'),

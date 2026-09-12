@@ -140,7 +140,7 @@ lo que hace comprobable el contrato entre nodos (§11.15).
 | 2 | `Reclamar paso` | `postgres` | 2.7 | `jsonb_to_record(forense.claim_step($1::uuid,$2::text))` → `ok, error, fence AS fencing_token, revision, paso, estado_interno, rol, tarea_id, caso_id, corrida_id, checkpoint, deadline_at` | `Forense Postgres` |
 | 3 | `¿Claim vigente?` | `if` | 2.3 | boolean `={{ $json.ok }}` | — |
 | 4 | `Paso no reclamable` | `code` | 2 | `{estado:'en_cola', motivo, …}`. El slot es de otro owner con lease vigente: **pendiente, no fallido** (17 §3). | — |
-| 5 | `Registrar en_cola` | `postgres` | 2.7 | `forense.log(p_caso, p_agente, p_tipo=>'paso_en_cola', …)`. `forense.registrar_evento` **no existe**; el escritor de bitácora es `forense.log` (002). | `Forense Postgres` |
+| 5 | `Registrar en_cola` | `postgres` | 2.7 | `forense.log(…, p_tipo=>'paso_en_cola', …)` con la identidad resuelta **desde `ejecuciones_agente`**, no desde la respuesta del claim: cuando `claim_step` falla devuelve `{ok:false,error}` sin `caso_id` ni `corrida_id`, y `bitacora.corrida_id` es NOT NULL (comprobado con un INSERT real). `forense.registrar_evento` **no existe**: el escritor es `forense.log` (002). | `Forense Postgres` |
 | 6 | `Cargar ejecución` | `postgres` | 2.7 | Eco de la identidad del claim + `artefactos_contexto.contenido AS paquete` + `ronda/intento` de la tarea + `paso_pipeline` del `pasos_pipeline` abierto. | `Forense Postgres` |
 | 7 | `Decidir accion` | `code` | 2 | **Generado** (`nodos/decidir-paso.mjs`). Traduce el checkpoint a `{accion, estado_interno DESTINO, estado_tarea, evento, request_id, pending_tool_use_ids, checkpoint}`. El `request_id` es determinista (`execution:paso:motivo`): un reintento de transporte reusa el mismo y no consume cuota. | — |
 | 8 | `Ruta del paso` | `switch` | 3.4 | `solicitar_modelo` → 0, `ejecutar_herramienta` → 1, `cerrar` → 2; `fallbackOutput: none`. | — |
@@ -149,17 +149,17 @@ lo que hace comprobable el contrato entre nodos (§11.15).
 | 11 | `POST /v1/messages` | `httpRequest` | 4.2 | `jsonBody` desde `$('Construir cuerpo Messages')` (tras el Backoff, `$json` ya no trae el cuerpo); `fullResponse` + `neverError`; `timeout 45000`; `retryOnFail:false` a propósito. | `Anthropic account` |
 | 12 | `Clasificar transporte` | `code` | 2 | **Generado**. `ruta` excluyente: `continuar｜reintentar｜desconocido｜error`. | — |
 | 13 | `Ruta de transporte` | `switch` | 3.4 | Cuatro salidas; `fallbackOutput: none`. | — |
-| 14 | `Backoff` | `wait` | 1.1 | `espera_ms` del clasificador; vuelve a (11). Máximo dos vueltas. | — |
+| 14 | `Backoff` | `wait` | 1.1 | `espera_ms` del clasificador; vuelve a **(9) `Reservar request`**, no al HTTP. 17 §4: «cada HTTP nuevo es un intento registrado, aunque sea reparación o retry»; `reserve_request` con el mismo `request_id` incrementa `intento_transporte` sin consumir cuota, y ese contador es el que corta el bucle a dos vueltas. Volviendo directo al HTTP, el intento quedaba congelado en 1 y el backoff giraba hasta el deadline del paso. | — |
 | 15 | `Marcar desconocido` | `postgres` | 2.7 | `llm_solicitudes.error` es **text**; devuelve además `estado_interno='error'` y el patch de checkpoint. | `Forense Postgres` |
 | 16 | `Marcar error de request` | `postgres` | 2.7 | Igual, para error permanente o reintentos agotados. | `Forense Postgres` |
 | 17 | `Interpretar respuesta` | `code` | 2 | **Generado**. `stop_reason` → evento → **estado interno destino**; guarda el transcript completo (assistant con sus `tool_use`) y la cola con todos los IDs. | — |
 | 18 | `Validar salida contra contrato` | `postgres` | 2.7 | `validar_salida_rol` (segundo nivel de 17 §8). **Depende de 004/005.** | `Forense Postgres` |
 | 19 | `Completar request` | `postgres` | 2.7 | `estado='completado'`, `usage`, `tokens_in/out` reales del proveedor. | `Forense Postgres` |
-| 20 | `Expandir cola de tools` | `code` | 2 | **Generado** (`nodos/expandir-cola-tools.mjs`). Un **ítem por `tool_use`**, en orden, con `p_tarea`/`p_caso`/`p_operacion` fijados por backend y la allowlist del rol comprobada. | — |
+| 20 | `Expandir cola de tools` | `code` | 2 | **Generado** (`nodos/expandir-cola-tools.mjs`). Un **ítem por `tool_use`**, en orden, con `p_tarea`/`p_caso`/`p_operacion` fijados por backend. Una herramienta fuera de la allowlist del rol **detiene el paso**: sin bifurcación no hay forma de devolver un `tool_result` de error solo para ella, y llamarla igual sería peor. La allowlist es la misma que `toolsPorRol` del ensamblador (test), para que el prompt no autorice lo que el worker rechaza. | — |
 | 21 | `Reclamar tool` | `postgres` | 2.7 | `claim_tool(..., forense.args_hash($5::jsonb), $6)`; devuelve `duplicado` (no `nuevo`). El hash lo calcula SQL: un Code node no depende de un módulo de criptografía del host. | `Forense Postgres` |
 | 22 | `Llamar RPC forense` | `httpRequest` | 4.2 | Una llamada por ítem, secuencial; argumentos y nombre desde `$('Expandir cola de tools').item`. Sin `Content-Profile`. | `Forense Supabase` |
 | 23 | `Registrar resultado tool` | `postgres` | 2.7 | `finish_tool($1::bigint, …)`, no un UPDATE suelto. | `Forense Postgres` |
-| 24 | `Armar tool_results` | `code` | 2 | **Generado**. Lee la cola de `$('Expandir cola de tools').all()` y los resultados de `$input.all()`: un `tool_result` por **cada** `tool_use_id`, en orden, errores tipificados incluidos. | — |
+| 24 | `Armar tool_results` | `code` | 2 | **Generado**. Lee la cola de `$('Expandir cola de tools').all()` y los resultados de `$input.all()`: un `tool_result` por **cada** `tool_use_id`, en orden. Un `estado='error'` del ledger viaja al modelo **como error tipificado** (`is_error`), no como resultado normal (17 §5.5). | — |
 | 25 | `Guardar checkpoint` | `postgres` | 2.7 | `save_checkpoint` con CAS + fencing; devuelve `ok, revision` y repite `estado_interno` para el IF siguiente. | `Forense Postgres` |
 | 26 | `¿Estado terminal?` | `if` | 2.3 | `['terminado','error','timeout'].includes($json.estado_interno)` | — |
 | 27 | `Registrar paso guardado` | `postgres` | 2.7 | **Rama NO terminal.** `forense.log(... 'paso_checkpoint' ...)` antes de redespachar: regla 2 de CLAUDE.md, sin excepción para la rama que continúa. | `Forense Postgres` |
@@ -169,7 +169,7 @@ lo que hace comprobable el contrato entre nodos (§11.15).
 | 31 | `Nota worker` | `stickyNote` | 1 | — | — |
 
 Conexiones: 1→2→3; 3(true)→6, 3(false)→4→5; 6→7→8;
-8[0]→9→10→11→12→13; 13[continuar]→17→18→19→25; 13[reintentar]→14→11;
+8[0]→9→10→11→12→13; 13[continuar]→17→18→19→25; 13[reintentar]→14→**9**;
 13[desconocido]→15→25; 13[error]→16→25; 8[1]→20→21→22→23→24→25; 8[2]→25;
 25→26; 26(true)→29→30; 26(false)→27→28.
 
