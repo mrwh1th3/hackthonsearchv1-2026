@@ -16,7 +16,7 @@ const PENDIENTE = {
 };
 const args = process.argv.slice(2);
 const dry = args.includes('--dry-run');
-const only = (args[args.indexOf('--only') + 1] || '').split(',').filter(Boolean);
+const only = args.includes('--only') ? (args[args.indexOf('--only') + 1] || '').split(',').filter(Boolean) : [];
 const env = leerEnv();
 if (!dry) exigir(env, ['N8N_BASE', 'N8N_API_KEY']);
 const base = (env.N8N_BASE || 'https://n8n.srv1550651.hstgr.cloud').replace(/\/$/, '');
