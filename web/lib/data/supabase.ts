@@ -47,6 +47,17 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 }
 
+/**
+ * Selector explícito (decisión H3, `lib/data/index.ts`): Supabase (público,
+ * anon) solo con `NEXT_PUBLIC_DATA_SOURCE=supabase` Y credenciales
+ * presentes. Usado también por `lib/realtime/canal.ts` para decidir si abre
+ * un canal — nunca hay realtime en modo fixture, y nunca contra un proyecto
+ * distinto del que ya eligió el selector de datos.
+ */
+export function quiereFuenteSupabase(): boolean {
+  return process.env.NEXT_PUBLIC_DATA_SOURCE === "supabase" && isSupabaseConfigured();
+}
+
 export function createForenseSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

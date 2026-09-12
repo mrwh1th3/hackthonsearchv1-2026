@@ -40,7 +40,7 @@ export default async function ClusterPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      <ClusterView tareas={detalle?.tareas ?? []} senales={senales} grafo={grafo} />
+      <ClusterView tareas={detalle?.tareas ?? []} senales={senales} grafo={grafo} clusterId={id} />
     </div>
   );
 }
