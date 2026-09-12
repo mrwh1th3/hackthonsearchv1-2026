@@ -8,7 +8,12 @@ import { createClient } from "@supabase/supabase-js";
  */
 export interface RespuestaPostgrest {
   data: unknown;
-  error: { message: string } | null;
+  /**
+   * `code` es el código de PostgREST (`PGRST202` = función ausente del cache
+   * de esquema). Se necesita para distinguir «la RPC todavía no existe» de
+   * «la RPC existe y falló», que exigen caminos opuestos (ver `revertir`).
+   */
+  error: { message: string; code?: string } | null;
 }
 
 export interface ConsultaForense extends PromiseLike<RespuestaPostgrest> {
@@ -27,12 +32,12 @@ export interface ClienteForense {
 
 import {
   aplicarPropuestaGuardada,
-  registrarPropuesta as registrarPropuestaDemo,
   descartarPropuestaGuardada,
   guardarBorrador as guardarBorradorDemo,
   hashContenido,
-  obtenerPropuesta,
+  borradorActual as borradorActualDemo,
   obtenerVersion as obtenerVersionDemo,
+  registrarPropuesta as registrarPropuestaDemo,
   revertirAVersion,
   versionActual as versionActualDemo,
   versiones as versionesDemo,
@@ -94,6 +99,12 @@ export interface RepositorioExpediente {
     casoId: string,
     args: { version_base: number; documento: Documento },
   ): Promise<ResultadoEscritura<Borrador>>;
+  /**
+   * Borrador autoguardado vigente para `versionBase`, o `null`. Cada modo
+   * sabe DÓNDE vive el suyo; ninguna ruta consulta el almacén en memoria por
+   * su cuenta (era la última lectura de memoria que quedaba en modo supabase).
+   */
+  borrador(casoId: string, versionBase: number): Promise<Borrador | null>;
   aplicar(
     casoId: string,
     args: { propuesta_id: string; version_base: number; idempotency_key: string },
@@ -112,12 +123,21 @@ export interface RepositorioExpediente {
     previsualizacion: Documento,
     ctx?: ContextoEdicion,
   ): Promise<{ ok: boolean; propuestaId: string; repetida: boolean }>;
-  descartar(casoId: string, propuestaId: string): Promise<ResultadoEscritura<{ estado: string }>>;
+  /**
+   * Descartar no crea versión (07 §4) pero SÍ es un paso: deja evento
+   * `edicion` con `payload.evento_real='propuesta_descartada'`. `bitacora`
+   * dice si ese evento quedó escrito de verdad.
+   */
+  descartar(casoId: string, propuestaId: string): Promise<ResultadoEscritura<{ estado: string; bitacora: boolean }>>;
+  /**
+   * Revertir crea versión nueva (09 §8: el historial no se destruye).
+   * `bitacora` dice si el evento `edicion` de ESTA reversión quedó escrito.
+   */
   revertir(
     casoId: string,
     args: { version_objetivo: number; version_base: number; idempotency_key: string },
     ctx?: ContextoEdicion,
-  ): Promise<ResultadoEscritura<{ reporte: Reporte; repetido: boolean }>>;
+  ): Promise<ResultadoEscritura<{ reporte: Reporte; repetido: boolean; bitacora: boolean }>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +160,10 @@ export const repositorioFixture: RepositorioExpediente = {
   async guardarBorrador(casoId, args) {
     return guardarBorradorDemo(casoId, args);
   },
+  async borrador(casoId, versionBase) {
+    const b = borradorActualDemo(casoId);
+    return b && b.version_base === versionBase ? b : null;
+  },
   async aplicar(casoId, args) {
     return aplicarPropuestaGuardada(casoId, args);
   },
@@ -149,10 +173,12 @@ export const repositorioFixture: RepositorioExpediente = {
   },
   async descartar(casoId, propuestaId) {
     const r = descartarPropuestaGuardada(casoId, propuestaId);
-    return r.ok ? { ok: true, valor: { estado: r.valor.estado } } : r;
+    // El modo fixture jamás afirma haber escrito bitácora.
+    return r.ok ? { ok: true, valor: { estado: r.valor.estado, bitacora: false } } : r;
   },
   async revertir(casoId, args) {
-    return revertirAVersion(casoId, args);
+    const r = revertirAVersion(casoId, args);
+    return r.ok ? { ok: true, valor: { ...r.valor, bitacora: false } } : r;
   },
 };
 
@@ -189,6 +215,30 @@ function aReporte(fila: FilaExpediente): Reporte {
 
 const COLUMNAS = "caso_id,idempotency_key,version,markdown,contenido_json,autor,estado_revision,creado";
 
+/** Fila de `forense.propuestas_edicion` (006 §5) en lo que el BFF necesita. */
+interface FilaPropuesta {
+  id: string;
+  caso_id: string;
+  version_base: number;
+  modo: string;
+  estado: string;
+  patch: unknown;
+  version_resultante: number | null;
+}
+const COLUMNAS_PROPUESTA = "id,caso_id,version_base,modo,estado,patch,version_resultante";
+
+/**
+ * `patch` viaja como `jsonb`: vuelve como `unknown`. Se acepta solo si tiene
+ * la forma de documento TipTap; cualquier otra cosa es un dato corrupto y se
+ * dice, en vez de versionar el expediente con basura.
+ */
+export function documentoDe(valor: unknown): Documento | null {
+  if (!valor || typeof valor !== "object") return null;
+  const posible = valor as { type?: unknown; content?: unknown };
+  if (posible.type !== "doc" || !Array.isArray(posible.content)) return null;
+  return normalizarDocumento(valor as Documento);
+}
+
 export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioExpediente {
   async function filas(casoId: string): Promise<FilaExpediente[]> {
     const { data, error } = await cliente
@@ -206,18 +256,39 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
   }
 
   /**
-   * Evento `edicion` en `forense.bitacora` (CLAUDE.md regla 2). `corrida_id`
-   * es NOT NULL: se resuelve desde `forense.casos`. `aplicar_propuesta` ya lo
-   * escribe en el servidor (006 §7), así que esto solo se usa para revertir.
+   * Evento `edicion` en `forense.bitacora` (CLAUDE.md regla 2) **por
+   * `forense.log`**, no por INSERT directo: la función es la que asigna
+   * `seq` (`forense.next_seq`, 002 §1), resuelve `corrida_id` y `cluster_id`
+   * desde `forense.casos` y respeta el contrato de la tabla. Un INSERT a mano
+   * se salta la secuencia y deja la bitácora sin orden.
+   *
+   * `tipo_evento` es siempre `'edicion'` —el CHECK de la tabla no acepta
+   * valores nuevos y ese enum no es de este worker—; el matiz va en
+   * `payload.evento_real`, igual que hace 006 §7.
+   *
+   * Devuelve si el evento quedó escrito: la ruta lo declara como `bitacora`
+   * y la UI no puede afirmar trazabilidad que no ocurrió.
    */
   async function bitacoraEdicion(casoId: string, payload: Record<string, unknown>): Promise<boolean> {
-    const { data, error } = await cliente.from("casos").select("corrida_id").eq("id", casoId).maybeSingle();
-    const corridaId = (data as { corrida_id?: string } | null)?.corrida_id;
-    if (error || !corridaId) return false;
-    const escritura = await cliente
-      .from("bitacora")
-      .insert({ corrida_id: corridaId, caso_id: casoId, agente: "editor", tipo_evento: "edicion", payload });
-    return !escritura.error;
+    const { error } = await cliente.rpc("log", {
+      p_caso: casoId,
+      p_agente: "editor",
+      p_tipo: "edicion",
+      p_payload: payload,
+    });
+    return !error;
+  }
+
+  /** Fila de la propuesta, SIEMPRE acotada al caso de la petición. */
+  async function leerPropuesta(casoId: string, propuestaId: string): Promise<FilaPropuesta | null> {
+    const { data, error } = await cliente
+      .from("propuestas_edicion")
+      .select(COLUMNAS_PROPUESTA)
+      .eq("id", propuestaId)
+      .eq("caso_id", casoId)
+      .maybeSingle();
+    if (error) throw new Error(`propuestas_edicion: ${error.message}`);
+    return (data as FilaPropuesta | null) ?? null;
   }
 
   return {
@@ -280,24 +351,54 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
     },
 
     /**
+     * En supabase NO hay borrador aparte: el autoguardado escribe sobre
+     * `contenido_json` de la versión vigente (ver `guardarBorrador`), así que
+     * lo que la ruta ya leyó como `versionActual` **es** el borrador. Devolver
+     * `null` es la respuesta correcta, y además impide que una petición lea el
+     * borrador en memoria de otro proceso (que además sería el de otro modo).
+     */
+    async borrador() {
+      return null;
+    },
+
+    /**
      * Aplicar = `forense.aplicar_propuesta` (006 §7): versiona, marca la
      * propuesta, escribe `bitacora.tipo_evento='edicion'` y registra
      * actividad, todo en una transacción del servidor. La idempotencia
      * (doble click) la resuelve la función: propuesta ya aplicada devuelve la
      * MISMA versión con `aplicada:false`.
      *
-     * `p_contenido_json`/`p_markdown` se envían con la previsualización que
-     * este BFF calculó al construir la propuesta cuando la tiene en memoria;
-     * si no la tiene, van `null` y la función usa el `patch` persistido.
+     * La previsualización se lee de `forense.propuestas_edicion.patch` —la
+     * fila que `/propuestas` insertó—, **nunca** de un almacén en memoria: el
+     * proceso que aplica puede no ser el que propuso (otro worker, un
+     * reinicio, un despliegue nuevo), y entonces la memoria está vacía.
+     * Además `aplicar_propuesta` hace `coalesce(p_markdown, markdown de la
+     * versión anterior)` (006 §7 línea 237): si el BFF mandara `p_markdown`
+     * nulo, la versión nueva tendría el JSON editado y el Markdown VIEJO. Por
+     * eso el markdown se deriva aquí del mismo `patch` que versiona.
      */
     async aplicar(casoId, args, ctx) {
-      const guardada = obtenerPropuesta(casoId, args.propuesta_id);
-      const previsualizacion = guardada?.previsualizacion ?? null;
+      const fila = await leerPropuesta(casoId, args.propuesta_id);
+      // El filtro por `caso_id` es una frontera de autorización, no una
+      // comodidad: `aplicar_propuesta(p_propuesta)` NO comprueba el caso, así
+      // que una propuesta de otro expediente versionaría aquel mientras esta
+      // ruta responde con versiones de este.
+      if (!fila) return { ok: false, motivo: "propuesta_desconocida" };
+      // Desacuerdo cliente↔fila sobre qué versión se está editando: 409 antes
+      // de escribir. El contraste fila↔`max(version)` lo sigue haciendo la
+      // función del servidor, que además marca la fila `estado='conflicto'`
+      // (006 §7 línea 228); adelantarlo aquí perdería esa transición.
+      if (fila.version_base !== args.version_base) {
+        const actual = await cabeza(casoId);
+        return { ok: false, motivo: "conflicto_version", version_actual: actual?.version ?? fila.version_base };
+      }
+      const previsualizacion = documentoDe(fila.patch);
+      if (!previsualizacion) return { ok: false, motivo: "propuesta_sin_patch" };
       const { data, error } = await cliente.rpc("aplicar_propuesta", {
         p_propuesta: args.propuesta_id,
         p_perfil: ctx?.perfilId ?? null,
         p_contenido_json: previsualizacion,
-        p_markdown: previsualizacion ? aMarkdown(previsualizacion) : null,
+        p_markdown: aMarkdown(previsualizacion),
       });
       if (error) throw new Error(`aplicar_propuesta: ${error.message}`);
       const res = (data ?? {}) as {
@@ -327,9 +428,8 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
      * segunda propuesta, reutiliza la que ya estaba.
      */
     async registrarPropuesta(casoId, propuesta, previsualizacion, ctx) {
-      // La previsualización se cachea en memoria para no recalcularla al
-      // aplicar; la VERDAD está en la fila que se inserta aquí.
-      registrarPropuestaDemo(casoId, propuesta, previsualizacion);
+      // Nada se cachea en memoria: la ÚNICA copia de la previsualización es
+      // la columna `patch` de esta fila, que es lo que `aplicar` vuelve a leer.
       const fila = {
         id: propuesta.propuesta_id,
         caso_id: casoId,
@@ -360,46 +460,110 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
       return { ok: false, propuestaId: propuesta.propuesta_id, repetida: false };
     },
 
-    /** Descartar registra estado y **no** crea versión (07 §4). */
+    /**
+     * Descartar registra estado y **no** crea versión (07 §4), pero sí deja
+     * rastro: evento `edicion` con `payload.evento_real='propuesta_descartada'`.
+     *
+     * El evento se escribe SOLO si la transición ocurrió. Una propuesta que ya
+     * estaba aplicada o descartada sale por el camino corto sin log: la regla
+     * 2 también prohíbe lo contrario, anotar un paso que no pasó.
+     */
     async descartar(casoId, propuestaId) {
-      const { data, error } = await cliente
-        .from("propuestas_edicion")
-        .select("id,estado")
-        .eq("id", propuestaId)
-        .eq("caso_id", casoId)
-        .maybeSingle();
-      if (error) throw new Error(`propuestas_edicion: ${error.message}`);
-      const fila = data as { estado?: string } | null;
+      const fila = await leerPropuesta(casoId, propuestaId);
       if (!fila) return { ok: false, motivo: "propuesta_desconocida" };
-      if (fila.estado !== "propuesta") return { ok: true, valor: { estado: fila.estado ?? "descartada" } };
+      if (fila.estado !== "propuesta") return { ok: true, valor: { estado: fila.estado, bitacora: false } };
       const upd = await cliente
         .from("propuestas_edicion")
         .update({ estado: "descartada" })
         .eq("id", propuestaId)
+        .eq("caso_id", casoId)
         .eq("estado", "propuesta");
       if (upd.error) throw new Error(`descartar: ${upd.error.message}`);
-      return { ok: true, valor: { estado: "descartada" } };
+      // Confirmación: el UPDATE condicional pudo no tocar ninguna fila (una
+      // aplicación concurrente ganó la carrera). Se relee antes de anotar.
+      const despues = await leerPropuesta(casoId, propuestaId);
+      const estado = despues?.estado ?? fila.estado;
+      if (estado !== "descartada") return { ok: true, valor: { estado, bitacora: false } };
+      const anotado = await bitacoraEdicion(casoId, {
+        evento_real: "propuesta_descartada",
+        propuesta_id: propuestaId,
+        version_base: fila.version_base,
+      });
+      return { ok: true, valor: { estado, bitacora: anotado } };
     },
 
     /**
      * Revertir copia la versión elegida a una NUEVA (07 §4: sin borrado, sin
-     * LLM). No hay RPC para esto en 006 —se pide en `solicitudes_coordinador`—
-     * así que aquí va INSERT + evento `edicion` explícito. La idempotencia se
-     * apoya en `expedientes.idempotency_key` (UNIQUE).
+     * LLM). Dos caminos, y el gate entre ellos es estrecho a propósito:
+     *
+     * 1. `forense.revertir_expediente(p_caso, p_version_objetivo,
+     *    p_version_base, p_idempotency, p_perfil)` —la entrega forense-db en
+     *    010— hace versionado, idempotencia y bitácora en UNA transacción.
+     * 2. Mientras esa migración no esté aplicada, PostgREST responde
+     *    `PGRST202` («could not find the function in the schema cache») y el
+     *    BFF hace INSERT + `forense.log`, sin transacción.
+     *
+     * Se cae al camino 2 **solo** con `PGRST202`. Cualquier otro error —args
+     * mal, permiso denegado, `raise` interno— se propaga: si la función existe
+     * y falló, repetir la escritura a mano duplicaría o corrompería versiones.
+     * Nunca se retrocede por ambigüedad.
      */
     async revertir(casoId, args, ctx) {
+      const rpc = await cliente.rpc("revertir_expediente", {
+        p_caso: casoId,
+        p_version_objetivo: args.version_objetivo,
+        p_version_base: args.version_base,
+        p_idempotency: args.idempotency_key,
+        p_perfil: ctx?.perfilId ?? null,
+      });
+      if (!rpc.error) {
+        const res = (rpc.data ?? null) as {
+          ok?: boolean;
+          error?: string;
+          revertida?: boolean;
+          version?: number;
+          version_resultante?: number;
+          version_actual?: number;
+        } | null;
+        // Envoltura desconocida: se dice, no se adivina ni se reescribe a mano.
+        if (!res || typeof res.ok !== "boolean") {
+          throw new Error("revertir_expediente: envoltura inesperada");
+        }
+        if (!res.ok) {
+          if (res.error === "conflicto_version") {
+            const actual = await cabeza(casoId);
+            return { ok: false, motivo: "conflicto_version", version_actual: res.version_actual ?? actual?.version ?? 0 };
+          }
+          return { ok: false, motivo: "version_inexistente" };
+        }
+        const version = res.version ?? res.version_resultante ?? 0;
+        const reporte = await this.obtenerVersion(casoId, version);
+        if (!reporte) return { ok: false, motivo: "version_inexistente" };
+        // La bitácora la escribe la propia transacción de 010 (es parte del
+        // contrato que se le pide; ver `solicitudes_coordinador`).
+        return { ok: true, valor: { reporte, repetido: res.revertida === false, bitacora: true } };
+      }
+      if (rpc.error.code !== "PGRST202") {
+        throw new Error(`revertir_expediente: ${rpc.error.message}`);
+      }
+
       const todas = await filas(casoId);
       if (todas.length === 0) return { ok: false, motivo: "version_inexistente" };
       const actual = todas[todas.length - 1];
+
+      // Idempotencia PRIMERO: el doble click manda dos veces la misma
+      // `version_base` y la segunda llega cuando la reversión ya subió la
+      // cabeza; comprobar el conflicto antes convertiría un doble click en 409.
+      const clave = `revertir:${args.idempotency_key}`;
+      const yaHecha = todas.find((f) => f.idempotency_key === clave);
+      // Repetida: no se vuelve a anotar, y se dice (bitacora:false).
+      if (yaHecha) return { ok: true, valor: { reporte: aReporte(yaHecha), repetido: true, bitacora: false } };
+
       if (actual.version !== args.version_base) {
         return { ok: false, motivo: "conflicto_version", version_actual: actual.version };
       }
       const objetivo = todas.find((f) => f.version === args.version_objetivo);
       if (!objetivo) return { ok: false, motivo: "version_inexistente" };
-
-      const clave = `revertir:${args.idempotency_key}`;
-      const yaHecha = todas.find((f) => f.idempotency_key === clave);
-      if (yaHecha) return { ok: true, valor: { reporte: aReporte(yaHecha), repetido: true } };
 
       const nueva = actual.version + 1;
       const reporteObjetivo = aReporte(objetivo);
@@ -417,11 +581,12 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
         // Clave repetida o carrera de versión: se relee y se responde honesto.
         const cabezaNueva = await cabeza(casoId);
         if (cabezaNueva && cabezaNueva.version === nueva) {
-          return { ok: true, valor: { reporte: aReporte(cabezaNueva), repetido: true } };
+          return { ok: true, valor: { reporte: aReporte(cabezaNueva), repetido: true, bitacora: false } };
         }
         return { ok: false, motivo: "conflicto_version", version_actual: cabezaNueva?.version ?? actual.version };
       }
-      await bitacoraEdicion(casoId, {
+      const anotado = await bitacoraEdicion(casoId, {
+        evento_real: "revertir",
         accion: "revertir",
         version_objetivo: args.version_objetivo,
         version_base: actual.version,
@@ -430,7 +595,7 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
       });
       const creada = await this.obtenerVersion(casoId, nueva);
       if (!creada) return { ok: false, motivo: "version_inexistente" };
-      return { ok: true, valor: { reporte: creada, repetido: false } };
+      return { ok: true, valor: { reporte: creada, repetido: false, bitacora: anotado } };
     },
   };
 }

@@ -2,8 +2,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import redactorFixture from "@contracts/fixtures/valid/redactor.json";
+import propuestos from "@/lib/document/contratos-propuestos.json";
 import { signSession } from "@/lib/auth/session";
-import { reiniciarAlmacen } from "@/lib/document/almacen-demo";
+import { guardarBorrador, reiniciarAlmacen, sembrarCaso } from "@/lib/document/almacen-demo";
+import { aMarkdown } from "@/lib/document/markdown";
 import { hashTexto } from "@/lib/document/documento";
 import { desdeMarkdown } from "@/lib/document/markdown";
 import { crearRepositorioSupabase, forzarRepositorio } from "@/lib/document/repositorio";
@@ -12,9 +14,10 @@ import { rangoDeBloque, textoEntre } from "@/lib/document/seleccion";
 import { POST as postPropuestas } from "@/app/api/reportes/propuestas/route";
 import { POST as postAplicar } from "@/app/api/reportes/aplicar/route";
 import { POST as postDescartar } from "@/app/api/reportes/descartar/route";
+import { POST as postRevertir } from "@/app/api/reportes/revertir/route";
 import { GET as getVersiones } from "@/app/api/reportes/versiones/route";
 
-import { CASO, clienteFalso, crearAlmacen, type Almacen } from "./_doble-postgrest";
+import { CASO, clienteFalso, crearAlmacen, type Almacen, type OpcionesDoble } from "./_doble-postgrest";
 
 /**
  * Recorrido completo del editor **en modo `supabase`**, extremo a extremo por
@@ -38,11 +41,23 @@ const BLOQUE_CUERPO = documentoBase.content[1].attrs.id;
 
 let almacen: Almacen;
 
-function montar(): Almacen {
+function montar(opciones: OpcionesDoble = {}): Almacen {
   reiniciarAlmacen();
   almacen = crearAlmacen();
-  forzarRepositorio(crearRepositorioSupabase(clienteFalso(almacen)));
+  forzarRepositorio(crearRepositorioSupabase(clienteFalso(almacen, opciones)));
   return almacen;
+}
+
+async function revertir(clave: string) {
+  return postRevertir(
+    await post("/api/reportes/revertir", {
+      caso_id: CASO,
+      accion: "revertir",
+      version_objetivo: 1,
+      version_base: 1,
+      idempotency_key: clave,
+    }),
+  );
 }
 
 afterEach(() => forzarRepositorio(null));
@@ -140,8 +155,195 @@ describe("BFF del editor en modo supabase (repositorio inyectado)", () => {
     const cuerpo = await res.json();
     expect(cuerpo.origen).toBe("supabase");
     expect(cuerpo.estado).toBe("descartada");
+
+    // El schema propuesto para 1.3.0 es `additionalProperties:false`: si la
+    // ruta gana o pierde un campo y el JSON no lo refleja, el coordinador
+    // publicaría un contrato que esta misma ruta viola. Se comparan las dos
+    // direcciones.
+    const esquema = propuestos["editor.descartado"] as unknown as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    expect(Object.keys(cuerpo).sort()).toEqual(Object.keys(esquema.properties).sort());
+    expect(esquema.required.filter((clave) => !(clave in cuerpo))).toEqual([]);
     expect(db.propuestas_edicion[0].estado).toBe("descartada");
     expect(db.expedientes).toHaveLength(1);
+
+    // CLAUDE.md regla 2: descartar es un paso, así que deja rastro. Y lo deja
+    // por `forense.log`, no por INSERT a mano en `bitacora`.
+    expect(cuerpo.bitacora).toBe(true);
+    expect(db.rpc.filter((r) => r.nombre === "log")).toHaveLength(1);
+    const evento = db.bitacora.at(-1)!;
+    expect(evento.tipo_evento).toBe("edicion");
+    expect(evento.agente).toBe("editor");
+    expect((evento.payload as { evento_real: string }).evento_real).toBe("propuesta_descartada");
+  });
+
+  it("descartar dos veces anota una sola vez (el segundo no transiciona)", async () => {
+    const db = montar();
+    const { json } = await pedirPropuesta("00000000-0000-4000-8000-000000000480");
+    const cuerpo = async () => {
+      const res = await postDescartar(
+        await post("/api/reportes/descartar", {
+          caso_id: CASO,
+          propuesta_id: json.propuesta.propuesta_id,
+          idempotency_key: "00000000-0000-4000-8000-000000000481",
+        }),
+      );
+      return res.json();
+    };
+    expect((await cuerpo()).bitacora).toBe(true);
+    const segundo = await cuerpo();
+    expect(segundo.estado).toBe("descartada");
+    // No pasó nada la segunda vez: no se inventa un evento.
+    expect(segundo.bitacora).toBe(false);
+    expect(db.bitacora.filter((b) => b.tipo_evento === "edicion")).toHaveLength(1);
+  });
+
+  /**
+   * Hallazgo ALTO: Aplicar NO puede leer la previsualización de la memoria del
+   * proceso. `reiniciarAlmacen()` deja el almacén de demostración vacío —lo
+   * mismo que ve un proceso distinto del que propuso, o el mismo tras un
+   * redespliegue— y a pesar de eso la versión nueva tiene que salir del
+   * `patch` persistido, JSON **y** Markdown.
+   */
+  it("Aplicar reconstruye la versión desde el patch persistido con la memoria vacía", async () => {
+    const db = montar();
+    const { json } = await pedirPropuesta("00000000-0000-4000-8000-000000000460");
+    const patch = db.propuestas_edicion[0].patch as Parameters<typeof aMarkdown>[0];
+    expect(patch).toBeTruthy();
+
+    reiniciarAlmacen(); // se borra todo rastro en memoria del proceso
+
+    const res = await postAplicar(
+      await post(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        propuesta_id: json.propuesta.propuesta_id,
+        version_base: 1,
+        idempotency_key: "00000000-0000-4000-8000-000000000461",
+      }),
+    );
+    expect(res.status).toBe(200);
+    const nueva = db.expedientes.find((e) => e.version === 2)!;
+    expect(nueva.contenido_json).toEqual(patch);
+    // Y el Markdown se deriva del MISMO patch: si el BFF mandara `p_markdown`
+    // nulo, 006 §7 copiaría el markdown de la versión 1 y el expediente
+    // quedaría con JSON nuevo y texto viejo.
+    expect(nueva.markdown).toBe(aMarkdown(patch));
+    expect(nueva.markdown).not.toBe(db.expedientes[0].markdown);
+  });
+
+  it("una propuesta de otro caso no versiona este expediente", async () => {
+    const db = montar();
+    const ajena = "00000000-0000-4000-8000-000000000462";
+    db.propuestas_edicion.push({
+      id: ajena,
+      caso_id: "00000000-0000-4000-8000-000000000199",
+      version_base: 1,
+      modo: "propuesta",
+      estado: "propuesta",
+      patch: documentoBase,
+    });
+    const res = await postAplicar(
+      await post(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        propuesta_id: ajena,
+        version_base: 1,
+        idempotency_key: "00000000-0000-4000-8000-000000000463",
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe("propuesta_desconocida");
+    // Ni siquiera se llamó a la función del servidor.
+    expect(db.rpc.filter((r) => r.nombre === "aplicar_propuesta")).toHaveLength(0);
+    expect(db.expedientes).toHaveLength(1);
+  });
+
+  it("version_base del cliente distinta a la de la fila: 409 y sin escritura", async () => {
+    const db = montar();
+    const { json } = await pedirPropuesta("00000000-0000-4000-8000-000000000464");
+    const res = await postAplicar(
+      await post(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        propuesta_id: json.propuesta.propuesta_id,
+        version_base: 7,
+        idempotency_key: "00000000-0000-4000-8000-000000000465",
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()).version_actual).toBe(1);
+    expect(db.expedientes).toHaveLength(1);
+    expect(db.propuestas_edicion[0].estado).toBe("propuesta");
+  });
+
+  /**
+   * Hallazgo: `borradorActual()` era una lectura del almacén EN MEMORIA que la
+   * ruta hacía en los dos modos. En supabase el autoguardado vive en
+   * `expedientes.contenido_json` de la versión vigente, así que un borrador en
+   * memoria —de otra corrida de pruebas, de otro proceso, del modo fixture—
+   * no puede colarse en la propuesta.
+   */
+  it("en supabase la propuesta ignora el borrador en memoria del proceso", async () => {
+    const db = montar();
+    const contaminado = structuredClone(documentoBase);
+    contaminado.content[1].content = [{ type: "text", text: "CONTAMINADO por memoria ajena." }];
+    sembrarCaso(CASO, documentoBase);
+    guardarBorrador(CASO, { version_base: 1, documento: contaminado });
+
+    const { res, json } = await pedirPropuesta("00000000-0000-4000-8000-000000000470");
+    expect(res.status).toBe(200);
+    // La selección se verifica contra lo persistido, no contra la memoria.
+    expect(json.seleccion_verificada).toBe(true);
+    expect(JSON.stringify(db.propuestas_edicion[0].patch)).not.toContain("CONTAMINADO");
+  });
+
+  /**
+   * Hallazgo 2: revertir tiene que usar `forense.revertir_expediente` cuando
+   * exista (010) y solo entonces. Las dos ramas se prueban, porque la rama
+   * que nadie ejercita es la que se rompe al integrar.
+   */
+  describe("revertir: RPC de 010 con respaldo solo ante PGRST202", () => {
+    it("sin 010 aplicada (PGRST202) el BFF versiona y anota por forense.log", async () => {
+      const db = montar(); // revertirExpediente: false
+      const res = await revertir("00000000-0000-4000-8000-000000000490");
+      expect(res.status).toBe(200);
+      const cuerpo = await res.json();
+      expect(cuerpo.version).toBe(2);
+      expect(cuerpo.bitacora).toBe(true);
+      // Lo intentó primero, y solo después escribió a mano.
+      expect(db.rpc.map((r) => r.nombre)).toEqual(["revertir_expediente", "log"]);
+      expect(db.expedientes.find((e) => e.version === 2)!.autor).toBe("humano");
+      const evento = db.bitacora.at(-1)!;
+      expect(evento.tipo_evento).toBe("edicion");
+      expect((evento.payload as { accion: string }).accion).toBe("revertir");
+    });
+
+    it("con 010 aplicada la versión la escribe la función, no el BFF", async () => {
+      const db = montar({ revertirExpediente: true });
+      const res = await revertir("00000000-0000-4000-8000-000000000491");
+      expect(res.status).toBe(200);
+      expect((await res.json()).version).toBe(2);
+      // La fila lleva la marca del servidor: el BFF no hizo su INSERT.
+      expect(db.expedientes.find((e) => e.version === 2)!.autor).toBe("servidor");
+      // Y no duplicó el evento: la bitácora la escribió la transacción.
+      expect(db.rpc.map((r) => r.nombre)).toEqual(["revertir_expediente"]);
+      expect(db.bitacora.filter((b) => b.tipo_evento === "edicion")).toHaveLength(1);
+    });
+
+    it("repetir con la misma clave devuelve la misma versión (camino RPC)", async () => {
+      const db = montar({ revertirExpediente: true });
+      const uno = await (await revertir("00000000-0000-4000-8000-000000000492")).json();
+      const dos = await (await revertir("00000000-0000-4000-8000-000000000492")).json();
+      expect(dos.version).toBe(uno.version);
+      expect(dos.repetido).toBe(true);
+      expect(db.expedientes).toHaveLength(2);
+    });
+
+    it("un fallo AMBIGUO de la RPC no autoriza el respaldo: 502 y cero escrituras", async () => {
+      const db = montar({ errorRevertir: { code: "42501", message: "permission denied for function" } });
+      const res = await revertir("00000000-0000-4000-8000-000000000493");
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toBe("persistencia_no_disponible");
+      expect(db.expedientes).toHaveLength(1);
+      expect(db.bitacora).toHaveLength(0);
+    });
   });
 
   it("dos peticiones con el mismo idempotency_key no crean dos propuestas", async () => {

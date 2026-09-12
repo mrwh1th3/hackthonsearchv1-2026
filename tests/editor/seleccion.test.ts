@@ -48,6 +48,11 @@ const documentoRico = desdeMarkdown(
     "",
     "Párrafo final del expediente.",
     "",
+    "| RFC | Monto |",
+    "| --- | --- |",
+    "| AAA010101AAA | 1,200,000 |",
+    "| BBB020202BB2 | 980,000 |",
+    "",
   ].join("\n"),
 );
 
@@ -141,17 +146,73 @@ describe("verificarSeleccion", () => {
     ).toEqual({ estado: "desplazada" });
   });
 
-  it("con contenedores (listas) no se afirma nada: indeterminada, nunca 409", () => {
+  /**
+   * Antes esto devolvía `indeterminada: contenedores`: una selección sobre la
+   * tabla de hallazgos o sobre una lista NUNCA se verificaba. Ahora el texto
+   * anclado del bloque se reconstruye con `textoEntre()` sobre su rango, que
+   * es el mismo `textBetween` del paso 1, así que contenedores y párrafos se
+   * tratan igual.
+   */
+  for (const tipo of ["bulletList", "table"] as const) {
+    it(`selección sobre ${tipo} se verifica aunque las posiciones se hayan desplazado`, () => {
+      const contenedor = documentoRico.content.find((b) => b.type === tipo);
+      expect(contenedor).toBeDefined();
+      const rangoContenedor = rangoDeBloque(documentoRico, contenedor!.attrs.id)!;
+      const esperado = docPM(documentoRico).textBetween(rangoContenedor.from, rangoContenedor.to, "\n", " ");
+      expect(esperado.length).toBeGreaterThan(0);
+
+      // Con las posiciones correctas: camino directo.
+      expect(
+        verificarSeleccion(documentoRico, {
+          from: rangoContenedor.from,
+          to: rangoContenedor.to,
+          block_ids: [contenedor!.attrs.id],
+          texto_hash: hashTexto(esperado),
+        }),
+      ).toEqual({ estado: "verificada", via: "posiciones" });
+
+      // Con las posiciones desplazadas (el documento creció por arriba): el
+      // texto sigue estando y se demuestra por anclas.
+      expect(
+        verificarSeleccion(documentoRico, {
+          from: 0,
+          to: 4,
+          block_ids: [contenedor!.attrs.id],
+          texto_hash: hashTexto(esperado),
+        }),
+      ).toEqual({ estado: "verificada", via: "anclas" });
+    });
+  }
+
+  it("un texto que nunca estuvo en la lista sí se PRUEBA desplazado", () => {
     const lista = documentoRico.content.find((b) => b.type === "bulletList");
     expect(lista).toBeDefined();
-    const r = verificarSeleccion(documentoRico, {
-      from: 0,
-      to: 4,
-      block_ids: [lista!.attrs.id],
-      texto_hash: hashTexto("no coincide"),
-    });
-    expect(r.estado).toBe("indeterminada");
-    if (r.estado === "indeterminada") expect(r.motivo).toBe("contenedores");
+    expect(
+      verificarSeleccion(documentoRico, {
+        from: 0,
+        to: 4,
+        block_ids: [lista!.attrs.id],
+        texto_hash: hashTexto("no coincide"),
+      }),
+    ).toEqual({ estado: "desplazada" });
+  });
+
+  it("un bloque anidado dentro de otro seleccionado no duplica su texto", () => {
+    const tabla = documentoRico.content.find((b) => b.type === "table");
+    expect(tabla).toBeDefined();
+    const rangoTabla = rangoDeBloque(documentoRico, tabla!.attrs.id)!;
+    const esperado = docPM(documentoRico).textBetween(rangoTabla.from, rangoTabla.to, "\n", " ");
+    // Una celda cualquiera de la tabla, mandada ADEMÁS de la tabla.
+    const celda = tabla!.content?.[0]?.content?.[0];
+    expect(celda).toBeDefined();
+    expect(
+      verificarSeleccion(documentoRico, {
+        from: 0,
+        to: 4,
+        block_ids: [tabla!.attrs.id, celda!.attrs.id],
+        texto_hash: hashTexto(esperado),
+      }),
+    ).toEqual({ estado: "verificada", via: "anclas" });
   });
 
   it("un bloque ausente es indeterminada aquí (el 409 por bloques lo da la ruta antes)", () => {

@@ -66,6 +66,11 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+    if (resultado.motivo === "propuesta_sin_patch") {
+      // La fila está, pero su `patch` no es un documento. Es un dato roto del
+      // servidor, no una propuesta ausente: 422 y se dice cuál.
+      return NextResponse.json({ error: resultado.motivo, propuesta_id: solicitud.propuesta_id }, { status: 422 });
+    }
     return NextResponse.json({ error: resultado.motivo }, { status: 404 });
   }
 

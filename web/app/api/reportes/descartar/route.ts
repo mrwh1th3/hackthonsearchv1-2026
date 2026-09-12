@@ -40,6 +40,9 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     origen: repo.origen,
+    // CLAUDE.md regla 2: se declara si este descarte dejó evento `edicion`
+    // (con `payload.evento_real='propuesta_descartada'`) en `forense.bitacora`.
+    bitacora: resultado.valor.bitacora,
     propuesta_id: parseo.data.propuesta_id,
     estado: resultado.valor.estado,
     version_actual: caso.versionActual.version,

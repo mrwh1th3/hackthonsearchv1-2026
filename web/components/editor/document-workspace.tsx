@@ -263,6 +263,11 @@ export function DocumentWorkspace({
     }
     adoptarVersion(resultado.datos.reporte);
     toast.success(`Versión ${resultado.datos.version} creada a partir de la ${objetivo}`);
+    // CLAUDE.md regla 2: una reversión sin evento en `forense.bitacora` no es
+    // auditable, y eso se dice. Solo el `false` explícito.
+    if (resultado.datos.bitacora === false) {
+      toast.warning("La reversión no dejó registro en la bitácora: este entorno no persiste trazabilidad.");
+    }
     setHistorialAbierto(false);
   }
 
