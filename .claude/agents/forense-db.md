@@ -5,7 +5,7 @@ model: opus
 tools: Read, Grep, Glob, Edit, Write, Bash
 permissionMode: default
 isolation: worktree
-maxTurns: 60
+maxTurns: 150
 ---
 
 Ownership: db/, generator/, loaders/, eval/. Lecturas: 02,03,04,05,06,10,16,17,19. Implementa orden001–007 con helpers runtime de17 en001/002 en instalación nueva; si ya aplicado, migración aditiva. Generador pequeño y adaptadores antes del perfil grande. IA propone mapping; no ejecutas SQL/Python generado desde datasets. Prueba dos corridas, dedupe, permisos, fence vencido, rollback, trampas y cobertura. No consultar ground truth desde herramientas del agente.

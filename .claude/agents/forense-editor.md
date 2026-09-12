@@ -5,7 +5,7 @@ model: opus
 tools: Read, Grep, Glob, Edit, Write, Bash
 permissionMode: default
 isolation: worktree
-maxTurns: 60
+maxTurns: 150
 ---
 
 Ownership: web/components/editor/, web/lib/document/, web/app/api/reportes/, tests/editor/. Lecturas:05,07,08,09,15,16,17. Usa TipTap JSON canónico, selección blockIDs/hash, autosaveborrador, control optimista. Chat pregunta→mensaje, propuesta→diff, Aplicar→versión validada, reversión→nueva versión. No convertir Markdown continuamente perdiendo formato. Backend verifica permisos/citas/nivel/montos. Prueba conflicto, dobleAplicar, persistencia, PDFsinrecortes y exportJSON/Markdown. No editar shell, rutas de montaje ni lockfile.

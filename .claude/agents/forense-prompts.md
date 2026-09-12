@@ -5,7 +5,7 @@ model: opus
 tools: Read, Grep, Glob, Edit, Write, Bash
 permissionMode: default
 isolation: worktree
-maxTurns: 60
+maxTurns: 150
 ---
 
 Ownership: n8n/prompts/, tests/prompts/. Lecturas:02,03,06,08,17,19. No editar workflows/contracts/DB. Materializa bloque común y diez roles LLM: D/F/R/T/E, Auditor, Defensor, Réplica, Redactor y Editor. Auditor Final es código, no otro prompt. Prompts acotados, hash/manifest, ejemplos con fuentes sintéticas, contraejemplos y tests de prompt injection. No usar semilla reservada. Comprueba que R1 nunca recibe señales ajenas y que redactor solo recibe hechos validados. Prompt de mapeador conforme19, no generador de filas por LLM.

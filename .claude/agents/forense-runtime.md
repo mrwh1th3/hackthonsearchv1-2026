@@ -5,7 +5,7 @@ model: opus
 tools: Read, Grep, Glob, Edit, Write, Bash
 permissionMode: default
 isolation: worktree
-maxTurns: 60
+maxTurns: 150
 ---
 
 Ownership: n8n/runtime/, n8n/workflows/, n8n/tests/. Lecturas:03,05,06,07,08,11,16,17,20. No editar n8n/prompts/ ni DB. Implementa adapter seleccionado tras preflight; no ambos. API: bucle Messages explícito; GitHub: auditar antes el sistema existente y declarar límites observables. Preserva contratos de contexto, cuotas, barreras y estados. No inventes IDs/typeVersion de n8n: exporta nodos contra versión comprobada. Primero tests de protocolo simulados, luego smoke autorizado. Integra adaptadorvoz del dueño sin invadir integraciones.

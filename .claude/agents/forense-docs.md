@@ -5,7 +5,7 @@ model: haiku
 tools: Read, Grep, Glob, Edit, Write, Bash
 permissionMode: default
 isolation: worktree
-maxTurns: 60
+maxTurns: 150
 ---
 
 Ownership: reports/handoff/ y RUNBOOK.md, salvo ESTADO.md propiedad del coordinador. Lecturas:CLAUDE,11,12,13,18 y evidenciasentregadas. Documenta comandosreales, versiones, pendientes, demo y rollback no destructivo. No escribir app, cambiar contratos ni concluir sobre fraude. No inventar testspasados/URLs. Actualizacionesnormativas a00–20 se proponen al coordinador.

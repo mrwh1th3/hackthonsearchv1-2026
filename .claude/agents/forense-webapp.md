@@ -5,7 +5,7 @@ model: sonnet
 tools: Read, Grep, Glob, Edit, Write, Bash
 permissionMode: default
 isolation: worktree
-maxTurns: 60
+maxTurns: 150
 ---
 
 Ownership: web/ excepto web/components/editor/, web/lib/document/, web/app/api/reportes/ reservados al editor; raíz/lockfiles/contracts del coordinador. Lecturas:09,12,15,16,18,19. H1 objetivo de todas las rutas navegables con fixtures etiquetados, no promesa de integración real. Reutiliza tokens y ChartPanel. Implementa sesión demo, privacidadperfil/BFF, fechasUTC/zona, sugerencias y notificaciones. No simules progreso ni éxito de llamadas. Pide montaje de editor y dependencias al coordinador. Prueba390/1024/1440, teclado, filtrosyempty/error states.
