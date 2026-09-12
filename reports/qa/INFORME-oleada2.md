@@ -11,10 +11,15 @@ ella ni el proyecto Supabase remoto.
 ## Cómo se reproduce
 
 ```bash
-DATOS=clon bash tests/integration/preparar-db.sh   # exit 0
-node --test "tests/integration/*.test.mjs"         # exit 0
-node --test "tests/e2e/*.test.mjs"                 # exit 0
+DATOS=clon bash tests/integration/preparar-db.sh              # exit 0
+node --test --test-concurrency=1 "tests/integration/*.test.mjs"  # exit 0
+node --test "tests/e2e/*.test.mjs"                            # exit 0
 ```
+
+Ese es el orden en que se ejecutó para este informe: preparar primero, probar
+después, sobre una base recién recreada. `--test-concurrency=1` no es adorno:
+los archivos comparten la base `forense_qa`, y en paralelo un digest de
+`inyeccion-008` podría medir escrituras de otra suite.
 
 El e2e necesita `web/.next`; si falta, se salta con motivo en vez de fallar:
 
@@ -25,7 +30,7 @@ npm run build --prefix web                          # exit 0
 | Comando | Exit | Resultado |
 |---|---|---|
 | `DATOS=clon bash tests/integration/preparar-db.sh` | 0 | 001–008 aplicadas, 009 ausente (condicional), datos de `forense` clonados, `seed_producto.sql` ok, 24 grants de `anon` |
-| `node --test "tests/integration/*.test.mjs"` | 0 | 67 pruebas: **65 pass, 0 fail, 2 todo** (QA‑001 y QA‑003), 43 s |
+| `node --test --test-concurrency=1 "tests/integration/*.test.mjs"` | 0 | 67 pruebas: **65 pass, 0 fail, 2 todo** (QA‑001 y QA‑003), 11 s |
 | `node --test "tests/e2e/*.test.mjs"` | 0 | 6 pruebas, 0 fail, 1 s |
 | `npm run build --prefix web` | 0 | build de producción de Next |
 
@@ -84,8 +89,13 @@ Cadena completa del ensayo `eval/inyecciones/a-carrusel-nuevo.json` contra gen�
 * El paso a `investigacion_completa` emite **un** evento de outbox y **un** aviso;
   reescribir el mismo estado no reemite (regla 11: una vez por solicitud).
 * Cinco reclamos concurrentes del mismo evento: **uno solo** se lo lleva (lease);
-  cinco `solicitar_llamada` dejan como mucho **una** llamada activa, y sin
-  consentimiento responden `omitida` con motivo sin invalidar el reporte.
+  la prueba afirma antes que no hay eventos pendientes ajenos, porque
+  `reclamar_evento_salida` toma de la cola global.
+* Con teléfono y consentimiento puestos (y restaurados al terminar), cinco
+  `solicitar_llamada` sobre el mismo evento dejan **exactamente una** llamada y
+  un solo intento: es el camino real del índice `ux_llamada_activa`, no la rama
+  de descarte. Sin consentimiento la respuesta es `omitida` con motivo
+  («llamadas desactivadas») y el reporte sigue entregado.
 * Versionar el expediente (`version_entregada` 2→4) no emite nada nuevo; volver a
   `parcial` y regresar tampoco duplica.
 * La finalización deja `actividad_producto`.
@@ -98,8 +108,12 @@ Cadena completa del ensayo `eval/inyecciones/a-carrusel-nuevo.json` contra gen�
 * Login: contraseña mala **401**; buena **200** con cookie `HttpOnly`.
 * **12 rutas a 200**, incluidas `/casos/<id>/expediente` y
   `/api/reportes/versiones`.
-* `/api/investigaciones`: **400** con cuerpo ilegible, **503**
-  `backend_no_configurado` sin backend (no 500).
+* `/api/investigaciones`: **400** con cuerpo ilegible y **503**
+  `backend_no_configurado` sin backend (no 500). El cuerpo del segundo caso es
+  válido según `product.investigar` a propósito: con uno inválido, el 422 del
+  contrato taparía el 503 y la prueba mediría el validador, no la falta de
+  backend. Las variables que se vacían son `N8N_WEBHOOK_BASE` e
+  `INTERNAL_WEBHOOK_SECRET`, que son las que lee `web/lib/security/webhook.ts`.
 * `/api/reportes/propuestas`: una **pregunta** devuelve mensaje y **no versiona**;
   una **propuesta** con selección válida devuelve propuesta y **tampoco versiona**
   (sólo Aplicar lo hace); una selección sobre un bloque inexistente da **409**.
@@ -141,3 +155,6 @@ ajustaron con la justificación dentro del propio test:
 * **Voz de punta a punta** (ElevenLabs) y **n8n**: aquí se prueba el contrato en
   base de datos, no la llamada real ni los workflows ejecutándose.
 * `/api/reportes/aplicar` (la mutación que **sí** versiona) no tiene e2e todavía.
+* El **resultado** de la llamada (`resultado_llamada`, `desactivar_llamadas`) y el
+  reintento con `proximo_intento` no están cubiertos: se prueba la solicitud y su
+  unicidad, no el ciclo completo de la conversación.

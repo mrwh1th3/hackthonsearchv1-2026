@@ -61,8 +61,10 @@ async function arrancar() {
       DEMO_PASSWORD: PASSWORD,
       SESSION_SECRET: 'test',
       NEXT_TELEMETRY_DISABLED: '1',
-      // Sin URL de webhooks: es la condición que debe dar 503 y no 500.
-      N8N_WEBHOOK_BASE_URL: '',
+      // Sin webhooks: es la condición que debe dar 503 y no 500. Los nombres
+      // son los que lee web/lib/security/webhook.ts, no una variante parecida.
+      N8N_WEBHOOK_BASE: '',
+      INTERNAL_WEBHOOK_SECRET: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -162,17 +164,30 @@ test('webapp servida con next start', { skip: saltar, timeout: 300000, concurren
       const bueno = await conSesion('/api/investigaciones', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // Cuerpo VÁLIDO según product.investigar: si no lo fuera, el 422 del
+        // contrato taparía el 503 y la prueba no mediría la falta de backend.
         body: JSON.stringify({
-          idempotency_key: '00000000-0000-4000-8000-00000000e2e1',
-          modo: 'caso',
-          manifiesto: { objetivos: [] },
-          mensaje: 'e2e',
+          mensaje: 'e2e: sigue el dinero de este cluster',
+          directriz_id: 'seguir_dinero',
+          directriz_version: 1,
+          contexto: {
+            corrida_id: '00000000-0000-4000-8000-000000000001',
+            rfcs: [],
+            evidencia_ids: [],
+            periodo: {
+              desde: '2025-02-01T00:00:00.000Z',
+              hasta_exclusivo: '2026-02-01T00:00:00.000Z',
+              timezone: 'America/Monterrey',
+            },
+          },
+          investigacion_padre_id: null,
+          idempotency_key: randomUUID(),
         }),
       });
       const c = await cuerpo(bueno);
-      assert.ok([422, 503].includes(bueno.status),
-        `sin backend esperaba 503 (o 422 del contrato), llegó ${bueno.status}: ${c.texto.slice(0, 300)}`);
-      if (bueno.status === 503) assert.equal(c.json?.error, 'backend_no_configurado');
+      assert.equal(bueno.status, 503,
+        `sin backend esperaba 503, llegó ${bueno.status}: ${c.texto.slice(0, 300)}`);
+      assert.equal(c.json?.error, 'backend_no_configurado');
     });
     await t.test('una pregunta responde sin versionar; una propuesta no toca el documento', async () => {
       const versiones = async () => {

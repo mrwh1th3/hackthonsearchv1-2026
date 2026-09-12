@@ -123,6 +123,16 @@ test('cinco intentos de entrega del mismo evento producen una sola llamada activ
       `select id::text from forense.eventos_salida where investigacion_id = ${lit(inv)}::uuid`);
     assert.ok(evento);
 
+    // reclamar_evento_salida toma de la cola GLOBAL, no de esta investigación:
+    // si hubiera otros eventos pendientes, los cinco workers se los llevarían y
+    // el mío nunca se reclamaría. La precondición se afirma, no se supone.
+    const ajenos = Number(escalar(DB_QA, `
+      select count(*) from forense.eventos_salida
+       where estado in ('pendiente','error') and id <> ${lit(evento)}::uuid
+         and coalesce(proximo_intento, now()) <= now()`));
+    assert.equal(ajenos, 0,
+      `hay ${ajenos} eventos pendientes ajenos en la cola: la prueba de lease no sería concluyente`);
+
     // Cinco despachadores compiten por el mismo evento. El lease de
     // reclamar_evento_salida sólo puede entregárselo a uno a la vez.
     const reclamados = [];
@@ -133,6 +143,16 @@ test('cinco intentos de entrega del mismo evento producen una sola llamada activ
     assert.equal(reclamados.length, 1,
       `el evento se entregó a ${reclamados.length} despachadores a la vez: ${reclamados.join(', ')}`);
 
+    // Con consentimiento y teléfono, las cinco solicitudes recorren el camino
+    // real (ux_llamada_activa). El perfil se deja como estaba al terminar.
+    const previo = filas(DB_QA, `
+      select coalesce(telefono_e164,''), llamadas_activadas::text, permiso_aviso::text
+        from forense.perfiles where id = ${lit(perfil)}::uuid`)[0];
+    correrOk(DB_QA, `update forense.perfiles
+       set telefono_e164 = '+528100000000', llamadas_activadas = true,
+           permiso_aviso = true, permiso_aviso_at = now()
+     where id = ${lit(perfil)}::uuid;`);
+
     // Y cinco solicitudes de llamada sobre el mismo evento dejan una activa.
     const respuestas = [];
     for (let i = 0; i < 5; i += 1) {
@@ -142,16 +162,39 @@ test('cinco intentos de entrega del mismo evento producen una sola llamada activ
       select count(*) from forense.llamadas_notificacion
        where event_id = ${lit(evento)}::uuid
          and estado in ('pendiente','solicitando','aceptada','en_curso')`));
-    assert.ok(activas <= 1,
+    assert.equal(activas, 1,
       `quedaron ${activas} llamadas activas para un solo evento: el usuario recibiría varias`);
+    assert.equal(Number(escalar(DB_QA,
+      `select count(*) from forense.llamadas_notificacion where event_id = ${lit(evento)}::uuid`)), 1,
+      'se registró más de un intento de llamada para el mismo evento');
 
-    // Si el perfil no tiene consentimiento ni teléfono, la respuesta correcta
-    // es 'omitida' con motivo, nunca una llamada a un número del payload.
-    const conMotivo = respuestas.filter((r) => r.estado === 'omitida' && r.motivo);
-    if (activas === 0) {
-      assert.equal(conMotivo.length, respuestas.length,
-        `sin llamada activa, las 5 respuestas debían traer motivo: ${JSON.stringify(respuestas[0])}`);
+    // El destino sale del perfil, nunca de un teléfono del payload (16 §5), y
+    // las cuatro respuestas repetidas reconocen la llamada que ya existe.
+    const reconocen = respuestas.filter((r) => r.ok !== false).length;
+    assert.equal(reconocen, respuestas.length,
+      `alguna solicitud repetida devolvió error en vez de reconocer la llamada activa: ${JSON.stringify(respuestas)}`);
+
+    // Sin consentimiento la respuesta correcta es 'omitida' con motivo.
+    correrOk(DB_QA, `update forense.perfiles set llamadas_activadas = false
+     where id = ${lit(perfil)}::uuid;`);
+    const inv2 = nuevaInvestigacion(perfil, 'qa-sin-consentimiento');
+    try {
+      correrOk(DB_QA, `update forense.investigaciones
+         set estado = 'investigacion_completa', completada_at = now(), version_entregada = 1
+       where id = ${lit(inv2)}::uuid;`);
+      const ev2 = escalar(DB_QA,
+        `select id::text from forense.eventos_salida where investigacion_id = ${lit(inv2)}::uuid`);
+      const om = json(DB_QA, `forense.solicitar_llamada(${lit(ev2)}::uuid, 'qa-worker-sin', null)`);
+      assert.equal(om.estado, 'omitida');
+      assert.match(om.motivo, /llamadas desactivadas/i);
+    } finally {
+      limpiar(inv2);
     }
+
+    correrOk(DB_QA, `update forense.perfiles
+       set telefono_e164 = ${previo[0] ? lit(previo[0]) : 'null'},
+           llamadas_activadas = ${previo[1]}, permiso_aviso = ${previo[2]}
+     where id = ${lit(perfil)}::uuid;`);
 
     // Pase lo que pase, el reporte sigue entregado: la voz no lo invalida.
     assert.equal(escalar(DB_QA,
