@@ -100,7 +100,10 @@ describe("POST /api/investigaciones — reenvío a n8n cuando el BFF sí está c
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://n8n.example.invalid/webhook/forense/investigaciones");
+    expect(url).toBe("https://n8n.example.invalid/webhook/forense/investigar");
+    const enviado = JSON.parse(String(init.body));
+    expect(enviado.corrida_id).toBe((validInvestigar as { contexto: { corrida_id: string } }).contexto.corrida_id);
+    expect(enviado).not.toHaveProperty("mensaje");
     const headers = init.headers as Record<string, string>;
     expect(headers["X-Internal-Webhook-Secret"]).toBe("secreto-de-prueba-no-real");
     // El secreto nunca viaja en el body ni se refleja en la respuesta al cliente.

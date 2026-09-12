@@ -37,9 +37,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Versión base, evidencia y argumentos verificados y dictamen; persiste el mensaje del usuario. DEPENDE de forense-db (006).\nSELECT * FROM forense.cargar_version_expediente($1::uuid, $2::int)",
+        "query": "-- Versión base, evidencia y argumentos verificados y dictamen; persiste el mensaje del usuario. DEPENDE de forense-db (006).\nSELECT * FROM forense.cargar_version_expediente(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int)",
         "options": {
-          "queryReplacement": "={{ $('Validar solicitud').first().json.caso_id }}, ={{ $('Validar solicitud').first().json.version_base }}"
+          "queryReplacement": "={{ ($('Validar solicitud').first().json.caso_id) ?? 'null' }}, ={{ ($('Validar solicitud').first().json.version_base) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -58,9 +58,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- XOR de 001: una operación del editor NO lleva tarea_id y tiene presupuesto propio (3 requests, deadline 90 s de 17 §6).\nINSERT INTO forense.ejecuciones_agente\n       (corrida_id, caso_id, editor_operacion_id, rol, estado_interno, context_hash,\n        prompt_hash, model_id, deadline_at)\nSELECT c.corrida_id, NULL, gen_random_uuid(), $2::text, $3::text, $4::text,\n       $5::text, $6::text, now() + interval '90 seconds'\n  FROM forense.casos c WHERE c.id = $1::uuid\nRETURNING id AS execution_id, editor_operacion_id, rol, deadline_at, corrida_id",
+        "query": "-- XOR de 001: una operación del editor NO lleva tarea_id y tiene presupuesto propio (3 requests, deadline 90 s de 17 §6).\nINSERT INTO forense.ejecuciones_agente\n       (corrida_id, caso_id, editor_operacion_id, rol, estado_interno, context_hash,\n        prompt_hash, model_id, deadline_at)\nSELECT c.corrida_id, NULL, gen_random_uuid(), nullif(nullif($2::text, 'null'), '')::text, nullif(nullif($3::text, 'null'), '')::text, nullif(nullif($4::text, 'null'), '')::text,\n       nullif(nullif($5::text, 'null'), '')::text, nullif(nullif($6::text, 'null'), '')::text, now() + interval '90 seconds'\n  FROM forense.casos c WHERE c.id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS execution_id, editor_operacion_id, rol, deadline_at, corrida_id",
         "options": {
-          "queryReplacement": "={{ $('Validar solicitud').first().json.caso_id }}, ={{ 'editor' }}, ={{ 'preparar_contexto' }}, ={{ $json.context_hash }}, ={{ $json.prompt_hash }}, ={{ $json.modelo }}"
+          "queryReplacement": "={{ ($('Validar solicitud').first().json.caso_id) ?? 'null' }}, ={{ ('editor') ?? 'null' }}, ={{ ('preparar_contexto') ?? 'null' }}, ={{ ($json.context_hash) ?? 'null' }}, ={{ ($json.prompt_hash) ?? 'null' }}, ={{ ($json.modelo) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -206,9 +206,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).\nSELECT * FROM forense.guardar_propuesta_edicion($1::uuid, $2::int, $3::jsonb, $4::jsonb,\n  coalesce((select array_agg(x) from jsonb_array_elements_text($5::jsonb) x), '{}'::text[]))",
+        "query": "-- Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).\nSELECT * FROM forense.guardar_propuesta_edicion(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, $3::jsonb, $4::jsonb,\n  coalesce((select array_agg(x) from jsonb_array_elements_text($5::jsonb) x), '{}'::text[]))",
         "options": {
-          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ JSON.stringify($json.citas ?? []) }}"
+          "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ ($json.version_base) ?? 'null' }}, ={{ (JSON.stringify($json.patch)) ?? 'null' }}, ={{ (JSON.stringify($json.diff)) ?? 'null' }}, ={{ (JSON.stringify($json.citas ?? [])) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

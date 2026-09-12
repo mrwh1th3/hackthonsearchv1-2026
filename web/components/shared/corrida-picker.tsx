@@ -1,8 +1,9 @@
 "use client";
 
 import { ArrowDownUp, Search, Upload } from "lucide-react";
-import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AdministrarDatosModal, TipoDatasetModal } from "./datos-modales";
 import type { Corrida } from "@/lib/data";
 import { soloFecha } from "@/lib/date/formato";
 import { cn } from "@/lib/utils";
@@ -29,37 +30,33 @@ type Orden = "reciente" | "antigua";
 export function CorridaPicker({ corridas, onSelect }: CorridaPickerProps) {
   const [query, setQuery] = useState("");
   const [orden, setOrden] = useState<Orden>("reciente");
-  const [estadoFiltro, setEstadoFiltro] = useState<string>("todos");
-
-  const estados = useMemo(() => Array.from(new Set(corridas.map((c) => c.estado))).sort(), [corridas]);
 
   const visibles = useMemo(() => {
     const q = query.trim().toLowerCase();
     return corridas
-      .filter((c) => estadoFiltro === "todos" || c.estado === estadoFiltro)
       .filter((c) => !q || c.nombre.toLowerCase().includes(q) || c.dataset.toLowerCase().includes(q))
       .sort((a, b) => {
         const diff = new Date(a.fecha_corte).getTime() - new Date(b.fecha_corte).getTime();
         return orden === "reciente" ? -diff : diff;
       });
-  }, [corridas, query, estadoFiltro, orden]);
+  }, [corridas, query, orden]);
+
+  const [modal, setModal] = useState<null | "tipo" | "administrar">(null);
+  const router = useRouter();
 
   return (
-    <div className="flex w-full flex-col items-center gap-[30px]">
-      <h1 className="max-w-[640px] text-balance text-center text-[28px] font-medium leading-tight tracking-tight text-text-muted sm:text-[34px]">
-        ¿Qué corrida quieres inspeccionar?
-      </h1>
-
+    <div className="flex w-full flex-col items-center">
       <section className="flex w-full max-w-[700px] flex-col gap-3">
         <div className="flex items-stretch gap-3 max-sm:flex-col">
-          <Link
-            href="/datos"
-            className="flex w-full flex-none flex-col items-center justify-center gap-3.5 rounded-[var(--radius-card-lg)] border border-dashed border-border-dashed bg-surface-raised px-5 py-8 text-center transition-colors hover:border-border-stronger hover:bg-surface-hover sm:w-[260px]"
+          <button
+            type="button"
+            onClick={() => setModal("tipo")}
+            className="flex w-full flex-none flex-col items-center justify-center gap-3.5 rounded-[var(--radius-card-lg)] border border-dashed border-border-dashed bg-surface-raised px-5 py-8 text-center transition-colors duration-150 hover:border-border-stronger hover:bg-surface-hover sm:w-[260px]"
           >
             <Upload size={28} strokeWidth={1.6} aria-hidden className="text-text" />
             <span className="text-[15px] font-medium text-text">Cargar datos</span>
-            <span className="text-[12.5px] leading-relaxed text-text-subtle">CSV, JSON o base de datos en vivo</span>
-          </Link>
+            <span className="text-[12.5px] leading-relaxed text-text-subtle">CSV, JSON o inyección en vivo</span>
+          </button>
 
           <div className="flex min-w-0 flex-1 flex-col gap-2.5">
             <div className="flex items-center gap-2">
@@ -72,19 +69,6 @@ export function CorridaPicker({ corridas, onSelect }: CorridaPickerProps) {
                   className="min-w-0 flex-1 border-none bg-transparent text-[13px] text-text outline-none"
                 />
               </div>
-              <select
-                value={estadoFiltro}
-                onChange={(e) => setEstadoFiltro(e.target.value)}
-                aria-label="Filtrar por estado"
-                className="h-[34px] rounded-[var(--radius-control)] border border-border bg-surface px-2 text-[12.5px] text-text-muted"
-              >
-                <option value="todos">Todos los estados</option>
-                {estados.map((e) => (
-                  <option key={e} value={e}>
-                    {e}
-                  </option>
-                ))}
-              </select>
               <button
                 type="button"
                 onClick={() => setOrden((o) => (o === "reciente" ? "antigua" : "reciente"))}
@@ -95,7 +79,8 @@ export function CorridaPicker({ corridas, onSelect }: CorridaPickerProps) {
               </button>
             </div>
 
-            <div className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto pb-1 pr-1">
+            <div className="relative min-w-0">
+            <div className="flex max-h-[196px] flex-col gap-1.5 overflow-y-auto pb-3.5 pr-1 [scrollbar-width:thin]">
               {visibles.map((c) => (
                 <button
                   key={c.id}
@@ -119,21 +104,45 @@ export function CorridaPicker({ corridas, onSelect }: CorridaPickerProps) {
                 <p className="py-5 text-center text-[13px] text-text-subtle">Ningún dataset coincide con &ldquo;{query}&rdquo;.</p>
               )}
               {corridas.length === 0 && (
-                <p className={cn("py-5 text-center text-[13px] text-text-subtle")}>
-                  Sin corridas todavía. Carga un dataset en <Link href="/datos" className="text-focus underline-offset-2 hover:underline">/datos</Link> para empezar.
-                </p>
+                <p className={cn("py-5 text-center text-[13px] text-text-subtle")}>Sin corridas todavía.</p>
               )}
+            </div>
+            {/* Degradado inferior del original (línea 89): el listado se
+                desvanece contra el fondo en vez de cortarse en seco. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-[34px]"
+              style={{
+                background: "linear-gradient(to bottom,rgba(255,255,255,0),var(--surface) 78%)",
+                maskImage: "linear-gradient(to bottom,transparent,#000 60%)",
+                WebkitMaskImage: "linear-gradient(to bottom,transparent,#000 60%)",
+              }}
+            />
             </div>
           </div>
         </div>
 
-        <Link
-          href="/datos"
-          className="flex h-9 w-full items-center justify-center rounded-[var(--radius-control)] border border-border bg-surface text-[12.5px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:border-border-strong"
+        <button
+          type="button"
+          onClick={() => setModal("administrar")}
+          className="flex h-9 w-full items-center justify-center rounded-[var(--radius-control)] border border-border bg-surface text-[12.5px] font-medium text-text-muted transition-colors duration-150 hover:border-border-strong hover:bg-surface-hover"
         >
           Administrar datos
-        </Link>
+        </button>
       </section>
+
+      {modal === "tipo" && (
+        <TipoDatasetModal
+          onClose={() => setModal(null)}
+          onCargado={(id) => {
+            router.push(`/?corrida=${encodeURIComponent(id)}`);
+            router.refresh();
+          }}
+        />
+      )}
+      {modal === "administrar" && (
+        <AdministrarDatosModal corridas={corridas} onClose={() => setModal(null)} />
+      )}
     </div>
   );
 }

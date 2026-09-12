@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/shared/toast-provider";
+import { AgentationDev } from "@/components/shared/agentation-dev";
 
 // docs/22 "Tipografía": Instrument Sans se añade JUNTO a Inter (no la
 // sustituye) y se carga por `next/font` en vez del `<link>` a
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         <ToastProvider />
+        {process.env.NODE_ENV === "development" && <AgentationDev />}
       </body>
     </html>
   );

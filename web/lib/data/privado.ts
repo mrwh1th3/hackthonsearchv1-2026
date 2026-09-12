@@ -18,7 +18,7 @@ import type { Investigacion, InyeccionResumen, Notificacion, Perfil, VistaGuarda
  * e inyecciones (CLAUDE.md regla 3 — "Perfil, teléfono y notificaciones se
  * sirven por BFF privado; anon solo lee datos sintéticos autorizados"). Este
  * módulo es la ÚNICA fuente que `/perfil`, `/notificaciones`, `/historial`,
- * `/investigaciones/[id]` e `/inyecciones/[id]` deben usar, y es
+ * `/documentos/[id]` e `/inyecciones/[id]` deben usar, y es
  * intencionalmente INDEPENDIENTE del selector `NEXT_PUBLIC_DATA_SOURCE`: ese
  * selector es sobre el DataSource público (anon+RLS), mientras que aquí la
  * decisión es "¿hay `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` de servidor?"

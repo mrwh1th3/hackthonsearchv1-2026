@@ -22,7 +22,7 @@ export function NotificationCenter({ notificaciones }: { notificaciones: Notific
   return (
     <ul className="flex flex-col gap-2">
       {notificaciones.map((n) => {
-        const href = n.recurso.tipo === "investigacion" ? `/investigaciones/${n.recurso.id}` : `/casos/${n.recurso.id}/expediente`;
+        const href = n.recurso.tipo === "investigacion" ? `/documentos/${n.recurso.id}` : `/casos/${n.recurso.id}/expediente`;
         const noLeida = !n.leida_at;
         return (
           <li key={n.id} className={cn("rounded-[var(--radius-card)] border p-3", noLeida ? "border-focus/40 bg-info/5" : "border-border bg-surface")}>

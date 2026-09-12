@@ -2,12 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "./app-shell";
-import type { Investigacion } from "@/lib/data";
+import type { Investigacion, Perfil } from "@/lib/data";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
+
+const PERFIL: Perfil = {
+  id: "perfil-1",
+  nombre: "Ana",
+  organizacion: "Auditor Demo",
+  timezone: "America/Monterrey",
+  telefono_e164: null,
+  llamadas_activadas: false,
+  consentimiento_at: null,
+};
 
 function investigacion(overrides: Partial<Investigacion> = {}): Investigacion {
   return {
@@ -34,7 +44,7 @@ function investigacion(overrides: Partial<Investigacion> = {}): Investigacion {
  */
 describe("AppShell (puerto fiel del panel del diseño)", () => {
   it("el panel lleva SOLO lo que lleva el diseño: buscador, rótulo, lista y pie", async () => {
-    render(<AppShell perfilNombre="Ana" investigaciones={[investigacion()]}>{null}</AppShell>);
+    render(<AppShell perfilNombre="Ana" perfil={PERFIL} perfilEsFixture investigaciones={[investigacion()]}>{null}</AppShell>);
     await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
 
     expect(screen.getByPlaceholderText("Buscar investigaciones")).toBeTruthy();
@@ -44,7 +54,7 @@ describe("AppShell (puerto fiel del panel del diseño)", () => {
   });
 
   it("no reaparece una barra de navegación que el diseño no tiene", async () => {
-    render(<AppShell perfilNombre="Ana" investigaciones={[investigacion()]}>{null}</AppShell>);
+    render(<AppShell perfilNombre="Ana" perfil={PERFIL} perfilEsFixture investigaciones={[investigacion()]}>{null}</AppShell>);
     await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
 
     // El diseño no lista secciones en el panel. Si alguien las vuelve a meter,
@@ -58,6 +68,8 @@ describe("AppShell (puerto fiel del panel del diseño)", () => {
     render(
       <AppShell
         perfilNombre="Ana"
+        perfil={PERFIL}
+        perfilEsFixture
         investigaciones={[
           investigacion({ id: "a", titulo: "En curso", estado: "investigando", completada_at: null }),
           investigacion({ id: "b", titulo: "Terminada", estado: "investigacion_completa" }),
@@ -79,6 +91,8 @@ describe("AppShell (puerto fiel del panel del diseño)", () => {
     render(
       <AppShell
         perfilNombre="Ana"
+        perfil={PERFIL}
+        perfilEsFixture
         investigaciones={[
           investigacion({ id: "a", titulo: "Sigue el dinero" }),
           investigacion({ id: "b", titulo: "Compara pares" }),
@@ -95,7 +109,7 @@ describe("AppShell (puerto fiel del panel del diseño)", () => {
   });
 
   it("sin investigaciones el vacío es honesto, no una lista fabricada", async () => {
-    render(<AppShell perfilNombre="Ana" investigaciones={[]}>{null}</AppShell>);
+    render(<AppShell perfilNombre="Ana" perfil={PERFIL} perfilEsFixture investigaciones={[]}>{null}</AppShell>);
     await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
 
     expect(screen.getByText(/Todavía no hay investigaciones/i)).toBeTruthy();

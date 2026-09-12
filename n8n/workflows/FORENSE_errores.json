@@ -14,9 +14,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Localiza caso y tarea por el n8n_execution_id persistido: un error técnico sin caso no puede cerrar nada.\nSELECT c.id AS caso_id, c.corrida_id, c.cluster_id, t.id AS tarea_id, t.agente,\n       t.lease_owner, t.estado AS estado_tarea, $1::text AS n8n_execution_id\n  FROM forense.casos c\n  LEFT JOIN forense.tareas_agente t ON t.caso_id = c.id\n WHERE c.n8n_execution_id = $1::text\n ORDER BY t.iniciado DESC NULLS LAST\n LIMIT 1",
+        "query": "-- Localiza caso y tarea por el n8n_execution_id persistido: un error técnico sin caso no puede cerrar nada.\nSELECT c.id AS caso_id, c.corrida_id, c.cluster_id, t.id AS tarea_id, t.agente,\n       t.lease_owner, t.estado AS estado_tarea, nullif(nullif($1::text, 'null'), '')::text AS n8n_execution_id\n  FROM forense.casos c\n  LEFT JOIN forense.tareas_agente t ON t.caso_id = c.id\n WHERE c.n8n_execution_id = nullif(nullif($1::text, 'null'), '')::text\n ORDER BY t.iniciado DESC NULLS LAST\n LIMIT 1",
         "options": {
-          "queryReplacement": "={{ $json.execution.id }}"
+          "queryReplacement": "={{ ($json.execution.id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -68,9 +68,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Causa en bitácora, tarea a `error` y lease liberado. Una tarea fallida PASA por la barrera para conservar los resultados de las demás (07).\nWITH ev AS (\n  SELECT forense.log(\n           p_caso => $1::uuid, p_agente => coalesce($2::text, 'sistema'), p_tipo => 'error',\n           p_payload => $3::jsonb, p_tarea => $4::uuid, p_corrida => $5::uuid)\n), t AS (\n  UPDATE forense.tareas_agente\n     SET estado = 'error', terminado = now(), error = $6::text,\n         lease_owner = NULL, lease_expires_at = NULL\n   WHERE id = $4::uuid\n  RETURNING id\n)\nSELECT $1::uuid AS caso_id, $4::uuid AS tarea_id, 'error'::text AS estado_tarea,\n       true AS registrado FROM ev, t",
+        "query": "-- Causa en bitácora, tarea a `error` y lease liberado. Una tarea fallida PASA por la barrera para conservar los resultados de las demás (07).\nWITH ev AS (\n  SELECT forense.log(\n           p_caso => nullif(nullif($1::text, 'null'), '')::uuid, p_agente => coalesce(nullif(nullif($2::text, 'null'), '')::text, 'sistema'), p_tipo => 'error',\n           p_payload => $3::jsonb, p_tarea => nullif(nullif($4::text, 'null'), '')::uuid, p_corrida => nullif(nullif($5::text, 'null'), '')::uuid)\n), t AS (\n  UPDATE forense.tareas_agente\n     SET estado = 'error', terminado = now(), error = nullif(nullif($6::text, 'null'), '')::text,\n         lease_owner = NULL, lease_expires_at = NULL\n   WHERE id = nullif(nullif($4::text, 'null'), '')::uuid\n  RETURNING id\n)\nSELECT nullif(nullif($1::text, 'null'), '')::uuid AS caso_id, nullif(nullif($4::text, 'null'), '')::uuid AS tarea_id, 'error'::text AS estado_tarea,\n       true AS registrado FROM ev, t",
         "options": {
-          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.agente }}, ={{ JSON.stringify({ execution_id: $json.n8n_execution_id, error: $('Error Trigger').first().json.execution?.error?.message ?? null }) }}, ={{ $json.tarea_id }}, ={{ $json.corrida_id }}, ={{ $('Error Trigger').first().json.execution?.error?.message ?? 'error técnico de ejecución' }}"
+          "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ ($json.agente) ?? 'null' }}, ={{ (JSON.stringify({ execution_id: $json.n8n_execution_id, error: $('Error Trigger').first().json.execution?.error?.message ?? null })) ?? 'null' }}, ={{ ($json.tarea_id) ?? 'null' }}, ={{ ($json.corrida_id) ?? 'null' }}, ={{ ($('Error Trigger').first().json.execution?.error?.message ?? 'error técnico de ejecución') ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

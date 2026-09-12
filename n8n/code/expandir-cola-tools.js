@@ -62,6 +62,10 @@ for (const id of pendientes) {
   const argumentos_backend = Object.assign({}, argumentosModelo, {
     p_tarea: x.tarea_id || null,
     p_caso: x.caso_id || null,
+    // Las RPC de 06 exigen p_agente (sin default) y usan p_ronda para la ACL;
+    // sin ellos PostgREST responde 404 PGRST202 (ejecución real 2026-09-12).
+    p_agente: rol,
+    p_ronda: ronda,
     p_operacion: `${x.tarea_id || x.execution_id}:${x.paso}:${id}`,
   });
   items.push({

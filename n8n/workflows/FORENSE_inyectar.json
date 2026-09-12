@@ -25,9 +25,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. Columnas nombradas: la firma de 010 es TABLE(...), no jsonb.\nSELECT r.inyeccion_id, r.estado, r.corrida_base_id, r.ingesta_id,\n       r.idempotency_key, r.prioridad\n  FROM forense.registrar_inyeccion($1::uuid, $2::uuid, $3::text, $4::text) AS r",
+        "query": "-- Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. Columnas nombradas: la firma de 010 es TABLE(...), no jsonb.\nSELECT r.inyeccion_id, r.estado, r.corrida_base_id, r.ingesta_id,\n       r.idempotency_key, r.prioridad\n  FROM forense.registrar_inyeccion(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::uuid, nullif(nullif($3::text, 'null'), '')::text, nullif(nullif($4::text, 'null'), '')::text) AS r",
         "options": {
-          "queryReplacement": "={{ $json.body.corrida_base_id }}, ={{ $json.body.ingesta_id }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.prioridad ?? 'inyectados' }}"
+          "queryReplacement": "={{ ($json.body.corrida_base_id) ?? 'null' }}, ={{ ($json.body.ingesta_id) ?? 'null' }}, ={{ ($json.body.idempotency_key) ?? 'null' }}, ={{ ($json.body.prioridad ?? 'inyectados') ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -55,16 +55,16 @@
       "typeVersion": 1.5,
       "position": [
         440,
-        140
+        -140
       ],
       "name": "Responder inyección 202"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. La función toma la INGESTA y devuelve jsonb escalar: `SELECT *` dejaba `validada` en undefined y el IF se iba siempre por el falso.\nSELECT v.ok AS validada, v.inyeccion_id, v.ingesta_id, v.estado,\n       v.aceptadas, v.rechazadas, v.rfcs_afectados, v.diagnostico\n  FROM jsonb_to_record(forense.validar_inyeccion($1::uuid))\n    AS v(ok boolean, inyeccion_id uuid, ingesta_id uuid, estado text,\n         aceptadas int, rechazadas int, rfcs_afectados jsonb, diagnostico jsonb)",
+        "query": "-- Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. La función toma la INGESTA y devuelve jsonb escalar: `SELECT *` dejaba `validada` en undefined y el IF se iba siempre por el falso.\nSELECT v.ok AS validada, v.inyeccion_id, v.ingesta_id, v.estado,\n       v.aceptadas, v.rechazadas, v.rfcs_afectados, v.diagnostico\n  FROM jsonb_to_record(forense.validar_inyeccion(nullif(nullif($1::text, 'null'), '')::uuid))\n    AS v(ok boolean, inyeccion_id uuid, ingesta_id uuid, estado text,\n         aceptadas int, rechazadas int, rfcs_afectados jsonb, diagnostico jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Registrar inyección').first().json.ingesta_id }}"
+          "queryReplacement": "={{ ($('Registrar inyección').first().json.ingesta_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -116,9 +116,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Rechazo con motivo legible: la UI lo muestra en /inyecciones/[id] (21 §3.3).\nUPDATE forense.inyecciones\n   SET estado = 'rechazada', diagnostico = $2::jsonb, terminado = now()\n WHERE id = $1::uuid\nRETURNING id AS inyeccion_id, estado, diagnostico",
+        "query": "-- Rechazo con motivo legible: la UI lo muestra en /inyecciones/[id] (21 §3.3).\nUPDATE forense.inyecciones\n   SET estado = 'rechazada', diagnostico = $2::jsonb, terminado = now()\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS inyeccion_id, estado, diagnostico",
         "options": {
-          "queryReplacement": "={{ $('Registrar inyección').first().json.inyeccion_id }}, ={{ JSON.stringify($json.diagnostico) }}"
+          "queryReplacement": "={{ ($('Registrar inyección').first().json.inyeccion_id) ?? 'null' }}, ={{ (JSON.stringify($json.diagnostico)) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -137,9 +137,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). La función devuelve un uuid escalar: sin el alias, la columna se llamaba `clonar_corrida_con_inyeccion` y el nodo siguiente leía undefined.\nSELECT forense.clonar_corrida_con_inyeccion($1::uuid, $2::uuid) AS corrida_nueva_id,\n       $1::uuid AS corrida_base_id, $2::uuid AS ingesta_id",
+        "query": "-- Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). La función devuelve un uuid escalar: sin el alias, la columna se llamaba `clonar_corrida_con_inyeccion` y el nodo siguiente leía undefined.\nSELECT forense.clonar_corrida_con_inyeccion(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::uuid) AS corrida_nueva_id,\n       nullif(nullif($1::text, 'null'), '')::uuid AS corrida_base_id, nullif(nullif($2::text, 'null'), '')::uuid AS ingesta_id",
         "options": {
-          "queryReplacement": "={{ $('Registrar inyección').first().json.corrida_base_id }}, ={{ $('Registrar inyección').first().json.ingesta_id }}"
+          "queryReplacement": "={{ ($('Registrar inyección').first().json.corrida_base_id) ?? 'null' }}, ={{ ($('Registrar inyección').first().json.ingesta_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -158,9 +158,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Sobre la corrida NUEVA. Estado de la inyección: pistas_recalculadas.\nSELECT $1::uuid AS corrida_nueva_id, $2::uuid AS inyeccion_id,\n       forense.correr_pistas($1::uuid) AS pistas_insertadas,\n       forense.armar_clusters($1::uuid) AS clusters_armados",
+        "query": "-- Sobre la corrida NUEVA. Estado de la inyección: pistas_recalculadas.\nSELECT nullif(nullif($1::text, 'null'), '')::uuid AS corrida_nueva_id, nullif(nullif($2::text, 'null'), '')::uuid AS inyeccion_id,\n       forense.correr_pistas(nullif(nullif($1::text, 'null'), '')::uuid) AS pistas_insertadas,\n       forense.armar_clusters(nullif(nullif($1::text, 'null'), '')::uuid) AS clusters_armados",
         "options": {
-          "queryReplacement": "={{ $json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
+          "queryReplacement": "={{ ($json.corrida_nueva_id) ?? 'null' }}, ={{ ($('Registrar inyección').first().json.inyeccion_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -179,9 +179,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- QA-004 (decisión H9 07:32): `armar_clusters` aplica el selector de dos familias y puede dejar FUERA a un RFC inyectado que no lo cruza — el juez inyecta y no ve nada. Esta función garantiza un cluster por RFC inyectado (creado=true si lo tuvo que armar, false si ya estaba cubierto) por la ruta de investigación manual `armar_cluster_para`. La entrega es db/012 de forense-db; el nodo está cableado a la firma acordada table(cluster_id, rfc, creado).\nSELECT a.cluster_id, a.rfc, a.creado\n  FROM forense.asegurar_clusters_inyectados($1::uuid, $2::uuid) AS a",
+        "query": "-- QA-004 (decisión H9 07:32): `armar_clusters` aplica el selector de dos familias y puede dejar FUERA a un RFC inyectado que no lo cruza — el juez inyecta y no ve nada. Esta función garantiza un cluster por RFC inyectado (creado=true si lo tuvo que armar, false si ya estaba cubierto) por la ruta de investigación manual `armar_cluster_para`. La entrega es db/012 de forense-db; el nodo está cableado a la firma acordada table(cluster_id, rfc, creado).\nSELECT a.cluster_id, a.rfc, a.creado\n  FROM forense.asegurar_clusters_inyectados(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::uuid) AS a",
         "options": {
-          "queryReplacement": "={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
+          "queryReplacement": "={{ ($('Recalcular pistas y clusters').first().json.corrida_nueva_id) ?? 'null' }}, ={{ ($('Registrar inyección').first().json.inyeccion_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -200,9 +200,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). Columnas nombradas contra la firma TABLE de 010.\nSELECT c.cluster_id, c.corrida_id, c.inyeccion_id, c.investigacion_id,\n       c.afectado, c.score\n  FROM forense.clusters_por_prioridad_inyeccion($1::uuid, $2::uuid) AS c",
+        "query": "-- Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). Columnas nombradas contra la firma TABLE de 010.\nSELECT c.cluster_id, c.corrida_id, c.inyeccion_id, c.investigacion_id,\n       c.afectado, c.score\n  FROM forense.clusters_por_prioridad_inyeccion(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::uuid) AS c",
         "options": {
-          "queryReplacement": "={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
+          "queryReplacement": "={{ ($('Recalcular pistas y clusters').first().json.corrida_nueva_id) ?? 'null' }}, ={{ ($('Registrar inyección').first().json.inyeccion_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -263,9 +263,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- La latencia recibida→dictamen se mide sobre los eventos persistidos, no aquí: el cierre a `completada` lo hace el agregador cuando los casos terminan (21 §3.4).\nUPDATE forense.inyecciones\n   SET estado = 'investigando', corrida_nueva_id = $2::uuid, terminado = NULL\n WHERE id = $1::uuid\nRETURNING id AS inyeccion_id, estado, corrida_nueva_id, creado",
+        "query": "-- La latencia recibida→dictamen se mide sobre los eventos persistidos, no aquí: el cierre a `completada` lo hace el agregador cuando los casos terminan (21 §3.4).\nUPDATE forense.inyecciones\n   SET estado = 'investigando', corrida_nueva_id = nullif(nullif($2::text, 'null'), '')::uuid, terminado = NULL\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS inyeccion_id, estado, corrida_nueva_id, creado",
         "options": {
-          "queryReplacement": "={{ $('Registrar inyección').first().json.inyeccion_id }}, ={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}"
+          "queryReplacement": "={{ ($('Registrar inyección').first().json.inyeccion_id) ?? 'null' }}, ={{ ($('Recalcular pistas y clusters').first().json.corrida_nueva_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

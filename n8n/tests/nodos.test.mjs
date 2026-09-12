@@ -147,14 +147,19 @@ test('[SIMULADO] cuerpo: sin modelo no se construye nada (el modelo no sale del 
   assert.throws(() => construirCuerpoNodo({ system_bloques: systemBase, mensajes: mensajesBase }), /modelo ausente/);
 });
 
-test('[SIMULADO] cuerpo: temperatura 0 por defecto y tools solo si corresponde', () => {
+test('[SIMULADO] cuerpo: sin temperature por defecto (la API la rechaza en claude-opus-5/sonnet-5) y tools solo si corresponde', () => {
   const conTools = construirCuerpoNodo({
     modelo: 'modelo-simulado', system_bloques: systemBase, mensajes: mensajesBase,
     herramientas: [{ name: 'forense_perfil', input_schema: { type: 'object' } }],
   });
-  assert.equal(conTools.cuerpo.temperature, 0);
+  assert.equal('temperature' in conTools.cuerpo, false);
   assert.equal(conTools.cuerpo.tools.length, 1);
   assert.deepEqual(conTools.cuerpo.tool_choice, { type: 'auto' });
+
+  const conTemperaturaExplicita = construirCuerpoNodo({
+    modelo: 'modelo-simulado', system_bloques: systemBase, mensajes: mensajesBase, temperatura: 0.5,
+  });
+  assert.equal(conTemperaturaExplicita.cuerpo.temperature, 0.5);
 
   const reparacion = construirCuerpoNodo({
     modelo: 'modelo-simulado', system_bloques: systemBase, mensajes: mensajesBase,

@@ -9,11 +9,11 @@ import type { Familia, Nivel } from "@/lib/data";
  * excluye en tiempo de compilación.
  */
 const NIVEL_ESTILO: Record<Nivel, string> = {
-  sin_hallazgos: "bg-surface-muted text-text-subtle border-border",
-  anomalia_explicada: "bg-info/10 text-info border-info/30",
+  sin_hallazgos: "bg-green-50 text-green-700 border-green-200",
+  anomalia_explicada: "bg-green-50 text-green-600 border-green-200",
   no_concluyente: "bg-surface-muted text-text-muted border-border",
-  presuncion: "bg-warn/10 text-warn border-warn/30",
-  presuncion_alta: "bg-error/10 text-error border-error/30",
+  presuncion: "bg-red-50 text-red-600 border-red-200",
+  presuncion_alta: "bg-red-100 text-red-800 border-red-300",
 };
 
 const NIVEL_LABEL: Record<Nivel, string> = {
@@ -52,7 +52,7 @@ const FAMILIA_CLASE: Record<Familia, string> = {
   E: "bg-fam-e/10 text-fam-e border-fam-e/30",
 };
 
-const FAMILIA_NOMBRE: Record<Familia, string> = {
+export const FAMILIA_NOMBRE: Record<Familia, string> = {
   D: "Documental",
   F: "Financiera",
   R: "Relacional",

@@ -28,7 +28,10 @@ import { CONTRATOS_NODOS, FORMA_PENDIENTE, TIPOS_TRANSPARENTES } from '../runtim
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = path.join(RAIZ, 'workflows');
-const cargar = (f) => JSON.parse(fs.readFileSync(path.join(DIR, `${f}.json`), 'utf8'));
+// Revierte `nullif($N::text, 'null')::tipo` (nulosSeguros del generador) para que
+// las aserciones sigan leyendo la firma `$N::tipo`.
+const desenvolver = (wf) => { for (const n of wf.nodes) { if (n.parameters && typeof n.parameters.query === 'string') n.parameters.query = n.parameters.query.replace(/nullif\(nullif\(\$(\d+)::text, 'null'\), ''\)::(\w+)/g, '$$$1::$2'); } return wf; };
+const cargar = (f) => desenvolver(JSON.parse(fs.readFileSync(path.join(DIR, `${f}.json`), 'utf8')));
 
 // Raíces de expresión que NO son datos de otro nodo.
 const RAICES_LIBRES = /^\$(execution|workflow|now|today|env|vars|input|itemIndex|runIndex|prevNode|parameter|nodeVersion)/;

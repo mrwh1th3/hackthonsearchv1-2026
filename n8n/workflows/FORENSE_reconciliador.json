@@ -109,9 +109,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Reenvía eventos de eventos_salida no entregados (16 §2). El backoff de outbox NO equivale a repetir una llamada ya aceptada. DEPENDE de 007.\nSELECT * FROM forense.eventos_salida_pendientes($1::int)",
+        "query": "-- Reenvía eventos de eventos_salida no entregados (16 §2). El backoff de outbox NO equivale a repetir una llamada ya aceptada. DEPENDE de 007.\nSELECT * FROM forense.eventos_salida_pendientes(nullif(nullif($1::text, 'null'), '')::int)",
         "options": {
-          "queryReplacement": "={{ 20 }}"
+          "queryReplacement": "={{ (20) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

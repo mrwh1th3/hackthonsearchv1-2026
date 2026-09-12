@@ -112,6 +112,9 @@ export interface Caso {
   // en curso (en_cola/ronda1/...) todavía no tiene ninguno de los dos.
   nivel: Nivel | null;
   tipologia: Tipologia | null;
+  /** `auditoria` = caso ancla del runner determinista; `origen_valor` es entonces el id de su investigación. */
+  origen?: string | null;
+  origen_valor?: string | null;
   familias_confirmadas: Familia[];
   monto_en_riesgo: string;
   moneda: string;
@@ -344,6 +347,11 @@ export interface EventoForense {
     referencias: string[];
     operacion_id: string | null;
   };
+  // Columnas operativas de `forense.bitacora` (05 §bitacora), fuera del
+  // contrato bitacora.v1: sólo presentación, nunca decisión.
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  duracion_ms?: number | null;
 }
 
 // ---------------------------------------------------------------------------

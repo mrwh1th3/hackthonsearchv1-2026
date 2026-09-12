@@ -33,9 +33,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Deduplica por evento/identidad del proveedor y correlaciona por conversation_id/callSid. Un callback que llega ANTES de guardar el POST se conserva para conciliación posterior (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.registrar_callback_llamada($1::text, $2::text, $3::jsonb)",
+        "query": "-- Deduplica por evento/identidad del proveedor y correlaciona por conversation_id/callSid. Un callback que llega ANTES de guardar el POST se conserva para conciliación posterior (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.registrar_callback_llamada(nullif(nullif($1::text, 'null'), '')::text, nullif(nullif($2::text, 'null'), '')::text, $3::jsonb)",
         "options": {
-          "queryReplacement": "={{ $json.evento.conversation_id }}, ={{ $json.evento.call_sid }}, ={{ JSON.stringify($json.evento) }}"
+          "queryReplacement": "={{ ($json.evento.conversation_id) ?? 'null' }}, ={{ ($json.evento.call_sid) ?? 'null' }}, ={{ (JSON.stringify($json.evento)) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -54,9 +54,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Mapea SOLO hechos recibidos: sin callback de timbrado no se muestra «Sonando». `aviso_entregado` solo si el análisis lo respalda. El fallo de voz no revierte la investigación ni borra el reporte (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.actualizar_llamada($1::uuid, $2::text, $3::boolean)",
+        "query": "-- Mapea SOLO hechos recibidos: sin callback de timbrado no se muestra «Sonando». `aviso_entregado` solo si el análisis lo respalda. El fallo de voz no revierte la investigación ni borra el reporte (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.actualizar_llamada(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::text, $3::boolean)",
         "options": {
-          "queryReplacement": "={{ $json.llamada_id }}, ={{ $json.estado_llamada }}, ={{ $json.aviso_entregado }}"
+          "queryReplacement": "={{ ($json.llamada_id) ?? 'null' }}, ={{ ($json.estado_llamada) ?? 'null' }}, ={{ ($json.aviso_entregado) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

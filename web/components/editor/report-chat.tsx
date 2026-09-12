@@ -96,7 +96,6 @@ export function ReportChat({
   version,
   seleccion,
   evidencia,
-  origen,
   modoLectura,
   onAplicado,
   onLimpiarSeleccion,
@@ -106,7 +105,8 @@ export function ReportChat({
   version: number;
   seleccion: SeleccionUI | null;
   evidencia: EvidenciaCita[];
-  origen: "fixture" | "supabase";
+  /** Se recibe por contrato con `DocumentWorkspace`; ya no se rotula en la UI. */
+  origen?: "fixture" | "supabase";
   modoLectura: boolean;
   onAplicado: (reporte: Reporte, revisarCitas: boolean) => void;
   onLimpiarSeleccion: () => void;
@@ -125,7 +125,7 @@ export function ReportChat({
       case "backend_no_configurado":
         return "No hay backend de edición configurado. No se inventa una respuesta: configura N8N_WEBHOOK_BASE o usa la fuente de fixtures.";
       case "conflicto_version":
-        return `El expediente cambió a la versión ${error.version_actual}. Tu borrador se conserva; vuelve a seleccionar el texto y pide la propuesta otra vez.`;
+        return `El reporte cambió a la versión ${error.version_actual}. Tu borrador se conserva; vuelve a seleccionar el texto y pide la propuesta otra vez.`;
       case "seleccion_desplazada":
         return "La selección ya no existe en esta versión del documento. Selecciona de nuevo el fragmento.";
       case "citas_no_autorizadas":
@@ -268,11 +268,11 @@ export function ReportChat({
 
   return (
     <aside
-      className="flex h-full min-h-0 w-full flex-col border-l border-border bg-surface print:hidden"
-      aria-label="Chat del expediente"
+      className="flex h-full min-h-0 w-full flex-col bg-surface px-3.5 print:hidden"
+      aria-label="Chat del reporte"
     >
       <Tabs.Root defaultValue="chat" className="flex min-h-0 flex-1 flex-col">
-        <Tabs.List className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5" aria-label="Panel lateral">
+        <Tabs.List className="flex shrink-0 items-center gap-[7px] px-0.5 pb-3 pt-1" aria-label="Panel lateral">
           {[
             { valor: "chat", etiqueta: "Chat" },
             { valor: "evidencia", etiqueta: `Evidencia (${evidencia.length})` },
@@ -280,7 +280,7 @@ export function ReportChat({
             <Tabs.Trigger
               key={t.valor}
               value={t.valor}
-              className="rounded-[var(--radius-input)] px-2 py-1 text-xs text-text-muted data-[state=active]:bg-surface-muted data-[state=active]:text-text"
+              className="h-[26px] whitespace-nowrap rounded-[var(--radius-pill)] bg-surface-muted px-2.5 text-[11.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover data-[state=active]:bg-primary data-[state=active]:text-white"
             >
               {t.etiqueta}
             </Tabs.Trigger>
@@ -289,28 +289,21 @@ export function ReportChat({
 
         <Tabs.Content value="chat" className="flex min-h-0 flex-1 flex-col focus:outline-none">
           <div className="min-h-0 flex-1 overflow-auto px-3 py-3" data-testid="chat-mensajes">
-            {mensajes.length === 0 && (
-              <p className="text-xs leading-relaxed text-text-subtle">
-                Selecciona texto del expediente y pide un cambio: la respuesta llega como propuesta con diff, y solo
-                &quot;Aplicar&quot; crea una versión. Sin selección, la pregunta se responde sin tocar el documento.
-              </p>
-            )}
-
             <ul className="flex flex-col gap-3">
               {mensajes.map((m) => (
                 <li key={m.id}>
                   {m.autor === "humano" && (
-                    <div className="ml-6 rounded-[var(--radius-card)] bg-surface-muted px-3 py-2 text-sm text-text">
+                    <div className="ml-auto max-w-[92%] rounded-[14px_14px_4px_14px] bg-primary px-[11px] py-2 text-[12.5px] leading-relaxed text-white">
                       {m.texto}
-                      <span className="mt-1 block text-[10px] text-text-subtle">sobre la versión {m.versionBase}</span>
+                      <span className="mt-1 block text-[10px] text-white/70">sobre la versión {m.versionBase}</span>
                     </div>
                   )}
 
                   {m.autor === "editor" && (
-                    <div className="mr-6 rounded-[var(--radius-card)] border border-border px-3 py-2 text-sm text-text">
+                    <div className="mr-auto max-w-[92%] rounded-[14px_14px_14px_4px] border border-border bg-surface-raised px-[11px] py-2 text-[12.5px] leading-relaxed text-text">
                       {m.texto}
                       <span className="mt-1 block text-[10px] text-text-subtle">
-                        Editor · {m.origen === "n8n" ? "agente" : "respuesta de demostración"} · no modifica el documento
+                        Editor · no modifica el documento
                       </span>
                       {m.seleccionVerificada === false && <AvisoSeleccion />}
                     </div>
@@ -376,15 +369,12 @@ export function ReportChat({
                             {m.estado === "descartando" && <Loader2 size={12} className="animate-spin" aria-hidden />}
                             Descartar
                           </button>
-                          <span className="text-[10px] text-text-subtle">
-                            {m.origen === "n8n" ? "agente Editor" : "propuesta determinista de demostración"}
-                          </span>
                         </div>
                       ) : (
                         <p className="text-[11px] text-text-subtle">
                           {m.estado === "aplicada" && `Aplicada: versión ${m.versionCreada} creada.`}
                           {m.estado === "descartada" && "Descartada: el documento quedó sin cambios."}
-                          {m.estado === "conflicto" && "En conflicto: el expediente avanzó de versión. Vuelve a pedir la propuesta."}
+                          {m.estado === "conflicto" && "En conflicto: el reporte avanzó de versión. Vuelve a pedir la propuesta."}
                           {m.bitacora === false && (m.estado === "aplicada" || m.estado === "descartada") && (
                             <span className="ml-1 text-warn" data-testid="sin-bitacora">
                               Sin registro en la bitácora.
@@ -405,46 +395,44 @@ export function ReportChat({
             )}
           </div>
 
-          <div className="shrink-0 border-t border-border p-2">
-            <div className="mb-2 flex flex-wrap gap-1">
+          <div className="shrink-0 pt-3">
+            <div className="mb-2 flex gap-[7px] overflow-x-auto pb-0.5 [scrollbar-width:thin]">
               {SUGERENCIAS.map((s) => (
                 <button
                   key={s}
                   type="button"
                   disabled={modoLectura || enviando}
                   onClick={() => enviar(s)}
-                  className="rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] text-text-muted hover:bg-surface-hover disabled:opacity-40"
+                  className="h-[26px] flex-none whitespace-nowrap rounded-[var(--radius-pill)] bg-surface-muted px-2.5 text-[11.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover disabled:opacity-40"
                 >
                   {s}
                 </button>
               ))}
             </div>
 
-            <div className="mb-2 flex flex-wrap items-center gap-1 text-[11px]">
-              <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-text-muted">v{version}</span>
-              <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-text-muted">caso {casoId.slice(0, 8)}</span>
-              {evidenciaElegida.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setEvidenciaElegida([])}
-                  className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-muted px-2 py-0.5 text-text-muted hover:bg-surface-hover"
-                >
-                  {evidenciaElegida.length} evidencias <X size={10} aria-hidden />
-                </button>
-              )}
-              {seleccion ? (
-                <button
-                  type="button"
-                  onClick={onLimpiarSeleccion}
-                  className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-focus/40 bg-focus/10 px-2 py-0.5 text-focus"
-                  title={seleccion.texto}
-                >
-                  selección: {seleccion.texto.slice(0, 28) || `${seleccion.block_ids.length} bloque(s)`} <X size={10} aria-hidden />
-                </button>
-              ) : (
-                <span className="text-text-subtle">sin selección · las preguntas no modifican el documento</span>
-              )}
-            </div>
+            {(evidenciaElegida.length > 0 || seleccion) && (
+              <div className="mb-2 flex flex-wrap items-center gap-1 text-[11px]">
+                {evidenciaElegida.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setEvidenciaElegida([])}
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-muted px-2 py-0.5 text-text-muted hover:bg-surface-hover"
+                  >
+                    {evidenciaElegida.length} evidencias <X size={10} aria-hidden />
+                  </button>
+                )}
+                {seleccion && (
+                  <button
+                    type="button"
+                    onClick={onLimpiarSeleccion}
+                    className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-focus/40 bg-focus/10 px-2 py-0.5 text-focus"
+                    title={seleccion.texto}
+                  >
+                    selección: {seleccion.texto.slice(0, 28) || `${seleccion.block_ids.length} bloque(s)`} <X size={10} aria-hidden />
+                  </button>
+                )}
+              </div>
+            )}
 
             {seleccion && (
               <div className="mb-2 inline-flex rounded-[var(--radius-input)] border border-border p-0.5 text-[11px]">
@@ -463,7 +451,7 @@ export function ReportChat({
             )}
 
             <form
-              className="flex items-end gap-1.5"
+              className="flex flex-col gap-1.5 rounded-[16px] border border-border bg-surface p-2.5 transition-colors focus-within:border-border-stronger"
               onSubmit={(e) => {
                 e.preventDefault();
                 enviar(texto);
@@ -475,8 +463,8 @@ export function ReportChat({
                 rows={2}
                 disabled={modoLectura}
                 aria-label="Instrucción para el Editor"
-                placeholder={modoLectura ? "Modo lectura" : seleccion ? "Qué cambio quieres en la selección…" : "Pregunta sobre el expediente…"}
-                className="min-h-[52px] flex-1 resize-none rounded-[var(--radius-input)] border border-border bg-surface px-2 py-1.5 text-sm text-text placeholder:text-text-subtle disabled:opacity-50"
+                placeholder={modoLectura ? "Modo lectura" : seleccion ? "Qué cambio quieres en la selección…" : "Pregunta sobre el reporte…"}
+                className="w-full resize-none border-none bg-transparent text-[12.5px] leading-relaxed text-text outline-none disabled:opacity-50"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
@@ -488,16 +476,11 @@ export function ReportChat({
                 type="submit"
                 disabled={enviando || modoLectura || texto.trim().length === 0}
                 aria-label="Enviar"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-input)] bg-primary text-white hover:bg-primary-hover disabled:opacity-40"
+                className="ml-auto inline-flex h-[26px] w-[26px] items-center justify-center rounded-full bg-primary text-white transition-colors duration-150 hover:bg-primary-hover disabled:opacity-40"
               >
-                <Send size={14} aria-hidden />
+                <Send size={13} aria-hidden />
               </button>
             </form>
-            <p className="mt-1 text-[10px] text-text-subtle">
-              {origen === "fixture"
-                ? "Datos de demostración: las propuestas son deterministas, no salen de un modelo."
-                : "Propuestas del agente Editor."}
-            </p>
           </div>
         </Tabs.Content>
 

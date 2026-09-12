@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Home, Menu, UserRound } from "lucide-react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import type { Investigacion } from "@/lib/data";
+import type { Investigacion, Perfil } from "@/lib/data";
 import { soloFecha } from "@/lib/date/formato";
+import { cn } from "@/lib/utils";
+import { ProfileDialog } from "./profile-dialog";
 
 /**
  * Puerto **fiel** del shell de `design-ref/Agents.dc.html` (líneas 26–56).
@@ -42,15 +45,32 @@ export interface AppShellProps {
    * perfil sin investigaciones ve el vacío honesto, nunca una lista fabricada.
    */
   investigaciones: Investigacion[];
+  /** Perfil privado completo (regla 3), para el modal — ver `ProfileDialog`. */
+  perfil: Perfil;
+  perfilEsFixture: boolean;
+}
+
+/**
+ * El panel izquierdo es la **única** navegación del diseño, y las pantallas
+ * de lienzo completo (board y resultados) llevan su propio wordmark dentro de
+ * la cabecera — en el original ese wordmark abre el mismo panel
+ * (`openLeft` en las tres pantallas). Para que puedan hacerlo sin duplicar
+ * estado, el shell publica su interruptor por contexto.
+ */
+const PanelContext = createContext<{ abrir: () => void; abierto: boolean }>({ abrir: () => {}, abierto: false });
+
+export function useInspectorPanel() {
+  return useContext(PanelContext);
 }
 
 const ESTADOS_EN_CURSO: ReadonlySet<Investigacion["estado"]> = new Set(["en_cola", "investigando", "generando_reporte"]);
 
-export function AppShell({ children, perfilNombre, investigaciones }: AppShellProps) {
+export function AppShell({ children, perfilNombre, investigaciones, perfil, perfilEsFixture }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [panelOpen, setPanelOpen] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [perfilAbierto, setPerfilAbierto] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -92,19 +112,29 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
   }
 
   // El original esconde el disparador cuando una pantalla toma el lienzo
-  // completo: ahí el wordmark ya vive dentro de su propia cabecera.
-  const lienzoCompleto = pathname.startsWith("/corridas/") || pathname.startsWith("/casos/");
+  // completo: ahí el wordmark ya vive dentro de su propia cabecera
+  // (`CanvasHeader`), y es ese mismo logo el que abre el panel. El expediente
+  // entró aquí el 2026-09-12: llevaba DOS logos —el absoluto del shell y el de
+  // su cabecera— y el pill del reporte quedaba 70 px por debajo del que abre
+  // el panel. Con una sola cabecera, pill y acciones van a su misma altura.
+  const lienzoCompleto =
+    /^\/corridas\/[^/]+$/.test(pathname) ||
+    /^\/casos\/[^/]+$/.test(pathname) ||
+    /^\/casos\/[^/]+\/expediente$/.test(pathname) ||
+    /^\/documentos\/[^/]+$/.test(pathname) ||
+    /^\/analisis\/[^/]+$/.test(pathname);
 
   return (
+    <PanelContext.Provider value={{ abrir: () => setPanelOpen((v) => !v), abierto: panelOpen }}>
     <div className="relative min-h-screen bg-app-bg font-sans text-text">
       {!lienzoCompleto && (
         <button
           type="button"
           onClick={() => setPanelOpen((v) => !v)}
           aria-label="Abrir navegación"
-          className="absolute left-[22px] top-[20px] z-[3] flex h-[52px] items-center border-none bg-transparent p-0"
+          className="absolute left-[22px] top-[20px] z-[3] flex h-[26px] w-[26px] items-center justify-center border-none bg-transparent p-0 text-text"
         >
-          <Wordmark className="h-[52px]" />
+          <Menu size={22} strokeWidth={1.8} aria-hidden />
         </button>
       )}
 
@@ -123,7 +153,7 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
         }}
       >
         <div className="flex items-center justify-between gap-2.5 border-b border-[#f0eee9] px-4 pb-3.5 pt-4">
-          <Wordmark className="h-[34px]" />
+          <Wordmark className="h-[21px]" />
           <button
             type="button"
             onClick={() => setPanelOpen(false)}
@@ -153,13 +183,33 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
             />
           </div>
 
+          {/*
+            "Inicio" a pedido del usuario (2026-09-12): el diseño da por hecho
+            que el wordmark vuelve al inicio, pero aquí el wordmark ABRE este
+            panel, así que sin esta fila no había forma de volver a `/` desde
+            una pantalla de lienzo completo. Misma altura, radio y `:hover`
+            que las filas de investigación, para que no rompa el panel.
+          */}
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            aria-current={pathname === "/" ? "page" : undefined}
+            className={cn(
+              "mb-1 flex items-center gap-[9px] rounded-[9px] border-none px-2.5 py-[9px] text-left transition-colors duration-150 hover:bg-surface-hover",
+              pathname === "/" ? "bg-surface-muted" : "bg-transparent",
+            )}
+          >
+            <Home size={15} strokeWidth={1.8} className="flex-none text-text-muted" aria-hidden />
+            <span className="text-[13.5px] text-text">Inicio</span>
+          </button>
+
           <span className="px-2 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-text-subtle">Investigaciones</span>
 
           {filas.map((f) => (
             <button
               key={f.id}
               type="button"
-              onClick={() => router.push(`/investigaciones/${f.id}`)}
+              onClick={() => router.push(`/documentos/${f.id}?doc=0`)}
               className="flex items-center gap-[9px] rounded-[9px] border-none bg-transparent px-2.5 py-[9px] text-left transition-colors duration-150 hover:bg-[#f7f6f4]"
             >
               {f.enCurso && (
@@ -183,19 +233,39 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
           )}
         </div>
 
-        <div className="border-t border-[#f0eee9] p-3">
+        <div className="flex items-center gap-1.5 border-t border-[#f0eee9] p-3">
+          <button
+            type="button"
+            onClick={() => setPerfilAbierto(true)}
+            aria-label="Abrir perfil"
+            title="Perfil · teléfono para llamadas de voz"
+            className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[10px] border border-border bg-surface text-text-muted transition-colors duration-150 hover:bg-[#f7f6f4]"
+          >
+            <UserRound size={16} strokeWidth={1.8} aria-hidden />
+          </button>
           <button
             type="button"
             onClick={salir}
-            className="flex h-[38px] w-full items-center justify-center rounded-[10px] border border-border bg-surface text-[13px] font-medium text-text-muted transition-colors duration-150 hover:bg-[#f7f6f4]"
+            className="flex h-[38px] flex-1 items-center justify-center rounded-[10px] border border-border bg-surface text-[13px] font-medium text-text-muted transition-colors duration-150 hover:bg-[#f7f6f4]"
           >
             Salir · {perfilNombre}
           </button>
         </div>
       </aside>
 
-      {children}
+      {/*
+        El disparador del wordmark es `absolute` en la esquina superior
+        izquierda, así que las rutas que no son el home ni una pantalla de
+        lienzo completo necesitan sitio para él: sin este margen su título se
+        pintaba DEBAJO del logo (se vio en `/datos` y en el expediente). El
+        home se centra solo y las de lienzo llevan el wordmark dentro de su
+        propia cabecera, así que ninguna de las dos lo lleva.
+      */}
+      {lienzoCompleto || pathname === "/" ? children : <div className="px-6 pb-10 pt-[70px]">{children}</div>}
+
+      <ProfileDialog perfil={perfil} esFixture={perfilEsFixture} abierto={perfilAbierto} onOpenChange={setPerfilAbierto} />
     </div>
+    </PanelContext.Provider>
   );
 }
 
@@ -205,11 +275,18 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
  * lado y a mayor tamaño, a pedido del usuario (2026-09-12: "elimina el forense
  * y haz mas grande el logo").
  */
-function Wordmark({ className }: { className?: string }) {
+export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={`flex items-center ${className ?? ""}`}>
+      {/*
+        `inspector-logo.png` es 2000x2000 con la palabra ocupando una banda de
+        ~230px de alto: al escalar por altura, el 89% del alto era margen en
+        blanco y las letras se veían diminutas. `inspector-logo-wordmark.png`
+        es ese mismo archivo recortado a su caja real (1267x233), así que la
+        altura que se le pide es la altura de las letras.
+      */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/inspector-logo.png" alt="Forense" className="h-full w-auto" />
+      <img src="/inspector-logo-wordmark.png" alt="Inspector" className="h-full w-auto" />
     </span>
   );
 }

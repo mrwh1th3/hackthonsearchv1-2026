@@ -73,7 +73,7 @@ const CASOS = {
   'FORENSE_investigar_cluster/Crear caso': [ctx.corrida_id, ctx.cluster_id, null, 'probe-forma-caso', 'probe', ctx.caso_id, 'pipeline'],
   'FORENSE_investigar_cluster/Contexto ronda 1': [ctx.caso_id, ctx.cluster_id, ctx.corrida_id, ctx.caso_id],
   'FORENSE_investigar_cluster/Crear tareas R1': [ctx.caso_id, '["documental"]', ctx.cluster_id, ctx.corrida_id, ctx.caso_id],
-  'FORENSE_investigar_cluster/Registrar barrera R1': [ctx.caso_id, `{${ctx.tarea_id}}`, '{}', '2099-01-01T00:00:00Z'],
+  'FORENSE_investigar_cluster/Registrar barrera R1': [ctx.caso_id, JSON.stringify([ctx.tarea_id]), '[]', '2099-01-01T00:00:00Z', ctx.cluster_id, ctx.corrida_id, null],
   'FORENSE_investigar_cluster/Esperar barrera R1': [ctx.caso_id, ctx.cluster_id, ctx.corrida_id, ctx.caso_id],
   'FORENSE_investigar_cluster/Ronda fin R1': [ctx.caso_id, 1, '{"resultados":[],"limitaciones":[]}'],
   'FORENSE_investigar_cluster/Barrera R2': [ctx.caso_id, ctx.cluster_id, ctx.corrida_id, ctx.caso_id],
@@ -94,9 +94,9 @@ const CASOS = {
   // ------------------------------------------------------------- reintento
   'FORENSE_reintento/Cargar caso vigente': [ctx.caso_id, 1, 'evidencia_insuficiente', '{"rfcs":[]}'],
   'FORENSE_reintento/Seleccionar autores': [ctx.caso_id, 'evidencia_insuficiente', '{"rfcs":[]}'],
-  'FORENSE_reintento/Registrar límite de expansión': [ctx.caso_id, '{"alcance":"expansion","intento":1}', ctx.corrida_id, '{documental}'],
+  'FORENSE_reintento/Registrar límite de expansión': [ctx.caso_id, '{"alcance":"expansion","intento":1}', ctx.corrida_id, '["documental"]'],
   'FORENSE_reintento/Expandir para reintento': [ctx.caso_id, '{"rfcs":[]}'],
-  'FORENSE_reintento/Crear tareas de revisión': [ctx.caso_id, 1, '{documental}', '{"motivo":"evidencia_insuficiente"}'],
+  'FORENSE_reintento/Crear tareas de revisión': [ctx.caso_id, 1, '["documental"]', '{"motivo":"evidencia_insuficiente"}'],
   'FORENSE_reintento/Barrera reintento': [ctx.caso_id, 'reintento1'],
   'FORENSE_reintento/Revalidar si cambió evidencia': [ctx.caso_id],
   // --------------------------------------------------------- reconciliador

@@ -57,9 +57,26 @@ export async function POST(req: Request) {
   // `session.perfil_id` ya está verificado arriba: no hace falta una segunda
   // lectura de `lib/data/privado.ts` para saber quién es (Corte 3 hallazgo
   // 1 — ese módulo es para leer datos privados, no para resolver identidad).
-  const solicitud = { ...(body as Record<string, unknown>), perfil_id: session.perfil_id };
+  // El webhook de n8n (`FORENSE_investigar_cluster`, path `forense/investigar`) no recibe el
+  // contrato de producto: su «Normalizar entrada» exige corrida + (cluster_id | origen+valor) +
+  // idempotency_key y rechaza texto de sistema, modelos o niveles. Se traduce aquí; el mensaje y
+  // la directriz del usuario no viajan al runtime (reglas 4 y 6).
+  const inv = body as { idempotency_key: string; contexto: { corrida_id: string; cluster_id?: string; rfcs: string[] } };
+  const solicitud: Record<string, unknown> = {
+    corrida_id: inv.contexto.corrida_id,
+    idempotency_key: inv.idempotency_key,
+    investigacion_id: null,
+  };
+  if (inv.contexto.cluster_id) {
+    solicitud.cluster_id = inv.contexto.cluster_id;
+  } else if (inv.contexto.rfcs.length > 0) {
+    solicitud.origen = "rfc";
+    solicitud.valor = inv.contexto.rfcs[0];
+  } else {
+    return NextResponse.json({ error: "sin_objetivo", detalle: "Hace falta un cluster o al menos un RFC." }, { status: 422 });
+  }
 
-  const reenvio = await reenviarAWebhook(config, "investigaciones", solicitud);
+  const reenvio = await reenviarAWebhook(config, "investigar", solicitud);
   if (!reenvio.ok) {
     return NextResponse.json({ error: reenvio.error }, { status: reenvio.status });
   }

@@ -74,3 +74,4 @@ Un sistema multi-agente que investiga registros financieros (CFDI, movimientos b
 | `docs/20-proveedor-github-actions.md` | Auditoría del sistema existente, OAuth oficial, despacho y diferencias frente a API |
 | `docs/22-frontend-inspector.md` | Diseño Inspector importado (`design-ref/Agents.dc.html`): mapeo de estados a rutas, lo que el diseño no trae y aquí es obligatorio, y las tres trampas |
 | `docs/21-criterios-juez-e-inyeccion-en-vivo.md` | Transcripción del juez principal (2026-09-11), prueba de inyección en vivo, sección Trayectoria/Contraste/Cadena de explicación y decisiones H0 (proveedor, destinos) |
+| `docs/23-forensic-auditor-jueces.md` | Guía oficial de jueces: CLI `src/auditor`, generador `generator/forensic`, harness `eval/forensic`, semillas y límites. Prevalece en formato de entrega |

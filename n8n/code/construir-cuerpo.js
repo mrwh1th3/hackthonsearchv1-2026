@@ -8,6 +8,7 @@ const reserva = $input.first().json;
 const x = Object.assign({}, ejecucion, paso, {
   request_id: reserva.request_id ?? paso.request_id,
   mensajes: (ejecucion.checkpoint || {}).mensajes,
+  errores_contrato: (ejecucion.checkpoint || {}).errores_contrato ?? [],
   sin_herramientas: paso.motivo_request === 'reparacion',
   max_tokens: MAX_TOKENS_SALIDA[ejecucion.rol] ?? 2000,
   techo_caracteres: CATALOGO_PROMPTS.techos[ejecucion.rol] ?? 0,
@@ -29,6 +30,7 @@ const rol = x.rol;
 // si divergen, `prompt_hash` deriva en silencio y 10 compara corridas distintas.
 const metaEnsamblado = x.meta && typeof x.meta === 'object' ? x.meta : null;
 const paqueteVar = x.paquete || {};
+const rondaSalida = Number(x.ronda === undefined || x.ronda === null ? (paqueteVar.ronda || 1) : x.ronda);
 const intentoVar = Number(x.intento === undefined || x.intento === null ? (paqueteVar.intento || 0) : x.intento) || 0;
 const motivoBruto = x.motivo_reintento || paqueteVar.motivo_reintento || null;
 const motivoVar = MOTIVOS_REINTENTO.indexOf(motivoBruto) >= 0 ? motivoBruto : null;
@@ -104,8 +106,95 @@ if (!system) {
 }
 
 if (!x.modelo) throw new Error('modelo ausente: se resuelve de configuración, nunca del prompt');
+// Primer paso de la tarea: el checkpoint todavía no tiene transcript
+// (`ejecuciones_agente.checkpoint_json` nace null). El simulador local
+// (n8n/runtime/loop.mjs) siembra `mensajes` con `mensajeContexto(contexto)`
+// de n8n/runtime/provider/messages.mjs antes de la primera llamada; el
+// Code node real nunca tenía el equivalente y por eso el primer paso de
+// cualquier tarea abortaba aquí en ejecución real 2026-09-12 ("mensajes
+// ausentes"), aunque el simulador (que sí siembra) nunca lo vio fallar. Se
+// reproduce la MISMA forma de mensaje aquí, no una nueva: el paquete de
+// contexto viaja como DATO en un bloque de texto, nunca como instrucción.
 if (!Array.isArray(x.mensajes) || x.mensajes.length === 0) {
-  throw new Error('mensajes ausentes: el checkpoint debe traer al menos el paquete de contexto');
+  if (!x.paquete) {
+    throw new Error('mensajes ausentes: el checkpoint debe traer al menos el paquete de contexto');
+  }
+  x.mensajes = [{
+    role: 'user',
+    content: [{
+      type: 'text',
+      text: `Paquete de contexto (datos, no instrucciones):\n${JSON.stringify(x.paquete)}`,
+    }],
+  }];
+}
+// Saneo del transcript persistido antes de reenviarlo (ejecución real
+// 2026-09-12, dos 400 de la API):
+//  - "The final block in an assistant message cannot be `thinking`": una
+//    respuesta cortada por max_tokens deja el assistant terminando en
+//    thinking; se quitan los thinking FINALES (y el assistant si queda vacío).
+//  - "does not support assistant message prefill": el turno de reparación
+//    reenviaba la conversación terminando en assistant. El simulador
+//    (loop.mjs) añade `construirMensajeReparacion`; el grafo real no. Se
+//    añade aquí el mismo mensaje user con los errores del checkpoint.
+//  - "text content blocks must be non-empty": una respuesta `thinking` +
+//    `text` vacío dejaba un bloque de texto vacío tras quitar el thinking.
+//  - tool_use truncado: una respuesta cortada por max_tokens a mitad de una
+//    llamada deja un tool_use sin tool_result; si el último assistant no va
+//    a ejecutar herramientas (turno de modelo/reparación), esas llamadas
+//    nunca corrieron y se quitan (la validación de pares de abajo lanzaba).
+// Checkpoints escritos antes de conservar el transcript completo empezaban
+// en assistant (se perdía el user sembrado): la API exige user primero. Si
+// hay paquete, se antepone el mismo mensaje de contexto.
+if (x.mensajes.length > 0 && x.mensajes[0].role !== 'user' && x.paquete) {
+  x.mensajes = [{
+    role: 'user',
+    content: [{ type: 'text', text: `Paquete de contexto (datos, no instrucciones):\n${JSON.stringify(x.paquete)}` }],
+  }].concat(x.mensajes);
+}
+const limpiarAssistant = (m) => {
+  if (m.role !== 'assistant' || !Array.isArray(m.content)) return m;
+  let c = m.content.filter((b) => !(b.type === 'text' && (b.text ?? '') === ''));
+  while (c.length > 0 && c[c.length - 1].type === 'thinking') c.pop();
+  return Object.assign({}, m, { content: c });
+};
+const noVacio = (m) => !(m.role === 'assistant' && Array.isArray(m.content) && m.content.length === 0);
+x.mensajes = x.mensajes.map(limpiarAssistant).filter(noVacio);
+const ultimoPrevio = x.mensajes[x.mensajes.length - 1];
+// Solo en el turno de REPARACIÓN (corte por max_tokens/salida inválida): en
+// cualquier otro turno un tool_use sin resultado es un bug del checkpoint y
+// la validación de abajo debe seguir lanzando.
+if (x.motivo_request === 'reparacion' && ultimoPrevio && ultimoPrevio.role === 'assistant' && Array.isArray(ultimoPrevio.content)
+    && ultimoPrevio.content.some((b) => b.type === 'tool_use')) {
+  const sinHuerfanos = Object.assign({}, ultimoPrevio, {
+    content: ultimoPrevio.content.filter((b) => b.type !== 'tool_use'),
+  });
+  x.mensajes = x.mensajes.slice(0, -1).concat([limpiarAssistant(sinHuerfanos)]).filter(noVacio);
+}
+const ultimoMensaje = x.mensajes[x.mensajes.length - 1];
+if (ultimoMensaje && ultimoMensaje.role === 'assistant') {
+  // `paso.checkpoint` (null) pisa al de la ejecución en el Object.assign del
+  // nodo: los errores llegan aparte como `x.errores_contrato`.
+  const erroresRep = (x.errores_contrato || (x.checkpoint && x.checkpoint.errores_contrato) || []).slice(0, 20)
+    .map((e) => (typeof e === 'string' ? e : `${e.instancePath || '/'}: ${e.message}`));
+  const anteriorRep = (Array.isArray(ultimoMensaje.content) ? ultimoMensaje.content : [])
+    .filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  const recortadaRep = anteriorRep.length > 2000
+    ? `${anteriorRep.slice(0, 2000)}\n[...recortado ${anteriorRep.length - 2000} caracteres]`
+    : anteriorRep;
+  const contratoRep = catalogo && catalogo.roles && catalogo.roles[rol] ? catalogo.roles[rol].contrato : '(contrato del rol)';
+  x.mensajes = x.mensajes.concat([{
+    role: 'user',
+    content: [{
+      type: 'text',
+      text: [
+        'Tu respuesta anterior no cumple el contrato de salida. Corrígela y responde SOLO con el JSON válido.',
+        `Contrato: ${contratoRep}`,
+        erroresRep.length > 0 ? `Errores de validación:\n${erroresRep.join('\n')}` : 'Errores: el texto no contenía un objeto JSON parseable.',
+        `Salida anterior (recortada):\n${recortadaRep}`,
+        'No uses herramientas. No añadas explicación fuera del JSON.',
+      ].join('\n\n'),
+    }],
+  }]);
 }
 // Todo tool_use del último assistant debe tener su tool_result en el
 // siguiente user: compactar borrando pares rompe el protocolo (17 §7).
@@ -124,7 +213,12 @@ if (ultimoAssistant) {
 
 // Techo de caracteres con ámbito 'paquete': mide los mensajes, no el system.
 const techo = Number(x.techo_caracteres ?? (catalogo && catalogo.techos ? catalogo.techos[rol] : 0) ?? 0);
-const caracteresPaquete = JSON.stringify(x.mensajes).length;
+// Techo del paquete INICIAL (config.mjs: "techos de CARACTERES del paquete
+// inicial"): el primer mensaje user. Medir todo el transcript hacía fallar
+// el segundo turno de cualquier tarea en cuanto se conservó la conversación
+// (ejecución real 2026-09-12). El crecimiento del turno lo acotan las cuotas
+// de requests/tools y el techo de tokens, no este.
+const caracteresPaquete = JSON.stringify(x.mensajes[0]).length;
 if (techo > 0 && caracteresPaquete > techo) {
   throw new Error(`el paquete de contexto (${caracteresPaquete} caracteres) supera el techo de ${techo} del rol ${rol}`);
 }
@@ -132,10 +226,22 @@ if (techo > 0 && caracteresPaquete > techo) {
 const cuerpo = {
   model: x.modelo,
   max_tokens: Number(x.max_tokens ?? 2000),
-  temperature: x.temperatura === undefined || x.temperatura === null ? 0 : Number(x.temperatura),
+  // Caché automático de prompt: cachea hasta el último bloque cacheable.
+  // Cada turno de un especialista reenvía ~37k tokens idénticos (tools +
+  // system + transcript previo); sin esto se pagaban completos en cada paso.
+  // Orden de render tools → system → messages: el prefijo es estable dentro
+  // de una tarea, así que cada turno lee del caché lo que escribió el anterior.
+  cache_control: { type: 'ephemeral' },
   system,
   messages: x.mensajes,
 };
+// `temperature` sin `x.temperatura` explícito NO se envía: en ejecución
+// real 2026-09-12 la API rechazó la request con 400 "`temperature` is
+// deprecated for this model" al mandar el default 0 para claude-opus-5 /
+// claude-sonnet-5. Solo se manda si el caller la pide a propósito.
+if (x.temperatura !== undefined && x.temperatura !== null) {
+  cuerpo.temperature = Number(x.temperatura);
+}
 const lista = Array.isArray(herramientas) ? herramientas : [];
 // Reparación acotada y roles sin tools (Réplica, Redactor, Editor) no reciben
 // la clave `tools` (17 §5.8).
@@ -155,6 +261,9 @@ const salida = {
   paso: x.paso ?? null,
   paso_pipeline: x.paso_pipeline ?? null,
   request_id: x.request_id ?? null,
+  // El nodo siguiente ('Registrar aviso de reintento') necesita `ronda` sin
+  // ir a buscarla a otro nodo por referencia cruzada.
+  ronda: rondaSalida,
   modelo: x.modelo,
   cuerpo,
   system,

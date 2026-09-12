@@ -54,6 +54,11 @@ const cerrar = (evento, razon) => {
   });
 };
 const pedirModelo = (motivo, razon) => Object.assign({}, identidad, {
+  // request_id determinista: execution:revision:motivo (`paso` no avanza entre turnos; `revision` sí, en cada checkpoint). Un
+  // reintento de transporte reusa el mismo; sin él `reserve_request` y
+  // `Completar request` no registraban nada (llm_solicitudes quedaba vacía y
+  // no había tokens medidos; ejecución real 2026-09-12).
+  request_id: identidad.request_id ?? (identidad.execution_id ? `${identidad.execution_id}:${identidad.revision ?? 0}:${motivo}` : null),
   accion: 'solicitar_modelo', evento: null, razon, motivo_request: motivo,
   estado_interno: estado, estado_tarea: null, reparaciones_json: reparaciones,
   pending_tool_use_ids: [],
@@ -79,6 +84,10 @@ if (TERMINALES.indexOf(estado) >= 0) {
   salida = pendientes.length > 0
     ? Object.assign({}, identidad, {
       accion: 'ejecutar_herramienta', evento: null, motivo_request: null,
+      // El lote de herramientas pertenece al request de modelo que las pidió:
+      // `Interpretar respuesta` lo dejó en el checkpoint. Sin esto
+      // `tool_ejecuciones.request_id` (NOT NULL) recibía null (2026-09-12).
+      request_id: identidad.request_id ?? cp.request_id ?? null,
       razon: `${pendientes.length} tool_use pendiente(s)`,
       estado_interno: estado, estado_tarea: null, reparaciones_json: reparaciones,
       // TODOS los tool_use de la respuesta, no solo el primero (17 §5.5):

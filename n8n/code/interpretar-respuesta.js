@@ -7,7 +7,7 @@ const ejecucion = $('Cargar ejecución').first().json;
 const x = Object.assign({}, paso, {
   rol: ejecucion.rol,
   respuesta: $('POST /v1/messages').first().json,
-  mensajes_previos: (ejecucion.checkpoint || {}).mensajes ?? [],
+  mensajes_previos: ($('Construir cuerpo Messages').first().json.cuerpo || {}).messages ?? (ejecucion.checkpoint || {}).mensajes ?? [],
 });
 const REQUERIDAS = {
   documental: ['senal_ids', 'resumen', 'limitaciones'],

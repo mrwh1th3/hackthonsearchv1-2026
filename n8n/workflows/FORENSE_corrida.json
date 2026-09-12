@@ -25,9 +25,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Reutiliza la corrida `lista` con la misma idempotency_key o crea una `preparando`. `dataset` selecciona un ORIGEN AUTORIZADO, nunca una URL arbitraria. DEPENDE de forense-db.\nSELECT a.corrida_id, a.estado, a.idempotency_key, a.corrida_origen_id,\n       a.investigacion_id, a.dataset, a.reutilizada\n  FROM forense.abrir_corrida($1::text, $2::text, $3::uuid) a",
+        "query": "-- Reutiliza la corrida `lista` con la misma idempotency_key o crea una `preparando`. `dataset` selecciona un ORIGEN AUTORIZADO, nunca una URL arbitraria. DEPENDE de forense-db.\nSELECT a.corrida_id, a.estado, a.idempotency_key, a.corrida_origen_id,\n       a.investigacion_id, a.dataset, a.reutilizada\n  FROM forense.abrir_corrida(nullif(nullif($1::text, 'null'), '')::text, nullif(nullif($2::text, 'null'), '')::text, nullif(nullif($3::text, 'null'), '')::uuid) a",
         "options": {
-          "queryReplacement": "={{ $json.body.dataset }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.corrida_origen_id }}"
+          "queryReplacement": "={{ ($json.body.dataset) ?? 'null' }}, ={{ ($json.body.idempotency_key) ?? 'null' }}, ={{ ($json.body.corrida_origen_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -55,16 +55,16 @@
       "typeVersion": 1.5,
       "position": [
         440,
-        140
+        -140
       ],
       "name": "Responder corrida 202"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Snapshot COMPLETO; con corrida_origen_id clona (regla 10: corridas aisladas). DEPENDE de forense-db.\nSELECT s.corrida_id, s.estado, s.filas_por_tabla, s.corrida_origen_id\n  FROM forense.cargar_o_clonar_snapshot($1::uuid, $2::uuid) s",
+        "query": "-- Snapshot COMPLETO; con corrida_origen_id clona (regla 10: corridas aisladas). DEPENDE de forense-db.\nSELECT s.corrida_id, s.estado, s.filas_por_tabla, s.corrida_origen_id\n  FROM forense.cargar_o_clonar_snapshot(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::uuid) s",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Validar e idempotencia').first().json.corrida_origen_id }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}, ={{ ($('Validar e idempotencia').first().json.corrida_origen_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -83,9 +83,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Conteos, dataset_hash, fecha_corte y familias_evaluables → `lista`; fallo → `error` con causa. Una corrida vacía no se investiga. DEPENDE de forense-db.\nSELECT v.corrida_id, v.estado, v.dataset_hash, v.fecha_corte,\n       v.familias_evaluables, v.causa\n  FROM forense.verificar_integridad_corrida($1::uuid) v",
+        "query": "-- Conteos, dataset_hash, fecha_corte y familias_evaluables → `lista`; fallo → `error` con causa. Una corrida vacía no se investiga. DEPENDE de forense-db.\nSELECT v.corrida_id, v.estado, v.dataset_hash, v.fecha_corte,\n       v.familias_evaluables, v.causa\n  FROM forense.verificar_integridad_corrida(nullif(nullif($1::text, 'null'), '')::uuid) v",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -104,9 +104,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- La función hace el claim atómico de `lista` a `procesando`: n8n NO anticipa el cambio de estado (003).\nSELECT forense.correr_pistas($1::uuid) AS pistas_insertadas",
+        "query": "-- La función hace el claim atómico de `lista` a `procesando`: n8n NO anticipa el cambio de estado (003).\nSELECT forense.correr_pistas(nullif(nullif($1::text, 'null'), '')::uuid) AS pistas_insertadas",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -125,9 +125,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- DEPENDE de 004 (forense-db).\nSELECT forense.armar_clusters($1::uuid) AS clusters_armados",
+        "query": "-- DEPENDE de 004 (forense-db).\nSELECT forense.armar_clusters(nullif(nullif($1::text, 'null'), '')::uuid) AS clusters_armados",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -146,9 +146,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Cola COMPLETA ordenada por score. El predicado es EL MISMO de forense.cola_corrida (012: pendiente y sin caso): si difiriera, `cola_restante` contaría clusters que el despacho nunca elige y el bucle no terminaría. El límite de activos lo impone el nodo siguiente, no este SELECT.\nSELECT k.id AS cluster_id, k.corrida_id, k.score, k.estado,\n       $2::uuid AS investigacion_id, $3::text AS idempotency_key\n  FROM forense.clusters k\n WHERE k.corrida_id = $1::uuid\n   AND k.estado = 'pendiente'\n   AND NOT EXISTS (SELECT 1 FROM forense.casos c WHERE c.cluster_id = k.id)\n ORDER BY k.score DESC NULLS LAST, k.id",
+        "query": "-- Cola COMPLETA ordenada por score. El predicado es EL MISMO de forense.cola_corrida (012: pendiente y sin caso): si difiriera, `cola_restante` contaría clusters que el despacho nunca elige y el bucle no terminaría. El límite de activos lo impone el nodo siguiente, no este SELECT.\nSELECT k.id AS cluster_id, k.corrida_id, k.score, k.estado,\n       nullif(nullif($2::text, 'null'), '')::uuid AS investigacion_id, nullif(nullif($3::text, 'null'), '')::text AS idempotency_key\n  FROM forense.clusters k\n WHERE k.corrida_id = nullif(nullif($1::text, 'null'), '')::uuid\n   AND k.estado = 'pendiente'\n   AND NOT EXISTS (SELECT 1 FROM forense.casos c WHERE c.cluster_id = k.id)\n ORDER BY k.score DESC NULLS LAST, k.id",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Validar e idempotencia').first().json.investigacion_id }}, ={{ $('Validar e idempotencia').first().json.idempotency_key }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}, ={{ ($('Validar e idempotencia').first().json.investigacion_id) ?? 'null' }}, ={{ ($('Validar e idempotencia').first().json.idempotency_key) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -255,9 +255,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. `cerrable` añade el único caso en que `terminada` es false y aun así no hay nada que esperar: `sin_clusters` (estado_corrida exige total>0 para declarar terminada, así que una corrida sin clusters giraría para siempre). DEPENDE de forense-db.\nSELECT e.corrida_id, e.terminada, e.estado_final,\n       e.completados, e.en_cola, e.errores,\n       (e.terminada OR e.estado_final = 'sin_clusters') AS cerrable\n  FROM forense.estado_corrida($1::uuid) e",
+        "query": "-- Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. `cerrable` añade el único caso en que `terminada` es false y aun así no hay nada que esperar: `sin_clusters` (estado_corrida exige total>0 para declarar terminada, así que una corrida sin clusters giraría para siempre). DEPENDE de forense-db.\nSELECT e.corrida_id, e.terminada, e.estado_final,\n       e.completados, e.en_cola, e.errores,\n       (e.terminada OR e.estado_final = 'sin_clusters') AS cerrable\n  FROM forense.estado_corrida(nullif(nullif($1::text, 'null'), '')::uuid) e",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -309,8 +309,8 @@
     {
       "parameters": {
         "resume": "timeInterval",
-        "amount": "={{ 10000 }}",
-        "unit": "ms"
+        "amount": "={{ (10000) / 1000 }}",
+        "unit": "seconds"
       },
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -323,9 +323,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Una fila SIEMPRE (cola_corrida devuelve una). `pendientes` usa EL MISMO predicado que cuenta `cola_restante`: los dos números tienen que hablar de los mismos clusters o el bucle gira sin despachar. DEPENDE de db/012.\nSELECT q.corrida_id, q.clusters_total, q.cola_restante, q.casos_activos,\n       COALESCE((SELECT jsonb_agg(jsonb_build_object(\n                          'cluster_id', k.id, 'score', k.score)\n                        ORDER BY k.score DESC NULLS LAST, k.id)\n                   FROM forense.clusters k\n                  WHERE k.corrida_id = $1::uuid\n                    AND k.estado = 'pendiente'\n                    AND NOT EXISTS (SELECT 1 FROM forense.casos c\n                                     WHERE c.cluster_id = k.id)),\n                '[]'::jsonb) AS pendientes\n  FROM forense.cola_corrida($1::uuid) q",
+        "query": "-- Una fila SIEMPRE (cola_corrida devuelve una). `pendientes` usa EL MISMO predicado que cuenta `cola_restante`: los dos números tienen que hablar de los mismos clusters o el bucle gira sin despachar. DEPENDE de db/012.\nSELECT q.corrida_id, q.clusters_total, q.cola_restante, q.casos_activos,\n       COALESCE((SELECT jsonb_agg(jsonb_build_object(\n                          'cluster_id', k.id, 'score', k.score)\n                        ORDER BY k.score DESC NULLS LAST, k.id)\n                   FROM forense.clusters k\n                  WHERE k.corrida_id = nullif(nullif($1::text, 'null'), '')::uuid\n                    AND k.estado = 'pendiente'\n                    AND NOT EXISTS (SELECT 1 FROM forense.casos c\n                                     WHERE c.cluster_id = k.id)),\n                '[]'::jsonb) AS pendientes\n  FROM forense.cola_corrida(nullif(nullif($1::text, 'null'), '')::uuid) q",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -419,9 +419,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista. `estado_cierre` lo traduce al dominio de `corridas.estado` (CHECK: preparando|lista|procesando|completada|error): `sin_clusters` NO es un estado persistible y escribirlo rompía la restricción; el matiz viaja en `metricas.estado_final_calculado`.\nSELECT forense.v_metricas_corrida($1::uuid)\n       || jsonb_build_object('estado_final_calculado', e.estado_final) AS metricas,\n       e.estado_final, e.terminada,\n       CASE WHEN e.estado_final = 'error' THEN 'error' ELSE 'completada' END AS estado_cierre\n  FROM forense.estado_corrida($1::uuid) e",
+        "query": "-- Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista. `estado_cierre` lo traduce al dominio de `corridas.estado` (CHECK: preparando|lista|procesando|completada|error): `sin_clusters` NO es un estado persistible y escribirlo rompía la restricción; el matiz viaja en `metricas.estado_final_calculado`.\nSELECT forense.v_metricas_corrida(nullif(nullif($1::text, 'null'), '')::uuid)\n       || jsonb_build_object('estado_final_calculado', e.estado_final) AS metricas,\n       e.estado_final, e.terminada,\n       CASE WHEN e.estado_final = 'error' THEN 'error' ELSE 'completada' END AS estado_cierre\n  FROM forense.estado_corrida(nullif(nullif($1::text, 'null'), '')::uuid) e",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -440,9 +440,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.\nUPDATE forense.corridas\n   SET estado = $2::text, fin = now(), metricas = $3::jsonb\n WHERE id = $1::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
+        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.\nUPDATE forense.corridas\n   SET estado = nullif(nullif($2::text, 'null'), '')::text, fin = now(), metricas = $3::jsonb\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $json.estado_cierre }}, ={{ JSON.stringify($json.metricas) }}"
+          "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}, ={{ ($json.estado_cierre) ?? 'null' }}, ={{ (JSON.stringify($json.metricas)) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

@@ -42,7 +42,7 @@ import type {
   Tarea,
   TrayectoriaPunto,
 } from "./types";
-import type { CasoDetalle, DataSource, EntidadPerfil, EstadisticasCorrida } from "./source";
+import type { AuditorResultado, CasoDetalle, DataSource, EntidadPerfil, EstadisticasCorrida } from "./source";
 
 const corrida = corridaFixture as unknown as Corrida;
 const casos: Caso[] = [caso0, caso1, caso2] as unknown as Caso[];
@@ -195,5 +195,15 @@ export class FixtureDataSource implements DataSource {
 
   async getMapperEjemplo(): Promise<MapperPropuesta> {
     return mapperFixture as unknown as MapperPropuesta;
+  }
+
+  async getAuditorResultado(_corridaId: string): Promise<AuditorResultado | null> {
+    void _corridaId;
+    return null;
+  }
+
+  async getAuditorExpedienteHtml(_corridaId: string): Promise<string | null> {
+    void _corridaId;
+    return null;
   }
 }

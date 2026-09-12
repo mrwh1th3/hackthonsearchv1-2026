@@ -1,0 +1,80 @@
+{
+  "tuning": {
+    "seeds": [
+      7002
+    ],
+    "rows": [
+      {
+        "schemes_planted": 0,
+        "schemes_found": 0,
+        "recall_pct": 100.0,
+        "decoys_planted": 10,
+        "decoys_accused": 0,
+        "false_accusation_rate_pct": 0.0,
+        "peso_claimed": 0,
+        "peso_actual": 0,
+        "peso_reconciles": "n/a",
+        "unmatched_findings": [],
+        "missed": [],
+        "decoys_hit": [],
+        "seed": 7002,
+        "llm_calls": 0,
+        "mxn_cost": 0.0,
+        "wall_clock_s": 0.009,
+        "format_valid": true,
+        "deterministic": true,
+        "case_file": "/Users/victorblanco/Downloads/hackthonsearchv1/data/forensic/empty/seed_7002/run_a/case_file.html"
+      }
+    ]
+  },
+  "heldout": {
+    "seeds": [
+      301,
+      302
+    ],
+    "rows": [
+      {
+        "schemes_planted": 0,
+        "schemes_found": 0,
+        "recall_pct": 100.0,
+        "decoys_planted": 10,
+        "decoys_accused": 0,
+        "false_accusation_rate_pct": 0.0,
+        "peso_claimed": 0,
+        "peso_actual": 0,
+        "peso_reconciles": "n/a",
+        "unmatched_findings": [],
+        "missed": [],
+        "decoys_hit": [],
+        "seed": 301,
+        "llm_calls": 0,
+        "mxn_cost": 0.0,
+        "wall_clock_s": 0.007,
+        "format_valid": true,
+        "deterministic": true,
+        "case_file": "/Users/victorblanco/Downloads/hackthonsearchv1/data/forensic/empty/seed_301/run_a/case_file.html"
+      },
+      {
+        "schemes_planted": 0,
+        "schemes_found": 0,
+        "recall_pct": 100.0,
+        "decoys_planted": 10,
+        "decoys_accused": 0,
+        "false_accusation_rate_pct": 0.0,
+        "peso_claimed": 0,
+        "peso_actual": 0,
+        "peso_reconciles": "n/a",
+        "unmatched_findings": [],
+        "missed": [],
+        "decoys_hit": [],
+        "seed": 302,
+        "llm_calls": 0,
+        "mxn_cost": 0.0,
+        "wall_clock_s": 0.009,
+        "format_valid": true,
+        "deterministic": true,
+        "case_file": "/Users/victorblanco/Downloads/hackthonsearchv1/data/forensic/empty/seed_302/run_a/case_file.html"
+      }
+    ]
+  }
+}

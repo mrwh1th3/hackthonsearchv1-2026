@@ -22,7 +22,10 @@ const NOMBRES_CREDENCIAL = new Set(
 );
 
 const archivos = fs.readdirSync(DIR).filter((f) => f.endsWith('.json'));
-const cargar = (f) => JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
+// Revierte `nullif($N::text, 'null')::tipo` (nulosSeguros del generador) para que
+// las aserciones sigan leyendo la firma `$N::tipo`.
+const desenvolver = (wf) => { for (const n of wf.nodes) { if (n.parameters && typeof n.parameters.query === 'string') n.parameters.query = n.parameters.query.replace(/nullif\(nullif\(\$(\d+)::text, 'null'\), ''\)::(\w+)/g, '$$$1::$2'); } return wf; };
+const cargar = (f) => desenvolver(JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')));
 
 test('hay JSON exportados que revisar', () => {
   assert.ok(archivos.length >= 2, `se esperaban al menos 2 workflows, hay ${archivos.length}`);
@@ -357,11 +360,14 @@ test('worker: el aviso de reintento queda registrado ANTES del POST (regla 2)', 
     .filter(([, s]) => s.main.flat().some((d) => d.node === 'POST /v1/messages'))
     .map(([origen]) => origen);
   assert.deepEqual(entradas, ['Registrar aviso de reintento']);
-  // La consulta devuelve SIEMPRE una fila (registrado=false sin aviso): si no,
-  // el POST se quedaría sin ítems de entrada cuando no hay reintento.
+  // La RPC devuelve SIEMPRE una fila (registrado=false sin aviso): si no, el
+  // POST se quedaría sin ítems de entrada cuando no hay reintento. Es un nodo
+  // httpRequest a PostgREST (no Postgres): ver la nota junto al nodo sobre
+  // por qué salió del nodo Postgres de n8n.
   const nodo = wf.nodes.find((n) => n.name === 'Registrar aviso de reintento');
-  assert.match(nodo.parameters.query, /AS registrado/);
-  assert.match(nodo.parameters.query, /SELECT \$3::uuid AS caso_id/);
+  assert.equal(nodo.type, 'n8n-nodes-base.httpRequest');
+  assert.match(nodo.parameters.url, /\/rpc\/registrar_aviso_reintento/);
+  assert.match(nodo.parameters.jsonBody, /p_corrida/);
   // El cuerpo del POST sigue saliendo del constructor por referencia de nodo,
   // así que interponer el registro no cambia lo que se envía.
   const post = wf.nodes.find((n) => n.name === 'POST /v1/messages');

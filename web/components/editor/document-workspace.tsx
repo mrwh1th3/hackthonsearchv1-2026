@@ -6,7 +6,6 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { AlertTriangle, Check, FileText, History, Loader2, RotateCcw } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -82,7 +81,9 @@ export function DocumentWorkspace({
   const validadas = useMemo(() => new Set(referenciasValidadas), [referenciasValidadas]);
   const [documentoActual, setDocumentoActual] = useState<Documento>(documento);
   const [version, setVersion] = useState(versionInicial);
-  const [revision, setRevision] = useState(estadoRevision);
+  // Sólo se escribe: la píldora que lo mostraba se retiró (feedback 2026-09-12);
+  // el estado se conserva porque `adoptarVersion` lo actualiza y el historial lo usa.
+  const [, setRevision] = useState(estadoRevision);
   const [modo, setModo] = useState<Modo>("editar");
   const [zoom, setZoom] = useState<number | "ancho">(100);
   const [guardado, setGuardado] = useState<EstadoGuardado>({ tipo: "limpio" });
@@ -91,8 +92,7 @@ export function DocumentWorkspace({
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [historial, setHistorial] = useState<VersionHistorial[]>([]);
   const [comparando, setComparando] = useState<number | null>(null);
-  const [anchoChat, setAnchoChat] = useState(360);
-  const [titulo, setTitulo] = useState(`Expediente ${rfc}`);
+  const [titulo, setTitulo] = useState(`Reporte ${rfc}`);
 
   const lienzoRef = useRef<HTMLDivElement>(null);
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,7 +117,7 @@ export function DocumentWorkspace({
     ],
     content: documento,
     editorProps: {
-      attributes: { class: "hoja-prosa", "aria-label": "Documento del expediente", role: "textbox" },
+      attributes: { class: "hoja-prosa", "aria-label": "Documento del reporte", role: "textbox" },
     },
     onUpdate: ({ editor: instancia }) => {
       const actualizado = normalizarDocumento(instancia.getJSON());
@@ -232,7 +232,7 @@ export function DocumentWorkspace({
         // recarga, u otra pestaña). Montar en la versión vieja dejaría toda
         // escritura en conflicto permanente.
         adoptarVersionRef.current?.(vigente);
-        toast.info(`El expediente ya estaba en la versión ${vigente.version}: se cargó esa.`);
+        toast.info(`El reporte ya estaba en la versión ${vigente.version}: se cargó esa.`);
       }
     },
     [casoId],
@@ -256,7 +256,7 @@ export function DocumentWorkspace({
     if (!resultado.ok) {
       toast.error(
         resultado.error.error === "conflicto_version"
-          ? `El expediente ya está en la versión ${resultado.error.version_actual}.`
+          ? `El reporte ya está en la versión ${resultado.error.version_actual}.`
           : `No se pudo revertir (${resultado.error.error}).`,
       );
       return;
@@ -283,37 +283,31 @@ export function DocumentWorkspace({
   const escala = zoom === "ancho" ? 1 : zoom / 100;
 
   return (
-    <div className="flex flex-col" data-testid="document-workspace">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="document-workspace">
       <EstilosHoja />
 
+      {/*
+        Dos contenedores hermanos, idénticos a `/documentos/[id]`: uno
+        grande a la izquierda con **todo** el documento —cabecera, menús,
+        toolbar, índice y hoja— y el del chat de IA a la derecha. Nada del
+        editor queda flotando fuera de su caja (feedback 2026-09-12).
+      */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-2.5 lg:flex-row lg:overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-border bg-surface">
+
       {/* Cabecera: título, breadcrumb, versión y estado de guardado */}
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 print:hidden">
-        <div className="flex min-w-0 items-center gap-2">
+      <header className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 print:hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <FileText size={16} className="shrink-0 text-text-muted" aria-hidden />
           <input
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
             aria-label="Título del documento"
-            className="min-w-0 max-w-[280px] flex-1 rounded-[var(--radius-input)] border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-text hover:border-border focus:border-border focus:outline-none"
+            className="min-w-0 flex-1 rounded-[var(--radius-input)] border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-text hover:border-border focus:border-border focus:outline-none"
           />
-          <nav aria-label="Ruta" className="hidden items-center gap-1 text-xs text-text-subtle sm:flex">
-            <Link href="/" className="hover:text-text">
-              Cola
-            </Link>
-            <span aria-hidden>/</span>
-            <Link href={`/casos/${casoId}`} className="hover:text-text">
-              {rfc}
-            </Link>
-            <span aria-hidden>/</span>
-            <span className="text-text-muted">Expediente</span>
-          </nav>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11px] text-text-muted">
-            v{version} · {revision}
-            {nivel ? ` · ${nivel}` : ""}
-          </span>
 
           <span
             role="status"
@@ -335,7 +329,7 @@ export function DocumentWorkspace({
             )}
             {guardado.tipo === "conflicto" && (
               <>
-                <AlertTriangle size={11} aria-hidden /> Conflicto: el expediente está en la v{guardado.versionActual}. Tu borrador
+                <AlertTriangle size={11} aria-hidden /> Conflicto: el reporte está en la v{guardado.versionActual}. Tu borrador
                 se conserva.
               </>
             )}
@@ -356,18 +350,12 @@ export function DocumentWorkspace({
           >
             <History size={14} aria-hidden /> Historial
           </button>
-          <Link
-            href={`/casos/${casoId}`}
-            className="inline-flex h-8 items-center rounded-[var(--radius-input)] border border-border bg-surface px-2.5 text-xs text-text hover:bg-surface-hover"
-          >
-            Abrir evidencia
-          </Link>
           <DescargasExpediente casoId={casoId} version={version} />
         </div>
       </header>
 
       {/* Menú Archivo/Editar/Ver/Insertar/Formato */}
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-surface px-2 py-1 text-xs print:hidden">
+      <div className="flex flex-none flex-wrap items-center gap-0.5 border-b border-border bg-surface px-2 py-1 text-xs print:hidden">
         {[
           {
             etiqueta: "Archivo",
@@ -486,61 +474,55 @@ export function DocumentWorkspace({
       <EditorToolbar editor={editor} deshabilitado={modo !== "editar"} />
 
       {modo === "sugerir" && (
-        <p className="border-b border-border bg-surface-muted px-3 py-1.5 text-[11px] text-text-muted print:hidden">
+        <p className="flex-none border-b border-border bg-surface-muted px-3 py-1.5 text-[11px] text-text-muted print:hidden">
           Modo sugerir: el documento no se edita a mano. Selecciona texto y pide el cambio en el chat; llega como propuesta con
           diff y solo &quot;Aplicar&quot; crea versión.
         </p>
       )}
 
-      {/* Cuerpo: índice · hoja · chat */}
-      <div className="flex min-h-[70vh] flex-col lg:flex-row">
-        <div className="shrink-0 border-b border-border px-2 py-2 lg:w-[220px] lg:border-b-0 lg:border-r">
-          <IndiceSecciones entradas={indice} activa={seleccion?.block_ids[0]} onIr={irABloque} />
-        </div>
+      {/*
+        Cuerpo: índice + hoja viven juntos en un solo bloque contenedor
+        (mismo patrón que `InvestigacionVista`: `rounded-[18px] border
+        border-border bg-surface`), y el chat de IA queda aparte, como bloque
+        propio — a pedido del usuario (2026-09-12): antes los tres eran
+        hermanos sueltos en la misma fila y no se distinguía "el documento"
+        de "el chat".
+      */}
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <div className="shrink-0 overflow-y-auto border-b border-border px-2 py-2 lg:w-[220px] lg:border-b-0 lg:border-r">
+            <IndiceSecciones entradas={indice} activa={seleccion?.block_ids[0]} onIr={irABloque} />
+          </div>
 
-        <div ref={lienzoRef} className="lienzo-editor min-w-0 flex-1 overflow-auto bg-app-bg p-4 sm:p-8">
-          <div
-            className="zoom-hoja mx-auto"
-            style={{
-              width: zoom === "ancho" ? "100%" : 794 * escala,
-              maxWidth: "100%",
-            }}
-          >
+          <div ref={lienzoRef} className="lienzo-editor min-w-0 flex-1 overflow-auto bg-app-bg p-4 sm:p-8">
             <div
-              className="hoja-a4 mx-auto max-w-full"
-              style={zoom === "ancho" ? { width: "100%", minWidth: 0 } : { transform: `scale(${escala})`, transformOrigin: "top left" }}
+              className="zoom-hoja mx-auto"
+              style={{
+                width: zoom === "ancho" ? "100%" : 794 * escala,
+                maxWidth: "100%",
+              }}
             >
-              {editor ? (
-                <EditorContent editor={editor} />
-              ) : (
-                <p className="text-sm text-text-subtle">Cargando el documento…</p>
-              )}
+              <div
+                className="hoja-a4 mx-auto max-w-full"
+                style={zoom === "ancho" ? { width: "100%", minWidth: 0 } : { transform: `scale(${escala})`, transformOrigin: "top left" }}
+              >
+                {editor ? (
+                  <EditorContent editor={editor} />
+                ) : (
+                  <p className="text-sm text-text-subtle">Cargando el documento…</p>
+                )}
+              </div>
             </div>
           </div>
+          </div>
         </div>
 
-        {/* Chat: 360 px redimensionable en escritorio, apilado en móvil. */}
-        <div
-          className="flex w-full shrink-0 flex-col border-t border-border lg:w-[var(--ancho-chat)] lg:border-t-0"
-          style={{ "--ancho-chat": `${anchoChat}px` } as React.CSSProperties}
-        >
-          <div className="flex items-center gap-1 border-b border-border px-2 py-1 print:hidden">
-            <label htmlFor="ancho-chat" className="text-[10px] text-text-subtle">
-              ancho del panel
-            </label>
-            <input
-              id="ancho-chat"
-              type="range"
-              min={300}
-              max={520}
-              step={20}
-              value={anchoChat}
-              onChange={(e) => setAnchoChat(Number(e.target.value))}
-              className="h-1 w-24"
-              aria-label="Ancho del panel de chat"
-            />
-          </div>
-          <div className="h-[520px] min-h-0 lg:h-[calc(70vh-28px)]">
+        {/*
+          Chat de IA: misma columna que en `/documentos/[id]` —sin caja ni
+          borde propios, fondo transparente y 268 px a la derecha (feedback
+          2026-09-12). El selector de ancho se va con ella.
+        */}
+        <div className="flex w-full shrink-0 flex-col overflow-hidden bg-transparent max-lg:h-[520px] lg:w-[268px] lg:self-stretch lg:pl-3.5">
+          <div className="min-h-0 flex-1 overflow-hidden">
             <ReportChat
               casoId={casoId}
               version={version}

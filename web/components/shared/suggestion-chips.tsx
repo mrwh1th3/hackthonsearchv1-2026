@@ -10,7 +10,7 @@ export interface Sugerencia {
 }
 
 export const SUGERENCIAS: Sugerencia[] = [
-  { id: "seguir_dinero", titulo: "Seguir el dinero", descripcion: "Rastrea entradas, salidas y retornos del RFC/cluster seleccionado.", requiere: ["rfc"] },
+  { id: "seguir_dinero", titulo: "Seguir el dinero", descripcion: "Rastrea entradas, salidas y retornos del RFC/investigación seleccionado.", requiere: ["rfc"] },
   { id: "sin_pago", titulo: "Buscar facturas sin pago", descripcion: "Concilia comprobantes del periodo y declara cobertura faltante.", requiere: ["rfc"] },
   { id: "intentar_refutar", titulo: "Intentar refutar", descripcion: "Prueba explicaciones legítimas de las pistas seleccionadas.", requiere: ["rfc"] },
   { id: "comparar_pares", titulo: "Comparar con sus pares", descripcion: "Usa giro/tamaño y métricas disponibles.", requiere: ["rfc"] },
@@ -66,6 +66,6 @@ export function SuggestionChips({ seleccionId, onSelect, disponible, className }
 
 function etiquetaFaltante(r: "rfc" | "cluster" | "evidencia"): string {
   if (r === "rfc") return "un RFC";
-  if (r === "cluster") return "un cluster";
+  if (r === "cluster") return "una investigación";
   return "evidencia";
 }

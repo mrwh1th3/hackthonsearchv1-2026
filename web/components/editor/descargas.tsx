@@ -63,7 +63,7 @@ export function DescargasExpediente({
             "inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-input)] border border-border bg-surface px-2.5 text-xs text-text hover:bg-surface-hover",
             className,
           )}
-          aria-label="Descargar expediente"
+          aria-label="Descargar reporte"
         >
           {estado === "generando" ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Download size={14} aria-hidden />}
           Descargar
@@ -85,7 +85,7 @@ export function DescargasExpediente({
             onSelect={() => void descargar("json")}
             className="cursor-pointer rounded-md px-2 py-1.5 text-text outline-none hover:bg-surface-hover focus:bg-surface-hover"
           >
-            JSON del expediente
+            JSON del reporte
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           <DropdownMenu.Item

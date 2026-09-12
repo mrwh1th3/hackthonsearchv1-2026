@@ -14,3 +14,5 @@ coverage/
 # eval/metricas.py y loaders/load_ibm_aml.py emiten etiquetas por transacción
 # derivadas del dataset de entrada: son datos, no fuente.
 eval/input_labels_*.csv
+# estates y claves generadas por el harness forense
+data/forensic/

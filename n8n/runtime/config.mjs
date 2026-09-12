@@ -32,18 +32,25 @@ export const MODELOS_POR_ROL = Object.freeze({
   defensor: 'opus',
   replica: 'opus',
   redactor: 'sonnet',
-  editor: 'sonnet',
+  // Editor: conversacional (modo "pregunta") + propuestas de edición sobre el
+  // expediente. Por ahora es el único rol en haiku — el usuario lo pidió así
+  // el 2026-09-12 mientras se mantiene solo conversacional; no confundir con
+  // los especialistas de investigación, que siguen en sonnet/opus.
+  editor: 'haiku',
 });
 
-// Alias → ID de API. VERIFICADOS por el coordinador, no por este worktree:
-// smoke `FORENSE_smoke_anthropic` del 2026-09-12 con la credencial
-// `Anthropic account`, ejecuciones n8n 283972 (claude-sonnet-5, stop_reason
-// tool_use, usage 645/45, 1089 ms) y 283975 (claude-opus-5). Aquí no hay red:
-// ningún test de este repo comprueba que existan. Saldo y rate limits siguen
-// sin medir (21 §5).
+// Alias → ID de API. sonnet/opus VERIFICADOS por el coordinador (ver
+// IDS_MODELO_EVIDENCIA); smoke `FORENSE_smoke_anthropic` del 2026-09-12 con la
+// credencial `Anthropic account`, ejecuciones n8n 283972 (claude-sonnet-5,
+// stop_reason tool_use, usage 645/45, 1089 ms) y 283975 (claude-opus-5).
+// `haiku` NO tiene smoke propio todavía — mismo formato de ID
+// (claude-haiku-4-5-20251001) pero sin ejecución registrada; el coordinador
+// debe correr el smoke antes de fiarse de esto en producción. Aquí no hay
+// red: ningún test de este repo comprueba que exista.
 export const IDS_MODELO = Object.freeze({
   sonnet: 'claude-sonnet-5',
   opus: 'claude-opus-5',
+  haiku: 'claude-haiku-4-5-20251001',
 });
 export const IDS_MODELO_VERIFICADOS = true;
 export const IDS_MODELO_EVIDENCIA = Object.freeze({
@@ -83,17 +90,21 @@ export const TECHO_CARACTERES_PAQUETE = Object.freeze({
 });
 
 // Techo de salida por rol (max_tokens del request). Configurable.
+// Con thinking adaptativo (por defecto en claude-opus-5 / claude-sonnet-5) el
+// razonamiento consume de max_tokens: con 2000 las respuestas se cortaban por
+// `max_tokens` a mitad de un tool_use o de la salida JSON (ejecución real
+// 2026-09-12). Es un techo, no un gasto: solo se cobra lo generado.
 export const MAX_TOKENS_SALIDA = Object.freeze({
-  documental: 2000,
-  financiero: 2000,
-  relacional: 2000,
-  temporal: 2000,
-  externo: 2000,
-  auditor: 4000,
-  defensor: 4000,
-  replica: 2000,
-  redactor: 8000,
-  editor: 8000,
+  documental: 8000,
+  financiero: 8000,
+  relacional: 8000,
+  temporal: 8000,
+  externo: 8000,
+  auditor: 16000,
+  defensor: 16000,
+  replica: 8000,
+  redactor: 16000,
+  editor: 16000,
 });
 
 // 03 + 06: allowlist de herramientas por rol. `leer_senal` NO existe para R1

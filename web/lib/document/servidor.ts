@@ -4,6 +4,7 @@ import { SESSION_COOKIE, verifySession, type SessionPayload } from "@/lib/auth/s
 import { getDataSource } from "@/lib/data";
 import { checkRateLimit, clientKeyFromRequest } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
+import { HEADER_SECRETO } from "@/lib/security/webhook";
 
 import { sembrarCaso } from "./almacen-demo";
 import { desdeMarkdown } from "./markdown";
@@ -142,7 +143,7 @@ export async function reenviarAWebhook(ruta: string, payload: unknown): Promise<
   if (!base || !secreto) throw new Error("webhook_no_configurado");
   return fetch(`${base.replace(/\/$/, "")}${ruta}`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-forense-secret": secreto },
+    headers: { "content-type": "application/json", [HEADER_SECRETO]: secreto },
     body: JSON.stringify(payload),
   });
 }

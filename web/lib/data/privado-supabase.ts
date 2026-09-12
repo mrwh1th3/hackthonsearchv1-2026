@@ -151,7 +151,7 @@ export function normalizarTipoNotificacion(tipo: string): Notificacion["tipo"] {
  */
 export function recursoDesdeRuta(ruta: string | null): Notificacion["recurso"] {
   if (!ruta) return { tipo: "investigacion", id: "" };
-  const m = ruta.match(/^\/(investigaciones|casos)\/([^/]+)/);
+  const m = ruta.match(/^\/(investigaciones|documentos|casos)\/([^/]+)/);
   if (!m) return { tipo: "investigacion", id: ruta };
   const [, prefijo, id] = m;
   return { tipo: prefijo === "casos" ? "reporte" : "investigacion", id };
@@ -176,7 +176,8 @@ export function mapInvestigacion(f: FilaInvestigacion): Investigacion {
     perfil_id: f.perfil_id,
     modo: f.modo,
     corrida_id: f.corrida_id,
-    caso_ids: f.caso_id ? [f.caso_id] : [],
+    // modo `corrida`: los casos de la investigación son los de su reporte_manifest.
+    caso_ids: f.caso_id ? [f.caso_id] : (f.reporte_manifest ?? []).map((m) => m.caso_id).filter((id): id is string => Boolean(id)),
     estado: f.estado,
     investigacion_padre_id: f.investigacion_padre_id,
     creado: f.creado,

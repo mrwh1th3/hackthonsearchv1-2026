@@ -26,7 +26,7 @@ export function IndiceSecciones({
   const [abierto, setAbierto] = useState(true);
 
   return (
-    <nav aria-label="Índice del expediente" className="flex flex-col gap-1 text-sm print:hidden">
+    <nav aria-label="Índice del reporte" className="flex flex-col gap-1 text-sm print:hidden">
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
@@ -69,12 +69,6 @@ export function IndiceSecciones({
             );
           })}
         </ol>
-      )}
-
-      {entradas.some((e) => e.estado === "ausente") && (
-        <p className="mt-1 px-2 text-[11px] leading-tight text-text-subtle">
-          Las secciones tachadas no vienen en esta versión del expediente; las escribe el Redactor (21 §4).
-        </p>
       )}
     </nav>
   );

@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/shared/app-shell";
 import { FalloDatos } from "@/components/shared/fallo-datos";
-import { obtenerHistorialPrivado, obtenerNotificacionesPrivadas, obtenerPerfilPrivado } from "@/lib/data/privado";
+import { fuentePrivadaActual, obtenerHistorialPrivado, obtenerNotificacionesPrivadas, obtenerPerfilPrivado } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +56,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       perfilOrganizacion={perfil.organizacion}
       notificacionesNoLeidas={noLeidas}
       investigaciones={investigaciones}
+      perfil={perfil}
+      perfilEsFixture={fuentePrivadaActual() === "fixture"}
     >
       {children}
     </AppShell>

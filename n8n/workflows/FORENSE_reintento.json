@@ -28,9 +28,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Conserva caso, historial y versión de contexto (17 §3): el reintento no reconstruye el cluster.\n-- version_contexto y la cuota de expansión viven en el CLUSTER, no en el\n-- caso (001): el reintento conserva la versión vigente, no la reinicia.\nSELECT c.id AS caso_id, c.corrida_id, c.cluster_id, c.nivel, c.n_reintentos,\n       c.tool_calls, c.presupuesto_agotado,\n       k.version_contexto, k.expandido AS expansiones_usadas,\n       $2::int AS intento, $3::text AS motivo, $4::jsonb AS objetivo\n  FROM forense.casos c\n  LEFT JOIN forense.clusters k ON k.corrida_id = c.corrida_id AND k.id = c.cluster_id\n WHERE c.id = $1::uuid",
+        "query": "-- Conserva caso, historial y versión de contexto (17 §3): el reintento no reconstruye el cluster.\n-- version_contexto y la cuota de expansión viven en el CLUSTER, no en el\n-- caso (001): el reintento conserva la versión vigente, no la reinicia.\nSELECT c.id AS caso_id, c.corrida_id, c.cluster_id, c.nivel, c.n_reintentos,\n       c.tool_calls, c.presupuesto_agotado,\n       k.version_contexto, k.expandido AS expansiones_usadas,\n       nullif(nullif($2::text, 'null'), '')::int AS intento, nullif(nullif($3::text, 'null'), '')::text AS motivo, $4::jsonb AS objetivo\n  FROM forense.casos c\n  LEFT JOIN forense.clusters k ON k.corrida_id = c.corrida_id AND k.id = c.cluster_id\n WHERE c.id = nullif(nullif($1::text, 'null'), '')::uuid",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.intento }}, ={{ $('Validar intento').first().json.motivo }}, ={{ JSON.stringify($json.objetivo) }}"
+          "queryReplacement": "={{ ($('Validar intento').first().json.caso_id) ?? 'null' }}, ={{ ($('Validar intento').first().json.intento) ?? 'null' }}, ={{ ($('Validar intento').first().json.motivo) ?? 'null' }}, ={{ (JSON.stringify($json.objetivo)) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -182,9 +182,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Por motivo (07 §3): comprobación pendiente en familia evaluable, ruta concreta, trampa con evidencias objetivo, autor de la evidencia inválida o autores en contradicción. NUNCA «todos los faltantes por defecto». DEPENDE de forense-db.\nSELECT * FROM forense.autores_reintento($1::uuid, $2::text, $3::jsonb)",
+        "query": "-- Por motivo (07 §3): comprobación pendiente en familia evaluable, ruta concreta, trampa con evidencias objetivo, autor de la evidencia inválida o autores en contradicción. NUNCA «todos los faltantes por defecto». DEPENDE de forense-db.\nSELECT * FROM forense.autores_reintento(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::text, $3::jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.motivo }}, ={{ $('Validar intento').first().json.objetivo }}"
+          "queryReplacement": "={{ ($('Validar intento').first().json.caso_id) ?? 'null' }}, ={{ ($('Validar intento').first().json.motivo) ?? 'null' }}, ={{ ($('Validar intento').first().json.objetivo) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -236,9 +236,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Si la única expansión del cluster ya se usó, se registra el límite y el reintento sigue SIN expandir (07 §3).\nWITH ev AS (\n  SELECT forense.log(\n           p_caso => $1::uuid, p_agente => 'sistema', p_tipo => 'presupuesto_agotado',\n           p_payload => $2::jsonb, p_corrida => $3::uuid)\n)\nSELECT $1::uuid AS caso_id,\n       coalesce((select array_agg(x) from jsonb_array_elements_text($4::jsonb) x), '{}'::text[]) AS autores,\n       false AS expandido,\n       'cuota_expansion_agotada'::text AS limitacion FROM ev",
+        "query": "-- Si la única expansión del cluster ya se usó, se registra el límite y el reintento sigue SIN expandir (07 §3).\nWITH ev AS (\n  SELECT forense.log(\n           p_caso => nullif(nullif($1::text, 'null'), '')::uuid, p_agente => 'sistema', p_tipo => 'presupuesto_agotado',\n           p_payload => $2::jsonb, p_corrida => nullif(nullif($3::text, 'null'), '')::uuid)\n)\nSELECT nullif(nullif($1::text, 'null'), '')::uuid AS caso_id,\n       coalesce((select array_agg(x) from jsonb_array_elements_text($4::jsonb) x), '{}'::text[]) AS autores,\n       false AS expandido,\n       'cuota_expansion_agotada'::text AS limitacion FROM ev",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ={{ $('Validar intento').first().json.corrida_id }}, ={{ JSON.stringify($json.autores ?? []) }}"
+          "queryReplacement": "={{ ($('Validar intento').first().json.caso_id) ?? 'null' }}, ={{ (JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento })) ?? 'null' }}, ={{ ($('Validar intento').first().json.corrida_id) ?? 'null' }}, ={{ (JSON.stringify($json.autores ?? [])) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -257,9 +257,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Solo para cadena_incompleta y solo si queda la cuota. DEPENDE de forense-db.\nSELECT * FROM forense.expandir_cluster_reintento($1::uuid, $2::jsonb)",
+        "query": "-- Solo para cadena_incompleta y solo si queda la cuota. DEPENDE de forense-db.\nSELECT * FROM forense.expandir_cluster_reintento(nullif(nullif($1::text, 'null'), '')::uuid, $2::jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.objetivo }}"
+          "queryReplacement": "={{ ($('Validar intento').first().json.caso_id) ?? 'null' }}, ={{ ($('Validar intento').first().json.objetivo) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -278,9 +278,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Ronda 2 con intento 1|2 y la version_contexto vigente; las señales nuevas se enlazan a las previas y la historia se conserva. DEPENDE de forense-db.\nSELECT * FROM forense.crear_tareas_revision($1::uuid, $2::int,\n  coalesce((select array_agg(x) from jsonb_array_elements_text($3::jsonb) x), '{}'::text[]),\n  $4::jsonb)",
+        "query": "-- Ronda 2 con intento 1|2 y la version_contexto vigente; las señales nuevas se enlazan a las previas y la historia se conserva. DEPENDE de forense-db.\nSELECT * FROM forense.crear_tareas_revision(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int,\n  coalesce((select array_agg(x) from jsonb_array_elements_text($3::jsonb) x), '{}'::text[]),\n  $4::jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.intento }}, ={{ JSON.stringify($json.autores ?? []) }}, ={{ $('Validar intento').first().json.objetivo }}"
+          "queryReplacement": "={{ ($('Validar intento').first().json.caso_id) ?? 'null' }}, ={{ ($('Validar intento').first().json.intento) ?? 'null' }}, ={{ (JSON.stringify($json.autores ?? [])) ?? 'null' }}, ={{ ($('Validar intento').first().json.objetivo) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -327,9 +327,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.\nSELECT $1::uuid AS caso_id, b.paso, b.completa, b.faltantes, b.vencida\n  FROM jsonb_to_record(forense.estado_barrera($1::uuid, $2::text))\n    AS b(ok boolean, existe boolean, paso text, completa boolean,\n         faltantes jsonb, vencida boolean, estado jsonb)",
+        "query": "-- Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.\nSELECT nullif(nullif($1::text, 'null'), '')::uuid AS caso_id, b.paso, b.completa, b.faltantes, b.vencida\n  FROM jsonb_to_record(forense.estado_barrera(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::text))\n    AS b(ok boolean, existe boolean, paso text, completa boolean,\n         faltantes jsonb, vencida boolean, estado jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ 'reintento' + $('Validar intento').first().json.intento }}"
+          "queryReplacement": "={{ ($('Validar intento').first().json.caso_id) ?? 'null' }}, ={{ ('reintento' + $('Validar intento').first().json.intento) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -381,8 +381,8 @@
     {
       "parameters": {
         "resume": "timeInterval",
-        "amount": "={{ 10000 }}",
-        "unit": "ms"
+        "amount": "={{ (10000) / 1000 }}",
+        "unit": "seconds"
       },
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -395,9 +395,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Repite validaciones y defensas aplicables ANTES del dictamen: evidencia nueva no entra sin validar. DEPENDE de forense-db.\nSELECT * FROM forense.revalidar_caso($1::uuid)",
+        "query": "-- Repite validaciones y defensas aplicables ANTES del dictamen: evidencia nueva no entra sin validar. DEPENDE de forense-db.\nSELECT * FROM forense.revalidar_caso(nullif(nullif($1::text, 'null'), '')::uuid)",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}"
+          "queryReplacement": "={{ ($('Validar intento').first().json.caso_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

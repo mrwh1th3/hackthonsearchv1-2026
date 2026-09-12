@@ -24,6 +24,7 @@ import {
   MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, VARIANTE_REINTENTO_SIN_MOTIVO, FEWSHOT_POR_ROL,
 } from '../prompts/ensamblar.mjs';
 import { MAX_TOKENS_SALIDA } from './config.mjs';
+import { definicionHerramienta } from './provider/esquemas.mjs';
 // Voz: el endpoint y las variables permitidas son de forense-voice
 // (integrations/elevenlabs). El runtime los CONSUME, no los redefine.
 import { ENDPOINT_LLAMADA } from '../../integrations/elevenlabs/index.mjs';
@@ -118,6 +119,13 @@ export function catalogoPrompts({ dir = DIR_PROMPTS } = {}) {
       schema_salida: SCHEMA_SALIDA_POR_ROL[rol],
       tools_r1: [...toolsPorRol(rol, 1)],
       tools_r2: [...toolsPorRol(rol, 2)],
+      // Sin esto `construir-cuerpo` mandaba `tools` vacío y el modelo, sin
+      // herramientas reales, escribía la llamada como TEXTO JSON (ejecución
+      // real 2026-09-12: salida `{"tool":"forense_perfil",...}`).
+      definiciones_tools: Object.fromEntries(
+        [...new Set([...toolsPorRol(rol, 1), ...toolsPorRol(rol, 2)])]
+          .map((t) => [t, definicionHerramienta(t)]),
+      ),
     };
   }
   return {
@@ -190,15 +198,34 @@ const code = (name, archivo, constantes = null) => nodo(
 
 const codeInline = (name, jsCode) => nodo(name, 'n8n-nodes-base.code', { jsCode });
 
-const sql = (name, query, reemplazos = null, notaDependencia = null) => nodo(
+// Query Replacement de n8n renderiza un `null` de expresión como el TEXTO
+// "null", y `$N::uuid` / `::int` revientan ("invalid input syntax for type
+// integer: \"null\"", visto en ejecución real 2026-09-12). Un "null" textual
+// nunca es un uuid/entero/fecha válido, así que convertirlo a NULL SQL no
+// cambia ningún valor bueno.
+const nulosSeguros = (q) => q.replace(
+  /\$(\d+)::(uuid|int|bigint|timestamptz|text)\b/g,
+  (_, n, t) => `nullif(nullif($${n}::text, 'null'), '')::${t}`,
+);
+
+// Un valor `undefined` en Query Replacement hace que n8n DESCARTE el parámetro
+// y los siguientes se corren de posición ("there is no parameter $2", ejecución
+// real 2026-09-12). También descarta la cadena VACÍA, así que el respaldo es el
+// texto 'null', que `nulosSeguros` convierte en NULL SQL.
+const parametrosSeguros = (r) => (r === null ? null : r.replace(
+  /=\{\{\s*([\s\S]*?)\s*\}\}(?=\s*(?:,\s*=\{\{|$))/g,
+  (_, e) => `={{ (${e}) ?? 'null' }}`,
+));
+
+const sql = (name, query, reemplazos = null, notaDependencia = null, extra = {}) => nodo(
   name,
   'n8n-nodes-base.postgres',
   {
     operation: 'executeQuery',
-    query: notaDependencia ? `-- ${notaDependencia}\n${query}` : query,
-    options: reemplazos ? { queryReplacement: reemplazos } : {},
+    query: nulosSeguros(notaDependencia ? `-- ${notaDependencia}\n${query}` : query),
+    options: reemplazos ? { queryReplacement: parametrosSeguros(reemplazos) } : {},
   },
-  { credentials: CREDENCIALES.postgres },
+  { credentials: CREDENCIALES.postgres, ...extra },
 );
 
 function condicionBooleana(expresion, operacion = 'true') {
@@ -246,8 +273,13 @@ const ruta = (name, expresion, claves) => nodo(
   },
 );
 
+// El nodo `wait` de n8n sólo acepta unit en seconds|minutes|hours|days (confirmado
+// en ejecución real 2026-09-12: "Invalid wait unit" con unit:'ms'); `expresionMs`
+// llega en milisegundos por claridad del dominio (17 §3 habla de ms), así que se
+// convierte a segundos aquí, en un solo lugar.
 const esperar = (name, expresionMs) => nodo(
-  name, 'n8n-nodes-base.wait', { resume: 'timeInterval', amount: expresionMs, unit: 'ms' },
+  name, 'n8n-nodes-base.wait',
+  { resume: 'timeInterval', amount: `={{ (${expresionMs.replace(/^=\{\{\s*/, '').replace(/\s*\}\}$/, '')}) / 1000 }}`, unit: 'seconds' },
 );
 
 const subworkflow = (name, destino, campos, { esperar: esperarFin = false, modo = 'once' } = {}) => nodo(
@@ -282,8 +314,27 @@ function conectar(pares) {
   return connections;
 }
 
+// Con executionOrder v1, n8n recorre las ramas hermanas por POSICIÓN (la de
+// más arriba primero) y termina cada rama antes de pasar a la siguiente. Los
+// «Responder …» quedaban por debajo de su rama hermana (y=140 frente a y=0): la
+// investigación completa corría antes de responder y el cliente nunca recibía
+// el 202 (ejecución real 2026-09-12). Se suben por encima de sus hermanas.
+function responderPrimero(nodes, connections) {
+  const porNombre = new Map(nodes.map((n) => [n.name, n]));
+  for (const salidas of Object.values(connections)) {
+    for (const rama of salidas.main ?? []) {
+      const destinos = (rama ?? []).map((d) => porNombre.get(d.node)).filter(Boolean);
+      const responders = destinos.filter((n) => n.type === 'n8n-nodes-base.respondToWebhook');
+      if (responders.length === 0 || destinos.length < 2) continue;
+      const minY = Math.min(...destinos.filter((n) => !responders.includes(n)).map((n) => n.position[1]));
+      for (const r of responders) r.position = [r.position[0], minY - 140];
+    }
+  }
+  return nodes;
+}
+
 function workflow(name, nodes, connections) {
-  return { name, nodes, connections, active: false, settings: { executionOrder: 'v1' } };
+  return { name, nodes: responderPrimero(nodes, connections), connections, active: false, settings: { executionOrder: 'v1' } };
 }
 
 // ------------------------------------------------- FORENSE_ejecutar_agente
@@ -312,12 +363,19 @@ export function workerEjecutarAgente() {
       'SELECT c.ok, c.error, c.execution_id, c.fence AS fencing_token, c.revision, c.paso,',
       '       c.estado_interno, c.rol, c.tarea_id, c.caso_id, c.corrida_id,',
       '       c.editor_operacion_id, c.checkpoint, c.deadline_at, $2::text AS owner',
-      '  FROM jsonb_to_record(forense.claim_step($1::uuid, $2::text))',
+      // Los despachos de investigar_cluster/reintento mandan solo tarea_id + owner:
+      // la ejecución se resuelve desde la tarea (1:1). Sin esto $1 llegaba
+      // undefined, n8n descartaba el parámetro y el paso moría con "there is no
+      // parameter $2" (ejecución real 2026-09-12); solo el reconciliador, que sí
+      // manda execution_id, lograba arrancar las tareas ~10 s después.
+      '  FROM jsonb_to_record(forense.claim_step(',
+      '         coalesce($1::uuid, (SELECT e.id FROM forense.ejecuciones_agente e WHERE e.tarea_id = $3::uuid)),',
+      '         $2::text))',
       '    AS c(ok boolean, error text, execution_id uuid, fence bigint, revision int, paso int,',
       '         estado_interno text, rol text, tarea_id uuid, caso_id uuid, corrida_id uuid,',
       '         editor_operacion_id uuid, checkpoint jsonb, deadline_at timestamptz)',
     ].join('\n'),
-    '={{ $json.execution_id }}, ={{ $json.owner }}',
+    '={{ $json.execution_id }}, ={{ $json.owner }}, ={{ $json.tarea_id }}',
     '17 §4: claim_step devuelve jsonb {ok, fence, revision, estado_interno, checkpoint…}.',
   ));
 
@@ -380,7 +438,7 @@ export function workerEjecutarAgente() {
       "       coalesce(p.paso, 'ronda' || coalesce(t.ronda::text, '1')) AS paso_pipeline",
       '  FROM forense.ejecuciones_agente e',
       '  LEFT JOIN forense.artefactos_contexto a',
-      '         ON a.ejecucion_id = e.id AND a.hash = e.context_hash',
+      '         ON a.caso_id = e.caso_id AND a.hash = e.context_hash',
       '  LEFT JOIN forense.tareas_agente t ON t.id = e.tarea_id',
       '  LEFT JOIN LATERAL (SELECT pp.paso FROM forense.pasos_pipeline pp',
       "                      WHERE pp.caso_id = e.caso_id AND pp.estado = 'abierto'",
@@ -389,6 +447,16 @@ export function workerEjecutarAgente() {
     ].join('\n'),
     '={{ $json.execution_id }}, ={{ $json.owner }}, ={{ $json.fencing_token }}',
     'El paquete de contexto es el artefacto inmutable de la ejecución, no un JSON recompuesto por el nodo.',
+    // `forense.preparar_contexto_ronda1` inserta el artefacto UNA vez por
+    // caso+ronda (compartido por los 5 especialistas) y nunca escribe
+    // `ejecucion_id` (005 sólo fija hash/corrida_id/caso_id/contenido/bytes).
+    // El JOIN por `ejecucion_id = e.id` no podía casar jamás (confirmado en
+    // ejecución real 2026-09-12: "el checkpoint debe traer al menos el
+    // paquete de contexto" para las cinco tareas). `context_hash` sí es el
+    // mismo para las cinco (crear_tareas_ronda lo copia del artefacto recién
+    // insertado), así que caso_id+hash identifica la fila correcta sin
+    // ambigüedad, incluida cuando ronda2/reintento insertan un artefacto
+    // nuevo con otro hash para el mismo caso.
   ));
 
   add(code('Decidir accion', 'decidir-paso'));
@@ -428,28 +496,47 @@ export function workerEjecutarAgente() {
   // registrar y luego llamar. Si la escritura falla, la llamada NO se hace —
   // preferimos una ejecución en error a una llamada sin rastro.
   fila = 0; columna = 8;
-  add(sql(
+  // 'Registrar aviso de reintento' fue un nodo Postgres con 9 parámetros
+  // (primero un `WITH` en línea, después una función). En ejecución real
+  // 2026-09-12 el nodo Postgres v2 de n8n lo ejecutaba con "invalid input
+  // syntax for type uuid: '1'" (o, sin los `::casts`, "there is no parameter
+  // $9") de forma consistente, pese a que los mismos 9 valores reproducidos a
+  // mano en psql (PREPARE/EXECUTE, con y sin casts) siempre funcionaron, y
+  // pese a probar dos puertos del pooler de Supabase y eliminar toda
+  // referencia cruzada a otro nodo. No se aisló la causa dentro del nodo
+  // Postgres de n8n. Se saca este único paso del nodo Postgres y se llama por
+  // HTTP a PostgREST — el mismo mecanismo que ya usa 'Llamar RPC forense' más
+  // abajo en este mismo workflow, con argumentos por NOMBRE (JSON), no
+  // posicionales: sin superficie donde un valor pueda desplazarse de posición.
+  add(nodo(
     'Registrar aviso de reintento',
-    [
-      'WITH ev AS (',
-      '  INSERT INTO forense.bitacora (corrida_id, caso_id, tarea_id, ronda, intento, agente, tipo_evento, payload)',
-      "  SELECT $2::uuid, $3::uuid, $4::uuid, $5::int, $6::int, $7::text, 'razonamiento',",
-      "         jsonb_build_object('evento_real', 'aviso_reintento', 'aviso', $1::text,",
-      "                            'variante_prompt', $8::text, 'prompt_hash', $9::text)",
-      "   WHERE $1::text IS NOT NULL AND $1::text <> '' AND $1::text <> 'null'",
-      '  RETURNING id',
-      ')',
-      'SELECT $3::uuid AS caso_id, $4::uuid AS tarea_id, $8::text AS variante_prompt,',
-      "       'razonamiento'::text AS tipo_evento, 'aviso_reintento'::text AS evento_real,",
-      '       (SELECT count(*) FROM ev) > 0 AS registrado',
-    ].join('\n'),
-    [
-      '={{ $json.aviso_reintento ?? \'\' }}', `${ID('corrida_id')}`, `${ID('caso_id')}`, `${ID('tarea_id')}`,
-      "={{ $('Cargar ejecución').first().json.ronda ?? 1 }}",
-      '={{ $json.intento ?? 0 }}', `${ID('rol')}`,
-      '={{ $json.variante_prompt }}', '={{ $json.prompt_hash }}',
-    ].join(', '),
-    "El enum de bitacora ya admite 'reintento_inicio', pero ese evento es del bucle de reintento (07 §3) y lo cuenta 10: reusarlo aquí inflaría los reintentos. El aviso viaja como 'razonamiento' con payload.evento_real='aviso_reintento'. La consulta devuelve SIEMPRE una fila: sin aviso, registrado=false.",
+    'n8n-nodes-base.httpRequest',
+    {
+      method: 'POST',
+      url: `${BASE_REST_PENDIENTE}/rpc/registrar_aviso_reintento`,
+      authentication: 'predefinedCredentialType',
+      nodeCredentialType: 'supabaseApi',
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: [
+        '={{ JSON.stringify({',
+        "  p_aviso: $json.aviso_reintento ?? '',",
+        '  p_corrida: $json.corrida_id,',
+        '  p_caso: $json.caso_id,',
+        '  p_tarea: $json.tarea_id,',
+        '  p_ronda: $json.ronda ?? 1,',
+        '  p_intento: $json.intento ?? 0,',
+        '  p_rol: $json.rol,',
+        '  p_variante_prompt: $json.variante_prompt,',
+        '  p_prompt_hash: $json.prompt_hash,',
+        '}) }}',
+      ].join('\n'),
+      options: {
+        timeout: 20000,
+        response: { response: { fullResponse: true, neverError: true } },
+      },
+    },
+    { credentials: CREDENCIALES.supabase, retryOnFail: false },
   ));
 
   add(nodo(
@@ -555,7 +642,10 @@ export function workerEjecutarAgente() {
     'Reclamar tool',
     [
       'SELECT t.ok, t.duplicado, t.tool_ejecucion_id, t.estado, t.resultado_ref, t.error,',
-      '       $4::text AS tool_use_id, $6::text AS nombre, forense.args_hash($5::jsonb) AS args_hash',
+      '       $4::text AS tool_use_id, $6::text AS nombre, forense.args_hash($5::jsonb) AS args_hash,',
+      // Las RPC de 06 declaran p_operacion uuid; la clave (tarea:paso:tool_use_id)
+      // se vuelve UUID determinista aquí, en SQL (un Code node no tiene crypto).
+      "       md5(($5::jsonb)->>'p_operacion')::uuid AS p_operacion",
       '  FROM jsonb_to_record(forense.claim_tool($1::uuid, $2::bigint, $3::text, $4::text,',
       '                                          forense.args_hash($5::jsonb), $6::text))',
       '    AS t(ok boolean, duplicado boolean, tool_ejecucion_id bigint, estado text,',
@@ -575,7 +665,7 @@ export function workerEjecutarAgente() {
       sendBody: true,
       specifyBody: 'json',
       // p_operacion / p_tarea / p_caso los fija el backend: nunca $fromAI (17 §1).
-      jsonBody: "={{ JSON.stringify($('Expandir cola de tools').item.json.argumentos_backend) }}",
+      jsonBody: "={{ JSON.stringify(Object.assign({}, $('Expandir cola de tools').item.json.argumentos_backend, { p_operacion: $('Reclamar tool').item.json.p_operacion })) }}",
       options: {
         timeout: 20000,
         response: { response: { fullResponse: true, neverError: true } },
@@ -750,7 +840,8 @@ export function investigarCluster() {
       'SELECT r.ok, r.estado, r.caso_id, r.cluster_id, r.corrida_id,',
       '       $6::uuid AS investigacion_id, $5::text AS idempotency_key,',
       '       r.owner AS lease_owner, r.motivo',
-      '  FROM jsonb_to_record(forense.reclamar_cluster($1::uuid, $2::uuid, $3::text, $4::text, $5::text))',
+      '  -- firma: reclamar_cluster(corrida, cluster, owner, origen, origen_valor); el owner del lease es la idempotency_key',
+      '  FROM jsonb_to_record(forense.reclamar_cluster($1::uuid, $2::uuid, $5::text, $3::text, $4::text))',
       '    AS r(ok boolean, estado text, caso_id uuid, cluster_id uuid, corrida_id uuid,',
       '         owner text, motivo text)',
     ].join('\n'),
@@ -831,7 +922,9 @@ export function investigarCluster() {
       "        coalesce((select array_agg(x::uuid) from jsonb_array_elements_text($2::jsonb) x), '{}'::uuid[]),",
       "        coalesce((select array_agg(x::bigint) from jsonb_array_elements_text($3::jsonb) x), '{}'::bigint[]),",
       "        'abierto', $4::timestamptz)",
-      'RETURNING *',
+      'ON CONFLICT ON CONSTRAINT pasos_pipeline_caso_id_paso_intento_version_contexto_key',
+      '  DO UPDATE SET revision = pasos_pipeline.revision',
+      'RETURNING *, $5::uuid AS cluster_id, $6::uuid AS corrida_id, $7::uuid AS investigacion_id',
     ].join('\n'),
     // tareas_esperadas es uuid[] y snapshot_senales bigint[]. Un literal de array
     // de Postgres armado a mano con concatenación ('{' + join(',') + '}') se
@@ -841,8 +934,31 @@ export function investigarCluster() {
     // ya usa 'Crear tareas R1' con roles_evaluables, y ahí sí funciona) y el
     // SQL lo abre con jsonb_array_elements_text + array_agg. `estado` solo
     // admite abierto|cerrado|cancelado|timeout: 'esperando' violaba el CHECK.
-    `={{ $json.caso_id }}, ={{ JSON.stringify($json.tarea_ids ?? []) }}, ={{ JSON.stringify($json.snapshot_senales ?? []) }}, ={{ $json.deadline }}`,
+    // ON CONFLICT ... DO UPDATE (no-op, sólo para poder devolver la fila con
+    // RETURNING) hace el INSERT idempotente: en ejecución real 2026-09-12 el
+    // mismo caso_id/paso/intento/version_contexto llegó a insertarse dos veces
+    // en la misma ejecución de n8n (retry de conexión contra el pooler de
+    // Supabase, la misma ruta donde ya se vieron timeouts y error de
+    // certificado) y la segunda vez violaba la unicidad con "error", aunque la
+    // primera ya hubiera insertado bien. DO NOTHING no sirve aquí porque
+    // entonces RETURNING no devuelve la fila existente y el nodo siguiente se
+    // queda sin caso_id/cluster_id/paso.
+    `={{ $json.caso_id }}, ={{ JSON.stringify($json.tarea_ids ?? []) }}, ={{ JSON.stringify($json.snapshot_senales ?? []) }}, ={{ $json.deadline }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}`,
     'La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.',
+    // `Crear tareas R1` emite UNA fila por tarea (5 para 5 especialistas), y
+    // cada fila repite el mismo tarea_ids completo. Sin `executeOnce`, este
+    // INSERT corre 5 veces con el mismo (caso_id, paso, intento, version_contexto)
+    // y la segunda vez viola la unicidad (confirmado en ejecución real
+    // 2026-09-12: "duplicate key value violates unique constraint
+    // pasos_pipeline_caso_id_paso_intento_version_contexto_key"). El nodo debe
+    // registrar el conjunto UNA vez, con el primer item basta.
+    //
+    // `RETURNING *` sólo trae columnas de `pasos_pipeline` (que no tiene
+    // cluster_id/corrida_id/investigacion_id): 'Esperar barrera R1' los
+    // necesita y llegaban undefined (confirmado en ejecución real 2026-09-12:
+    // "there is no parameter $2"). Se proyectan a mano desde los mismos
+    // valores de entrada.
+    { executeOnce: true },
   ));
 
   add(sql(
@@ -2345,9 +2461,8 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Reservar request': ['ok', 'error', 'duplicado', 'request_id', 'bolsa', 'restante', 'intento_transporte'],
     'Construir cuerpo Messages': [...IDENTIDAD_PASO, 'modelo', 'cuerpo', 'system', 'herramientas_enviadas',
       'version_prompts', 'prompt_hash', 'variante_prompt', 'intento', 'motivo_reintento',
-      'aviso_reintento', 'ambito_techo', 'caracteres_system', 'caracteres_paquete'],
-    'Registrar aviso de reintento': ['caso_id', 'tarea_id', 'variante_prompt', 'tipo_evento',
-      'evento_real', 'registrado'],
+      'aviso_reintento', 'ambito_techo', 'caracteres_system', 'caracteres_paquete', 'ronda'],
+    'Registrar aviso de reintento': ['statusCode', 'headers', 'body'],
     'POST /v1/messages': ['statusCode', 'headers', 'body'],
     'Clasificar transporte': ['clase', 'ruta', 'espera_ms', 'intento', 'reintentar',
       'retry_after_respetado', 'motivo'],
@@ -2361,7 +2476,7 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Completar request': ['request_id', 'estado', 'estado_interno', 'checkpoint'],
     'Expandir cola de tools': [...IDENTIDAD_PASO, 'tool_use_id', 'nombre', 'orden', 'autorizada',
       'argumentos_backend', 'base_rest', 'total_en_lote'],
-    'Reclamar tool': ['ok', 'duplicado', 'tool_ejecucion_id', 'estado', 'resultado_ref', 'error',
+    'Reclamar tool': ['ok', 'duplicado', 'tool_ejecucion_id', 'estado', 'resultado_ref', 'error', 'p_operacion',
       'tool_use_id', 'nombre', 'args_hash'],
     'Llamar RPC forense': ['statusCode', 'headers', 'body'],
     'Registrar resultado tool': ['ok', 'tool_ejecucion_id', 'estado', 'tool_use_id', 'resultado', 'duplicado'],

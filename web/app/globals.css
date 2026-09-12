@@ -137,3 +137,36 @@ textarea::placeholder {
     transform: rotate(360deg);
   }
 }
+
+/*
+ * Tres puntos "cargando" del canvas de análisis en proceso
+ * (`app/(app)/analisis/[casoId]`). Sólo se montan mientras el caso persistido
+ * sigue sin dictamen: la animación acompaña un estado real, no lo simula.
+ */
+@keyframes insp-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.insp-dots > span {
+  animation: insp-blink 1.4s infinite both;
+}
+.insp-dots > span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.insp-dots > span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .insp-dots > span {
+    animation: none;
+    opacity: 0.6;
+  }
+}

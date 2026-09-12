@@ -4,6 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { InvestigationComposer } from "./investigation-composer";
 import type { Corrida } from "@/lib/data";
 
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+
 const corrida: Corrida = {
   id: "00000000-0000-4000-8000-000000000001",
   nombre: "Demo enero 2026",
@@ -31,12 +34,18 @@ afterEach(() => {
  * respeta el contrato `product.investigar` (nunca `desde === hasta_exclusivo`
  * como hacía la versión anterior con `corrida.fecha_corte` en ambos
  * extremos, y `timezone` siempre viene de `ZONA_POR_OMISION`), y el botón
- * de envío no se habilita sin directriz ni sin periodo resuelto.
+ * de envío queda deshabilitado si el rango es inválido.
+ *
+ * Las sugerencias se quitaron (UI idéntica al diseño, 2026-09-12): ya no hay
+ * chip que elija `directriz_id`, así que el envío va con la directriz neutra
+ * `resumen` y el alcance lo da el texto libre, que viaja como `mensaje`.
  */
 describe("InvestigationComposer", () => {
-  it("Inspeccionar está deshabilitado hasta elegir una sugerencia (directriz_id es obligatorio en el contrato)", () => {
+  it("no queda ninguna sugerencia en la barra: el diseño no las tiene", () => {
     render(<InvestigationComposer corrida={corrida} rfcsDisponibles={["DEMO:ENTIDAD-0"]} />);
-    expect(screen.getByRole("button", { name: /Inspeccionar/ })).toBeDisabled();
+    expect(screen.queryByRole("group", { name: "Sugerencias de análisis" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Seguir el dinero")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Inspeccionar/ })).toBeEnabled();
   });
 
   it("envía product.investigar con un periodo real (desde != hasta_exclusivo) y la zona por omisión", async () => {
@@ -46,8 +55,6 @@ describe("InvestigationComposer", () => {
 
     render(<InvestigationComposer corrida={corrida} rfcsDisponibles={["DEMO:ENTIDAD-0"]} />);
 
-    await user.click(screen.getByRole("button", { name: /^Seguir el dinero/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Inspeccionar/ })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: /Inspeccionar/ }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -55,11 +62,22 @@ describe("InvestigationComposer", () => {
     expect(url).toBe("/api/investigaciones");
     const body = JSON.parse((init as RequestInit).body as string);
 
-    expect(body.directriz_id).toBe("seguir_dinero");
+    expect(body.directriz_id).toBe("resumen");
     expect(body.contexto.corrida_id).toBe(corrida.id);
     expect(body.contexto.periodo.timezone).toBe("America/Monterrey");
     expect(body.contexto.periodo.desde).not.toBe(body.contexto.periodo.hasta_exclusivo);
     expect(new Date(body.contexto.periodo.hasta_exclusivo).getTime()).toBeGreaterThan(new Date(body.contexto.periodo.desde).getTime());
+  });
+
+  it("con caso_id en el 202 entra al canvas de análisis en proceso", async () => {
+    const user = userEvent.setup();
+    push.mockClear();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 202, ok: true, json: async () => ({ caso_id: "caso-7", estado: "ronda1" }) }));
+
+    render(<InvestigationComposer corrida={corrida} rfcsDisponibles={["DEMO:ENTIDAD-0"]} />);
+    await user.click(screen.getByRole("button", { name: /Inspeccionar/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/analisis/caso-7"));
   });
 
   it("'Cambiar dataset' llama a onChangeDataset sin enviar nada", async () => {

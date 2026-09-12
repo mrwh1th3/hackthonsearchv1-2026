@@ -62,6 +62,7 @@ export const GENERADOS = [
       'const x = Object.assign({}, ejecucion, paso, {',
       '  request_id: reserva.request_id ?? paso.request_id,',
       '  mensajes: (ejecucion.checkpoint || {}).mensajes,',
+      '  errores_contrato: (ejecucion.checkpoint || {}).errores_contrato ?? [],',
       "  sin_herramientas: paso.motivo_request === 'reparacion',",
       '  max_tokens: MAX_TOKENS_SALIDA[ejecucion.rol] ?? 2000,',
       '  techo_caracteres: CATALOGO_PROMPTS.techos[ejecucion.rol] ?? 0,',
@@ -92,7 +93,10 @@ export const GENERADOS = [
       'const x = Object.assign({}, paso, {',
       '  rol: ejecucion.rol,',
       "  respuesta: $('POST /v1/messages').first().json,",
-      '  mensajes_previos: (ejecucion.checkpoint || {}).mensajes ?? [],',
+      // Los mensajes REALMENTE enviados (incluye el primer user sembrado desde
+      // el paquete): con el checkpoint vacío se perdía y el turno siguiente
+      // empezaba con assistant → 400 "assistant message prefill" (2026-09-12).
+      "  mensajes_previos: ($('Construir cuerpo Messages').first().json.cuerpo || {}).messages ?? (ejecucion.checkpoint || {}).mensajes ?? [],",
       '});',
     ].join('\n'),
   ),

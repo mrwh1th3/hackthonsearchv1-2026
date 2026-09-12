@@ -25,9 +25,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- NO confía en el payload: relee evento y estado desde DB. Un teléfono en el payload se IGNORA (16 §2). DEPENDE de 007 (forense-db).\nSELECT * FROM forense.leer_evento_salida($1::uuid)",
+        "query": "-- NO confía en el payload: relee evento y estado desde DB. Un teléfono en el payload se IGNORA (16 §2). DEPENDE de 007 (forense-db).\nSELECT * FROM forense.leer_evento_salida(nullif(nullif($1::text, 'null'), '')::uuid)",
         "options": {
-          "queryReplacement": "={{ $json.body.evento_id }}"
+          "queryReplacement": "={{ ($json.body.evento_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -46,9 +46,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Claim atómico con lease; unicidad (investigacion_id, tipo_evento). Cinco entregas del webhook NO generan cinco llamadas (16 §2). DEPENDE de 007.\nSELECT * FROM forense.reclamar_evento_salida($1::uuid, $2::text)",
+        "query": "-- Claim atómico con lease; unicidad (investigacion_id, tipo_evento). Cinco entregas del webhook NO generan cinco llamadas (16 §2). DEPENDE de 007.\nSELECT * FROM forense.reclamar_evento_salida(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::text)",
         "options": {
-          "queryReplacement": "={{ $('Releer evento desde DB').first().json.evento_id }}, ={{ $execution.id }}"
+          "queryReplacement": "={{ ($('Releer evento desde DB').first().json.evento_id) ?? 'null' }}, ={{ ($execution.id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -67,9 +67,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Perfil propietario, teléfono E.164, preferencia de llamadas vigente y permiso guardado. El teléfono sale del PERFIL, jamás del prompt (16 §3). DEPENDE de 007.\nSELECT * FROM forense.destinatario_aviso($1::uuid)",
+        "query": "-- Perfil propietario, teléfono E.164, preferencia de llamadas vigente y permiso guardado. El teléfono sale del PERFIL, jamás del prompt (16 §3). DEPENDE de 007.\nSELECT * FROM forense.destinatario_aviso(nullif(nullif($1::text, 'null'), '')::uuid)",
         "options": {
-          "queryReplacement": "={{ $('Releer evento desde DB').first().json.investigacion_id }}"
+          "queryReplacement": "={{ ($('Releer evento desde DB').first().json.investigacion_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -121,9 +121,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Estado `omitida` con motivo; el aviso DENTRO de la app se mantiene: la voz es un extra, no el canal (16 §2).\nSELECT * FROM forense.omitir_llamada($1::uuid, $2::text)",
+        "query": "-- Estado `omitida` con motivo; el aviso DENTRO de la app se mantiene: la voz es un extra, no el canal (16 §2).\nSELECT * FROM forense.omitir_llamada(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::text)",
         "options": {
-          "queryReplacement": "={{ $('Releer evento desde DB').first().json.investigacion_id }}, ={{ $json.motivo_omision }}"
+          "queryReplacement": "={{ ($('Releer evento desde DB').first().json.investigacion_id) ?? 'null' }}, ={{ ($json.motivo_omision) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -142,9 +142,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Congela destinatario y configuración y reclama `solicitando` ANTES del POST (16 §2.5). Devuelve las dynamic_variables ya normalizadas: sin RFC, montos ni sospechas. DEPENDE de 007.\nSELECT * FROM forense.crear_intento_llamada($1::uuid, $2::uuid)",
+        "query": "-- Congela destinatario y configuración y reclama `solicitando` ANTES del POST (16 §2.5). Devuelve las dynamic_variables ya normalizadas: sin RFC, montos ni sospechas. DEPENDE de 007.\nSELECT * FROM forense.crear_intento_llamada(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::uuid)",
         "options": {
-          "queryReplacement": "={{ $('Releer evento desde DB').first().json.investigacion_id }}, ={{ $('Releer evento desde DB').first().json.evento_id }}"
+          "queryReplacement": "={{ ($('Releer evento desde DB').first().json.investigacion_id) ?? 'null' }}, ={{ ($('Releer evento desde DB').first().json.evento_id) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -196,9 +196,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- HTTP 200 = solicitud ACEPTADA, no que alguien contestó. Timeout después de enviar → `resultado_desconocido` y reconciliación, nunca redial ciego (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.guardar_aceptacion_llamada($1::uuid, $2::int, $3::jsonb)",
+        "query": "-- HTTP 200 = solicitud ACEPTADA, no que alguien contestó. Timeout después de enviar → `resultado_desconocido` y reconciliación, nunca redial ciego (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.guardar_aceptacion_llamada(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, $3::jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Crear intento de llamada').first().json.llamada_id }}, ={{ $json.statusCode }}, ={{ JSON.stringify($json.body) }}"
+          "queryReplacement": "={{ ($('Crear intento de llamada').first().json.llamada_id) ?? 'null' }}, ={{ ($json.statusCode) ?? 'null' }}, ={{ (JSON.stringify($json.body)) ?? 'null' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

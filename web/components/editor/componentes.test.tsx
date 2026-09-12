@@ -164,8 +164,9 @@ describe("DocumentWorkspace", () => {
     await waitFor(() => expect(borradores().length).toBeGreaterThan(0), { timeout: 4000 });
     expect(borradores()[0].cuerpo.version_base).toBe(1);
     expect(JSON.stringify(borradores()[0].cuerpo.documento)).toContain("Nota del auditor");
-    // El autoguardado no versiona: la cabecera sigue en v1.
-    expect(screen.getByText(/v1 · validado/)).toBeInTheDocument();
+    // El autoguardado no versiona: el chip de versión del chat sigue en v1.
+    // (La píldora "v1 · validado" de la cabecera se retiró el 2026-09-12.)
+    expect(screen.getAllByText(/^v1$/).length).toBeGreaterThan(0);
     expect(await screen.findByText(/^Guardado /)).toBeInTheDocument();
   }, 15000);
 
@@ -209,7 +210,7 @@ describe("DocumentWorkspace", () => {
     // escritura chocaría en 409 contra un almacén que ya está en v2.
     render(workspace(desdeMarkdown("## 1. Resumen\n\nTexto original.")));
 
-    expect(await screen.findByText(/v2 · borrador/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/^v2$/)).length).toBeGreaterThan(0);
     await waitFor(() =>
       expect(document.querySelector(".hoja-prosa")?.textContent).toContain("Texto ya editado en la versión 2"),
     );

@@ -31,7 +31,7 @@ function corrida(overrides: Partial<Corrida> = {}): Corrida {
 describe("CorridaPicker", () => {
   it("estado vacío honesto: sin corridas, no se pinta como 'sin hallazgos'", () => {
     render(<CorridaPicker corridas={[]} onSelect={vi.fn()} />);
-    expect(screen.getByText(/Sin corridas todavía\. Carga un dataset/)).toBeInTheDocument();
+    expect(screen.getByText("Sin corridas todavía.")).toBeInTheDocument();
   });
 
   it("busca por nombre y avisa cuando ninguna corrida coincide", async () => {
@@ -63,18 +63,5 @@ describe("CorridaPicker", () => {
   it("no muestra ningún tamaño de dataset (no hay fuente real para eso)", () => {
     render(<CorridaPicker corridas={[corrida()]} onSelect={vi.fn()} />);
     expect(screen.queryByText(/KB|MB|GB/)).not.toBeInTheDocument();
-  });
-
-  it("filtra por estado con el selector", async () => {
-    const user = userEvent.setup();
-    render(
-      <CorridaPicker
-        corridas={[corrida({ id: "a", nombre: "Completada", estado: "completada" }), corrida({ id: "b", nombre: "En proceso", estado: "procesando" })]}
-        onSelect={vi.fn()}
-      />,
-    );
-    await user.selectOptions(screen.getByLabelText("Filtrar por estado"), "procesando");
-    expect(screen.queryByText("Completada")).not.toBeInTheDocument();
-    expect(screen.getByText("En proceso")).toBeInTheDocument();
   });
 });

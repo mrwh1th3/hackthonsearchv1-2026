@@ -23,7 +23,7 @@ import type {
   TrayectoriaEvento,
   TrayectoriaPunto,
 } from "./types";
-import type { CasoDetalle, DataSource, EntidadPerfil, EstadisticasCorrida } from "./source";
+import type { AuditorResultado, CasoDetalle, DataSource, EntidadPerfil, EstadisticasCorrida } from "./source";
 import mapperFixtureEjemplo from "@contracts/fixtures/valid/mapper.json";
 
 /**
@@ -133,6 +133,8 @@ export function mapCaso(row: Fila): Caso {
     estado: String(row.estado ?? ""),
     nivel: (row.nivel as Nivel | null) ?? null,
     tipologia: (row.tipologia as Caso["tipologia"]) ?? null,
+    origen: (row.origen as string | null) ?? null,
+    origen_valor: (row.origen_valor as string | null) ?? null,
     familias_confirmadas: aArreglo<Familia>(row.familias_confirmadas),
     monto_en_riesgo: aTexto(row.monto_en_riesgo),
     moneda: String(row.moneda ?? "MXN"),
@@ -289,6 +291,9 @@ export function mapEventoBitacora(row: Fila): EventoForense {
       referencias: aArreglo<string>(payload.referencias),
       operacion_id: (payload.operacion_id as string | null) ?? null,
     },
+    tokens_in: (row.tokens_in as number | null) ?? null,
+    tokens_out: (row.tokens_out as number | null) ?? null,
+    duracion_ms: (row.duracion_ms as number | null) ?? null,
   };
 }
 
@@ -727,5 +732,40 @@ export class SupabaseDataSource implements DataSource {
     // que exista un mapper real corriendo. Mismo fixture con fixture o con
     // supabase — no es un "no disponible", es lo único que existe.
     return mapperFixtureEjemplo as unknown as MapperPropuesta;
+  }
+
+  async getAuditorResultado(corridaId: string): Promise<AuditorResultado | null> {
+    const { data, error } = await this.client
+      .from("auditor_resultados")
+      .select("corrida_id, seed, fingerprint, estate_sha256, generado_at, run_log")
+      .eq("corrida_id", corridaId)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseDataSource.getAuditorResultado: ${error.message}`);
+    if (!data) return null;
+    const log = (data.run_log ?? {}) as Record<string, unknown>;
+    return {
+      corrida_id: String(data.corrida_id),
+      seed: Number(data.seed),
+      fingerprint: String(data.fingerprint),
+      estate_sha256: String(data.estate_sha256),
+      generado_at: String(data.generado_at),
+      company_rfc: String(log.company_rfc ?? ""),
+      period: aArreglo<string>(log.period) as [string, string],
+      detector_hits: Number(log.detector_hits ?? 0),
+      leads_investigated: Number(log.leads_investigated ?? 0),
+      findings: aArreglo(log.findings),
+      leads: aArreglo(log.leads),
+      run_metadata: (log.run_metadata ?? { llm_calls: 0, mxn_cost: 0, wall_clock_seconds: 0, deterministic: true }) as AuditorResultado["run_metadata"],
+    };
+  }
+
+  async getAuditorExpedienteHtml(corridaId: string): Promise<string | null> {
+    const { data, error } = await this.client
+      .from("auditor_resultados")
+      .select("case_file_html")
+      .eq("corrida_id", corridaId)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseDataSource.getAuditorExpedienteHtml: ${error.message}`);
+    return data ? String(data.case_file_html) : null;
   }
 }

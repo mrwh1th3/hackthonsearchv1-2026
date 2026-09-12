@@ -81,7 +81,7 @@ function ExecutionRow({ row }: { row: ExecutionHistoryRow }) {
         </button>
 
         <div className="min-w-[180px] flex-1">
-          <Link href={`/investigaciones/${investigacion.id}`} className="font-medium text-text hover:underline">
+          <Link href={`/documentos/${investigacion.id}`} className="font-medium text-text hover:underline">
             {investigacion.titulo ?? investigacion.mensaje ?? "Investigación"}
           </Link>
           <p className="text-xs text-text-subtle">

@@ -100,6 +100,55 @@ export interface EstadisticasCorrida {
   recall_por_tipologia: Record<string, { tp: number; total: number; recall: number | null }>;
 }
 
+/**
+ * Resultado del auditor determinista (`src/auditor`, docs/23) guardado en
+ * `forense.auditor_resultados`. Es lo mismo que se entrega a los jueces:
+ * `submission.json`, `run_log.json` y el expediente HTML. Los montos y la
+ * confianza salen de reglas y SQL; la UI solo los pinta.
+ */
+export interface AuditorPaso { from: string; to: string; amount: number; date: string; exhibit_id: string }
+export interface AuditorExhibit { exhibit_id: string; source_table: string; record_id: string; note: string }
+export interface AuditorHallazgo {
+  scheme_type: string;
+  entities: string[];
+  subject_name: string;
+  rule_broken: string;
+  narrative: string;
+  peso_amount: number;
+  confidence: "proven" | "probable";
+  evidence: string[];
+  exhibits: AuditorExhibit[];
+  money_trail: AuditorPaso[];
+  reconciliation: { table: string; items: Array<[string, number]> };
+  reconciled_against?: { table: string; sum: number; per_table: Record<string, number> };
+  defense: Array<{ argument: string; held: boolean; why: string; by?: string }>;
+  signals?: string[];
+  tool_calls?: string[];
+}
+export interface AuditorLead {
+  entity: string;
+  signal: string;
+  signal_detail: string;
+  investigated_as: string;
+  reason: string;
+  tool_calls_made: string[];
+  closed_by: "investigator" | "challenger" | "validator";
+}
+export interface AuditorResultado {
+  corrida_id: string;
+  seed: number;
+  fingerprint: string;
+  estate_sha256: string;
+  generado_at: string;
+  company_rfc: string;
+  period: [string, string];
+  detector_hits: number;
+  leads_investigated: number;
+  findings: AuditorHallazgo[];
+  leads: AuditorLead[];
+  run_metadata: { llm_calls: number; mxn_cost: number; wall_clock_seconds: number; deterministic: boolean; llm_mode?: string };
+}
+
 export interface CasoDetalle {
   caso: Caso;
   tareas: Tarea[];
@@ -163,4 +212,8 @@ export interface DataSource {
   getInyeccion(id: string): Promise<InyeccionResumen | null>;
 
   getMapperEjemplo(): Promise<MapperPropuesta>;
+
+  getAuditorResultado(corridaId: string): Promise<AuditorResultado | null>;
+  /** HTML autocontenido del expediente del auditor (sin red). */
+  getAuditorExpedienteHtml(corridaId: string): Promise<string | null>;
 }

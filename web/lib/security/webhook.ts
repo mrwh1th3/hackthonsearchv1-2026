@@ -11,7 +11,7 @@
  * especificación previa en 17/20 — solicitudes_coordinador pide que forense-
  * n8n confirme o ajuste ambos antes de conectar el workflow real.
  */
-const HEADER_SECRETO = "X-Internal-Webhook-Secret";
+export const HEADER_SECRETO = "X-Internal-Webhook-Secret";
 
 export interface ConfigWebhook {
   base: string;

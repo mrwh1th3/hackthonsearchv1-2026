@@ -64,7 +64,7 @@ export function CitaDrawer({
             <div className="rounded-[var(--radius-card)] border border-error/40 bg-error/5 p-3 text-sm text-error">
               <p className="font-medium">Sin evidencia validada para este ID.</p>
               <p className="mt-1 text-xs text-text-muted">
-                La cita queda marcada en rojo y el expediente en estado &quot;revisar citas&quot;: se conserva el borrador, pero no
+                La cita queda marcada en rojo y el reporte en estado &quot;revisar citas&quot;: se conserva el borrador, pero no
                 puede publicarse como entregable (09 §8, 15 §10). Corrige el ID o elimina la afirmación.
               </p>
             </div>
