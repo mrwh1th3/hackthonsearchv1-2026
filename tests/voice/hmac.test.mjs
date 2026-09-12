@@ -100,6 +100,39 @@ test('verificarFirma: forma objeto SIN secreto nombrado cae al secreto posiciona
   assert.equal(resultado.valido, true);
 });
 
+// Hallazgo QA #5: el default (t=/v0=, HMAC-SHA256 sobre "<ts>.<crudo>") está
+// confirmado contra la documentación pública de ElevenLabs — estos dos tests
+// prueban que sigue siendo posible configurar un esquema DISTINTO vía
+// `opciones` sin tocar el resto del módulo, para una cuenta/entorno que use
+// un header o formato propio (alternativa configurable, no cableada).
+test('verificarFirma: esquema alternativo configurable (header y prefijos propios) funciona vía `opciones`', () => {
+  const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
+  const tEpochS = Math.floor(ahoraMs / 1000);
+  const opcionesAlternativas = {
+    header: 'x-legado-signature',
+    prefijoTimestamp: 'ts=',
+    prefijoFirma: 'sha256=',
+    separador: ';',
+    construirMensaje: (t, crudo) => `${crudo}:${t}`,
+  };
+  const mensaje = opcionesAlternativas.construirMensaje(tEpochS, CUERPO);
+  const hex = createHmac('sha256', SECRETO).update(mensaje).digest('hex');
+  const encabezado = `ts=${tEpochS};sha256=${hex}`;
+
+  const resultado = verificarFirma(CUERPO, { 'X-Legado-Signature': encabezado }, SECRETO, ahoraMs, opcionesAlternativas);
+  assert.equal(resultado.valido, true);
+});
+
+test('verificarFirma: el esquema por default NO valida una firma construida con el esquema alternativo (no se mezclan)', () => {
+  const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
+  const tEpochS = Math.floor(ahoraMs / 1000);
+  const mensajeAlternativo = `${CUERPO}:${tEpochS}`; // formato del esquema alternativo, no el default
+  const hex = createHmac('sha256', SECRETO).update(mensajeAlternativo).digest('hex');
+  const resultado = verificarFirma(CUERPO, { 'elevenlabs-signature': `t=${tEpochS},v0=${hex}` }, SECRETO, ahoraMs);
+  assert.equal(resultado.valido, false);
+  assert.equal(resultado.motivo, 'firma_invalida');
+});
+
 test('verificarFirma: v0 no hexadecimal no lanza (longitud distinta → firma_invalida)', () => {
   const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
   const tEpochS = Math.floor(ahoraMs / 1000);
