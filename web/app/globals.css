@@ -1,16 +1,30 @@
 @import "tailwindcss";
 
+/*
+ * Paleta y radios: docs/22-frontend-inspector.md "La palanca principal es la
+ * paleta, no los componentes nuevos". Los VALORES cambiaron de zinc frío al
+ * cálido del diseño Inspector; los NOMBRES de token se conservan, así que
+ * ninguna de las rutas existentes necesita tocar su propio código para
+ * heredar el re-skin. `--radius-input`/`--radius-card` también se ajustan
+ * (8→10, 12→16) para que las 12+ rutas que ya existen no "canten" al lado
+ * de los componentes nuevos del shell/composer, sin reescribirlas una a una.
+ */
 :root {
-  --app-bg: #fafafa;
+  --app-bg: #ffffff;
   --surface: #ffffff;
-  --surface-muted: #f4f4f5;
-  --surface-hover: #ececee;
-  --text: #18181b;
-  --text-muted: #52525b;
-  --text-subtle: #71717a;
-  --border: #e4e4e7;
-  --primary: #18181b;
-  --primary-hover: #27272a;
+  --surface-muted: #f2f1ee;
+  --surface-hover: #f7f6f4;
+  --surface-raised: #fcfbfa;
+  --text: #141413;
+  --text-muted: #3d3b37;
+  --text-subtle: #6b6862;
+  --placeholder: #a3a09a;
+  --border: #ebe8e2;
+  --border-strong: #dcd8d0;
+  --border-stronger: #c9c5bd;
+  --border-dashed: #ddd9d1;
+  --primary: #141413;
+  --primary-hover: #2e2d2a;
   --focus: #2563eb;
   --ok: #15803d;
   --warn: #a16207;
@@ -21,8 +35,22 @@
   --fam-r: #7c3aed;
   --fam-t: #b45309;
   --fam-e: #be185d;
-  --radius-input: 8px;
-  --radius-card: 12px;
+  /* Badge de corrida clonada por inyección en vivo (CLAUDE.md regla 12, 21 §5). */
+  --live-fg: #1f6b3a;
+  --live-bg: #eaf7ee;
+  --live-border: #bfe3cb;
+  --live-dot: #1f8a4c;
+  --radius-input: 10px;
+  --radius-card: 16px;
+  /* Radios nuevos del diseño Inspector (docs/22): agrupados por rango, no un
+     token por valor literal en px — visualmente equivalentes a los del
+     original a esta escala. */
+  --radius-pill: 999px;
+  --radius-composer: 24px;
+  --radius-card-lg: 20px;
+  --radius-card-sm: 14px;
+  --radius-control: 11px;
+  --font-display: var(--font-instrument-sans), "Instrument Sans", Helvetica, sans-serif;
 }
 
 /* Tailwind v4 CSS-first theme: expone las variables de :root como utilidades
@@ -32,10 +60,15 @@
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-surface-hover: var(--surface-hover);
+  --color-surface-raised: var(--surface-raised);
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
   --color-text-subtle: var(--text-subtle);
+  --color-placeholder: var(--placeholder);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-stronger: var(--border-stronger);
+  --color-border-dashed: var(--border-dashed);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-focus: var(--focus);
@@ -48,8 +81,18 @@
   --color-fam-r: var(--fam-r);
   --color-fam-t: var(--fam-t);
   --color-fam-e: var(--fam-e);
+  --color-live-fg: var(--live-fg);
+  --color-live-bg: var(--live-bg);
+  --color-live-border: var(--live-border);
+  --color-live-dot: var(--live-dot);
   --radius-input: var(--radius-input);
   --radius-card: var(--radius-card);
+  --radius-pill: var(--radius-pill);
+  --radius-composer: var(--radius-composer);
+  --radius-card-lg: var(--radius-card-lg);
+  --radius-card-sm: var(--radius-card-sm);
+  --radius-control: var(--radius-control);
+  --font-display: var(--font-display);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -65,7 +108,32 @@ body {
   margin: 0;
   background: var(--app-bg);
   color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
   line-height: 20px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--placeholder);
+}
+
+/*
+ * `style-hover` / `style-focus` / `style-focus-within` del diseño
+ * (design-ref/Agents.dc.html) son atributos del runtime `dc` sin equivalente
+ * en HTML (docs/22 "Notas mecánicas"). Los componentes nuevos del shell
+ * Inspector usan las utilidades `hover:`/`focus:`/`focus-within:` de
+ * Tailwind, que compilan a CSS real; esta clase cubre el caso en que el
+ * estado de foco visible por teclado (`:focus-visible`) necesita un anillo
+ * consistente sin depender de esas utilidades por componente.
+ */
+.insp-focus-ring:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@keyframes insp-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
