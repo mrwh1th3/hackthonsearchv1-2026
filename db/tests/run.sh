@@ -70,6 +70,7 @@ aplicar "$DBDIR/002_views.sql"  "002_views.sql"
 aplicar "$DBDIR/003_pistas.sql" "003_pistas.sql"
 aplicar "$DBDIR/004_clusters.sql" "004_clusters.sql"
 aplicar "$DBDIR/005_rpc.sql" "005_rpc.sql"
+aplicar "$DBDIR/008_ingesta.sql" "008_ingesta.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 
@@ -78,7 +79,8 @@ aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 echo "== reaplicación (idempotencia) =="
 reaplicar_ok=true
 for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" \
-         "$DBDIR/004_clusters.sql" "$DBDIR/005_rpc.sql" "$DBDIR/seeds/seed_fake.sql"; do
+         "$DBDIR/004_clusters.sql" "$DBDIR/005_rpc.sql" "$DBDIR/008_ingesta.sql" \
+         "$DBDIR/seeds/seed_fake.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
   else
@@ -95,6 +97,10 @@ aplicar "$HERE/assertions.sql" "tests/assertions.sql"
 aplicar "$HERE/assertions_003.sql" "tests/assertions_003.sql"
 aplicar "$HERE/assertions_004.sql" "tests/assertions_004.sql"
 aplicar "$HERE/assertions_005.sql" "tests/assertions_005.sql"
+aplicar "$HERE/assertions_008.sql" "tests/assertions_008.sql"
+
+echo "== paquetes de inyección (eval/inyecciones) =="
+bash "$HERE/cargar_paquetes.sh" "$DB" || fallos=$((fallos + 1))
 
 echo "== snapshot gen-v1 (opcional: GEN=0 lo omite) =="
 GEN="${GEN:-auto}"

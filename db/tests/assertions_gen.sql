@@ -122,3 +122,93 @@ begin
   perform pruebas.assert('las contrapartes sin padrón quedan contadas, no ocultas',
     n >= 0, 'entidades técnicas incompletas en clusters=' || n);
 end $$;
+
+-- =====================================================================
+-- Ensayo de inyección en vivo (21 §3.4) con el paquete real
+-- eval/inyecciones/a-carrusel-nuevo.json sobre gen-v1.
+-- Se omite si cargar_paquetes.sh no dejó los paquetes en la base.
+-- =====================================================================
+do $$
+declare
+  v uuid; pkg jsonb; r jsonb; v_ing uuid; v_iny uuid; v_nueva uuid;
+  n_cfdi_antes int; n_pistas_antes int; n int; v_cl uuid;
+  t0 timestamptz; ms_snapshot int; ms_pistas int;
+begin
+  if not exists (select 1 from pg_tables where schemaname = 'pruebas' and tablename = 'paquetes') then
+    return;
+  end if;
+  select payload into pkg from pruebas.paquetes where nombre = 'a-carrusel-nuevo';
+  if pkg is null then
+    return;
+  end if;
+
+  select id into v from forense.corridas where dataset = 'gen-v1' order by inicio limit 1;
+  select count(*) into n_cfdi_antes from forense.cfdi where corrida_id = v;
+  select count(*) into n_pistas_antes from forense.pistas where corrida_id = v;
+
+  t0 := clock_timestamp();
+  r := forense.registrar_inyeccion(v, pkg, 'ensayo', (pkg->>'idempotency_key')::uuid);
+  perform pruebas.assert('el paquete (a) se registra sobre gen-v1',
+    (r->>'ok')::boolean and (r->>'creada')::boolean, r::text);
+  v_ing := (r->>'ingesta_id')::uuid;
+  v_iny := (r->>'inyeccion_id')::uuid;
+
+  r := forense.validar_inyeccion(v_ing);
+  perform pruebas.assert('el paquete (a) pasa la validación determinista contra gen-v1',
+    (r->>'ok')::boolean and (r->>'estado') = 'validada', r::text);
+  perform pruebas.assert('la validación marca los tres RFC del carrusel como afectados',
+    (r->'rfcs_afectados') @> '["CRR250901AA1","CRR250902BB2","CRR250903CC3"]'::jsonb,
+    (r->'rfcs_afectados')::text);
+
+  v_nueva := forense.clonar_corrida_con_inyeccion(v, v_ing);
+  ms_snapshot := (extract(epoch from clock_timestamp() - t0) * 1000)::int;
+  perform pruebas.assert('la inyección crea una corrida nueva, no muta gen-v1',
+    v_nueva is not null
+    and (select count(*) from forense.cfdi where corrida_id = v) = n_cfdi_antes
+    and (select count(*) from forense.pistas where corrida_id = v) = n_pistas_antes,
+    'cfdi base=' || n_cfdi_antes);
+  perform pruebas.assert('los RFC inyectados no existen en la corrida base',
+    not exists (select 1 from forense.contribuyentes
+                 where corrida_id = v and rfc = 'CRR250901AA1'), '');
+
+  t0 := clock_timestamp();
+  r := forense.correr_pistas(v_nueva);
+  ms_pistas := (extract(epoch from clock_timestamp() - t0) * 1000)::int;
+  perform pruebas.assert('correr_pistas sobre la corrida nueva termina el barrido',
+    (r ? 'R1') and (r ? 'R2') and (r ? 'T1'), r::text);
+
+  select count(*) into n from forense.pistas
+   where corrida_id = v_nueva and rfc in ('CRR250901AA1','CRR250902BB2','CRR250903CC3');
+  perform pruebas.assert('la corrida nueva produce pistas para los RFC inyectados',
+    n >= 3, 'pistas de los inyectados=' || n);
+
+  perform pruebas.assert('el carrusel inyectado dispara R1, R2 y T1',
+    (select count(distinct codigo) from forense.pistas
+      where corrida_id = v_nueva and codigo in ('R1','R2','T1')
+        and rfc in ('CRR250901AA1','CRR250902BB2','CRR250903CC3')) = 3,
+    (select string_agg(distinct codigo, ',') from forense.pistas
+      where corrida_id = v_nueva and rfc in ('CRR250901AA1','CRR250902BB2','CRR250903CC3')));
+
+  perform pruebas.assert('los RFC inyectados cruzan el selector de dos familias',
+    (select count(*) from forense.score_entidad(v_nueva) s
+      where s.rfc in ('CRR250901AA1','CRR250902BB2','CRR250903CC3')) = 3, '');
+
+  n := forense.armar_clusters(v_nueva);
+  perform pruebas.assert('el clustering de la corrida nueva reúne el carrusel inyectado',
+    exists (select 1 from forense.clusters cl
+             where cl.corrida_id = v_nueva
+               and cl.rfcs @> array['CRR250901AA1','CRR250902BB2','CRR250903CC3']),
+    'clusters nuevos=' || n);
+
+  select cluster_id into v_cl from forense.clusters_afectados(v_iny) limit 1;
+  perform pruebas.assert('clusters_afectados prioriza un cluster con RFC inyectados',
+    v_cl is not null
+    and (select prioridad from forense.clusters_afectados(v_iny) limit 1) = 0, '');
+
+  perform forense.marcar_inyeccion(v_iny, 'pistas_recalculadas',
+    jsonb_build_object('snapshot', ms_snapshot, 'pistas', ms_pistas));
+  perform pruebas.assert('las latencias del ensayo quedan persistidas para ESTADO.md',
+    (select (latencias_ms ? 'snapshot') and (latencias_ms ? 'pistas')
+       from forense.inyecciones where id = v_iny),
+    'snapshot_ms=' || ms_snapshot || ' pistas_ms=' || ms_pistas);
+end $$;
