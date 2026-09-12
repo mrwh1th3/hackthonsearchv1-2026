@@ -116,7 +116,8 @@ segundo; 21 §5 es normativo sobre 00–20).
 |---|---|---|
 | `NODE_FUNCTION_ALLOW_BUILTIN` | Debe incluir `crypto`. El Code node «Verificar HMAC» de `FORENSE_resultado_llamada` lleva embebido `integrations/elevenlabs/hmac.mjs`, que usa `createHmac`/`timingSafeEqual`. | El nodo lanza y **todo callback de voz se rechaza**. Es el lado seguro, pero la llamada nunca se marca entregada. Bloqueante para la demo de voz. |
 | `FORENSE_ELEVENLABS_WEBHOOK_SECRET` | Secreto con el que ElevenLabs firma el callback. Se lee con `$env` dentro del Code node. | `verificarFirma` devuelve `secreto_no_configurado` y el callback se rechaza (401). |
-| Webhook `Webhook resultado` en modo **raw body** | La firma es sobre los BYTES del cuerpo: un JSON reserializado por n8n no reproduce lo firmado. | `'el webhook no entregó el cuerpo crudo'` y 401 permanente, aunque la firma sea buena. |
+| Webhook `Webhook resultado` en modo **raw body** | La firma es sobre los BYTES del cuerpo: un JSON reserializado por n8n no reproduce lo firmado. Ya viene `options.rawBody=true` en el JSON exportado; no hay que activarlo a mano. | `'el webhook no entregó el cuerpo crudo'` y 401 permanente, aunque la firma sea buena. |
+| Acceso a `$env` desde Code nodes | El secreto se lee con `$env.FORENSE_ELEVENLABS_WEBHOOK_SECRET`. En n8n 2.x el acceso a variables de entorno desde Code nodes tiene su propia puerta (`N8N_BLOCK_ENV_ACCESS_IN_NODE=false`). **Sin verificar en la instancia: confirmarlo en el smoke.** | El secreto llega `undefined` → `secreto_no_configurado` → 401 permanente, y el log no apunta a la configuración. |
 
 ### 3.3 Dependencias de base de datos (bloqueantes)
 

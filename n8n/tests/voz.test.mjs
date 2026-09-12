@@ -92,6 +92,54 @@ test('el Code node embebido es JavaScript válido y no reimplementa el HMAC', ()
   assert.equal((js.match(/function verificarFirma\b/g) ?? []).length, 1);
 });
 
+test('el Code node saca el cuerpo crudo de las tres formas que entrega n8n', () => {
+  // Con `options.rawBody`, n8n entrega el cuerpo como string, como Buffer o
+  // como el Buffer ya serializado a JSON ({type:'Buffer',data:[...]}), según
+  // versión. `verificarFirma` exige STRING: si la extracción sólo contemplara
+  // el string, un callback perfectamente firmado se rechazaría con 401 y el
+  // log apuntaría al webhook, no al bug.
+  const js = nodo('FORENSE_resultado_llamada', 'Verificar HMAC').parameters.jsCode;
+  const inicio = js.indexOf('function cuerpoCrudo');
+  const fin = js.indexOf('const crudo = cuerpoCrudo');
+  assert.ok(inicio >= 0 && fin > inicio, 'el nodo debe extraer el cuerpo crudo con una función propia');
+  // eslint-disable-next-line no-new-func
+  const cuerpoCrudo = new Function(`${js.slice(inicio, fin)}; return cuerpoCrudo;`)();
+
+  const texto = '{"type":"post_call_transcription"}';
+  assert.equal(cuerpoCrudo({ body: texto }), texto);
+  assert.equal(cuerpoCrudo({ body: Buffer.from(texto, 'utf8') }), texto);
+  assert.equal(cuerpoCrudo(JSON.parse(JSON.stringify({ body: Buffer.from(texto, 'utf8') }))), texto);
+  assert.equal(cuerpoCrudo({ rawBody: texto }), texto);
+  // Un body ya parseado por n8n NO sirve: reserializarlo no reproduce los bytes
+  // firmados, así que se rechaza en vez de verificar contra algo distinto.
+  assert.equal(cuerpoCrudo({ body: { type: 'post_call_transcription' } }), null);
+  assert.equal(cuerpoCrudo({}), null);
+});
+
+test('la firma real se verifica sobre el cuerpo que entrega el nodo, venga como venga', () => {
+  const js = nodo('FORENSE_resultado_llamada', 'Verificar HMAC').parameters.jsCode;
+  const inicio = js.indexOf('function cuerpoCrudo');
+  const fin = js.indexOf('const crudo = cuerpoCrudo');
+  // eslint-disable-next-line no-new-func
+  const cuerpoCrudo = new Function(`${js.slice(inicio, fin)}; return cuerpoCrudo;`)();
+
+  const secreto = 's3cr3t';
+  const texto = '{"type":"post_call_transcription","conversation_id":"c9"}';
+  const t = 1_757_640_000;
+  const v0 = createHmac('sha256', secreto).update(`${t}.${texto}`).digest('hex');
+  const headers = { 'elevenlabs-signature': `t=${t},v0=${v0}` };
+  for (const entrada of [{ body: texto }, { body: Buffer.from(texto, 'utf8') }]) {
+    const r = verificarFirma(cuerpoCrudo(entrada), headers, secreto, t * 1000, {});
+    assert.equal(r.valido, true, `debió validar: ${r.motivo}`);
+  }
+});
+
+test('el webhook del callback pide el cuerpo crudo en el JSON, no en la documentación', () => {
+  // Si `rawBody` no viniera puesto en el JSON exportado, dependería de que
+  // alguien lo active a mano al importar: el fallo sería un 401 permanente.
+  assert.equal(nodo('FORENSE_resultado_llamada', 'Webhook resultado').parameters.options.rawBody, true);
+});
+
 test('el endpoint de la llamada sale del módulo, no de una URL copiada', () => {
   assert.equal(nodo('FORENSE_notificar_completada', 'POST outbound-call').parameters.url,
     ENDPOINT_LLAMADA);
