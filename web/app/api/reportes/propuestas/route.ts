@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { validateContract } from "@/lib/contracts/validate";
-import { borradorActual, registrarPropuesta } from "@/lib/document/almacen-demo";
+import { borradorActual } from "@/lib/document/almacen-demo";
 import { indexarBloques } from "@/lib/document/documento";
 import { verificarSeleccion } from "@/lib/document/seleccion";
 import { construirPropuesta, salidaEditorDemostracion } from "@/lib/document/propuesta";
@@ -165,13 +165,31 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: resultado.motivo, detalle: resultado.detalle, origen }, { status: 422 });
   }
 
+  // Se PERSISTE antes de responder: el `propuesta_id` que la UI reciba tiene
+  // que existir en `forense.propuestas_edicion`, o Aplicar (006 §7, que busca
+  // la fila por id) devolvería `contexto_invalido`.
+  let registro;
+  try {
+    registro = await repo.registrarPropuesta(solicitud.caso_id, resultado.propuesta, resultado.previsualizacion, {
+      perfilId: control.ok.session.perfil_id ?? null,
+      requestId: solicitud.idempotency_key,
+      seleccionHash: solicitud.seleccion?.texto_hash ?? null,
+    });
+  } catch {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
+  if (!registro.ok) {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
+  // Reintento con el mismo `idempotency_key`: se devuelve la propuesta que ya
+  // estaba, no una segunda.
+  resultado.propuesta.propuesta_id = registro.propuestaId;
+
   const propuestaValida = validateContract("editor.propuesta", resultado.propuesta);
   if (!propuestaValida.ok) {
     // Nunca se devuelve algo que no cumple el contrato publicado.
     return NextResponse.json({ error: "propuesta_invalida", detalles: propuestaValida.errors }, { status: 500 });
   }
-
-  registrarPropuesta(solicitud.caso_id, resultado.propuesta, resultado.previsualizacion);
 
   return NextResponse.json({
     origen,
@@ -179,6 +197,7 @@ export async function POST(req: Request) {
     propuesta: resultado.propuesta,
     advertencias: resultado.advertencias,
     seleccion_verificada: seleccionVerificada,
+    repetida: registro.repetida,
   });
 }
 

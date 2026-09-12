@@ -9,7 +9,21 @@ import {
   type RespuestaPostgrest,
 } from "@/lib/document/repositorio";
 import { desdeMarkdown } from "@/lib/document/markdown";
+import type { Propuesta } from "@/lib/document/tipos";
 import redactorFixture from "@contracts/fixtures/valid/redactor.json";
+
+import { CASO, CORRIDA, PROPUESTA, clienteFalso, crearAlmacen } from "./_doble-postgrest";
+
+function propuestaDemo(): Propuesta {
+  return {
+    propuesta_id: PROPUESTA,
+    version_base: 1,
+    mensaje: "Propuesta de claridad.",
+    patch: [],
+    diff: "--- a\n+++ b\n-viejo\n+nuevo",
+    citas: ["CFDI:00000000-0000-4000-8000-000000000901"],
+  };
+}
 
 /**
  * Persistencia real del editor (hallazgo 1 del verificador).
@@ -37,141 +51,49 @@ const CASO = "00000000-0000-4000-8000-000000000100";
 const CORRIDA = "00000000-0000-4000-8000-000000000001";
 const PROPUESTA = "00000000-0000-4000-8000-000000000403";
 
-type Fila = Record<string, unknown>;
-
-interface Almacen {
-  expedientes: Fila[];
-  casos: Fila[];
-  propuestas_edicion: Fila[];
-  bitacora: Fila[];
-  rpc: { nombre: string; args: Record<string, unknown> }[];
-}
-
-function crearAlmacen(): Almacen {
-  const documento = desdeMarkdown(redactorFixture.markdown);
-  return {
-    expedientes: [
-      {
-        caso_id: CASO,
-        idempotency_key: "redactor:1",
-        version: 1,
-        markdown: redactorFixture.markdown,
-        contenido_json: documento,
-        autor: "agente",
-        estado_revision: "borrador",
-        creado: "2026-09-12T00:00:00Z",
-      },
-    ],
-    casos: [{ id: CASO, corrida_id: CORRIDA }],
-    propuestas_edicion: [{ id: PROPUESTA, caso_id: CASO, estado: "propuesta" }],
-    bitacora: [],
-    rpc: [],
-  };
-}
-
-/** Doble con la forma de PostgREST: `from().select().eq().order()`, `rpc()`. */
-function clienteFalso(almacen: Almacen): ClienteForense {
-  function consulta(tabla: string): ConsultaForense {
-    const filtros: [string, unknown][] = [];
-    let operacion: { tipo: "select" } | { tipo: "update" | "insert"; valores: Fila } = { tipo: "select" };
-    let ordenPor: string | null = null;
-
-    function ejecutar(): RespuestaPostgrest {
-      const filas = (almacen as unknown as Record<string, Fila[]>)[tabla];
-      if (!filas) return { data: null, error: { message: `tabla desconocida: ${tabla}` } };
-      const coincide = (f: Fila) => filtros.every(([c, v]) => f[c] === v);
-      if (operacion.tipo === "insert") {
-        const clave = operacion.valores.idempotency_key;
-        if (clave !== undefined && filas.some((f) => f.idempotency_key === clave)) {
-          return { data: null, error: { message: "duplicate key" } };
-        }
-        filas.push({ ...operacion.valores });
-        return { data: null, error: null };
-      }
-      if (operacion.tipo === "update") {
-        const valores = operacion.valores;
-        filas.filter(coincide).forEach((f) => Object.assign(f, valores));
-        return { data: null, error: null };
-      }
-      let datos = filas.filter(coincide);
-      if (ordenPor) {
-        const columna = ordenPor;
-        datos = [...datos].sort((a, b) => Number(a[columna]) - Number(b[columna]));
-      }
-      return { data: datos, error: null };
-    }
-
-    const api: ConsultaForense = {
-      select: () => api,
-      eq: (columna, valor) => {
-        filtros.push([columna, valor]);
-        return api;
-      },
-      order: (columna) => {
-        ordenPor = columna;
-        return api;
-      },
-      update: (valores) => {
-        operacion = { tipo: "update", valores };
-        return api;
-      },
-      insert: (valores) => {
-        operacion = { tipo: "insert", valores };
-        return api;
-      },
-      maybeSingle: () => {
-        const r = ejecutar();
-        const dato = Array.isArray(r.data) ? (r.data[0] ?? null) : r.data;
-        return Promise.resolve({ data: dato, error: r.error });
-      },
-      then: (resolver, rechazar) => Promise.resolve(ejecutar()).then(resolver, rechazar),
-    };
-    return api;
-  }
-
-  return {
-    from: consulta,
-    /** Imita `forense.aplicar_propuesta` de 006 §7 (incluido su log de bitácora). */
-    rpc(nombre, args = {}) {
-      almacen.rpc.push({ nombre, args });
-      if (nombre !== "aplicar_propuesta") {
-        return Promise.resolve({ data: null, error: { message: `rpc desconocida: ${nombre}` } });
-      }
-      const propuesta = almacen.propuestas_edicion.find((p) => p.id === args.p_propuesta);
-      if (!propuesta) return Promise.resolve({ data: { ok: false, error: "contexto_invalido" }, error: null });
-      if (propuesta.estado === "aplicada") {
-        return Promise.resolve({
-          data: { ok: true, aplicada: false, motivo: "ya_aplicada", version: propuesta.version_resultante },
-          error: null,
-        });
-      }
-      const maxima = Math.max(...almacen.expedientes.map((e) => Number(e.version)));
-      const nueva = maxima + 1;
-      almacen.expedientes.push({
-        caso_id: CASO,
-        idempotency_key: `propuesta:${String(args.p_propuesta)}`,
-        version: nueva,
-        markdown: args.p_markdown ?? "",
-        contenido_json: args.p_contenido_json ?? {},
-        autor: "humano",
-        estado_revision: "borrador",
-        creado: "2026-09-12T01:00:00Z",
-      });
-      propuesta.estado = "aplicada";
-      propuesta.version_resultante = nueva;
-      almacen.bitacora.push({
-        corrida_id: CORRIDA,
-        caso_id: CASO,
-        agente: "editor",
-        tipo_evento: "edicion",
-        payload: { propuesta_id: args.p_propuesta, version_resultante: nueva },
-      });
-      return Promise.resolve({ data: { ok: true, aplicada: true, version: nueva }, error: null });
-    },
-  };
+async function sembrarPropuesta(
+  repo: ReturnType<typeof crearRepositorioSupabase>,
+  requestId = "00000000-0000-4000-8000-000000000499",
+) {
+  const previsualizacion = desdeMarkdown("# Título\n\nCuerpo propuesto por el editor.\n");
+  return repo.registrarPropuesta(CASO, propuestaDemo(), previsualizacion, {
+    perfilId: "00000000-0000-4000-8000-000000000300",
+    requestId,
+    seleccionHash: "c".repeat(64),
+  });
 }
 
 describe("repositorio del expediente", () => {
+  it("registrarPropuesta ESCRIBE la fila en forense.propuestas_edicion (sin ella, Aplicar es 404)", async () => {
+    const almacen = crearAlmacen();
+    const repo = crearRepositorioSupabase(clienteFalso(almacen));
+    const r = await sembrarPropuesta(repo);
+    expect(r.ok).toBe(true);
+    expect(r.propuestaId).toBe(PROPUESTA);
+    expect(almacen.propuestas_edicion).toHaveLength(1);
+    const fila = almacen.propuestas_edicion[0];
+    expect(fila.caso_id).toBe(CASO);
+    expect(fila.estado).toBe("propuesta");
+    expect(fila.modo).toBe("propuesta");
+    expect(fila.version_base).toBe(1);
+    expect(fila.request_id).toBe("00000000-0000-4000-8000-000000000499");
+    expect(fila.seleccion_hash).toBe("c".repeat(64));
+    // `patch` guarda el documento resultante: aplicar_propuesta hace
+    // coalesce(p_contenido_json, p.patch) al versionar (006 §7).
+    expect(fila.patch).toBeDefined();
+  });
+
+  it("reintento con el mismo idempotency_key reutiliza la propuesta, no crea una segunda", async () => {
+    const almacen = crearAlmacen();
+    const repo = crearRepositorioSupabase(clienteFalso(almacen));
+    await sembrarPropuesta(repo, "00000000-0000-4000-8000-000000000498");
+    const dos = await sembrarPropuesta(repo, "00000000-0000-4000-8000-000000000498");
+    expect(dos.ok).toBe(true);
+    expect(dos.repetida).toBe(true);
+    expect(dos.propuestaId).toBe(PROPUESTA);
+    expect(almacen.propuestas_edicion).toHaveLength(1);
+  });
+
   it("fixture NUNCA afirma haber escrito bitácora", () => {
     expect(repositorioFixture.modo).toBe("fixture");
     expect(repositorioFixture.origen).toBe("fixture");
@@ -215,6 +137,7 @@ describe("repositorio del expediente", () => {
   it("aplicar delega en forense.aplicar_propuesta (006 §7), que versiona y deja bitácora 'edicion'", async () => {
     const almacen = crearAlmacen();
     const repo = crearRepositorioSupabase(clienteFalso(almacen));
+    await sembrarPropuesta(repo);
     const r = await repo.aplicar(
       CASO,
       { propuesta_id: PROPUESTA, version_base: 1, idempotency_key: "00000000-0000-4000-8000-000000000410" },
@@ -231,6 +154,7 @@ describe("repositorio del expediente", () => {
   it("doble aplicar devuelve la MISMA versión (idempotencia de 006 §7)", async () => {
     const almacen = crearAlmacen();
     const repo = crearRepositorioSupabase(clienteFalso(almacen));
+    await sembrarPropuesta(repo);
     const args = { propuesta_id: PROPUESTA, version_base: 1, idempotency_key: "00000000-0000-4000-8000-000000000411" };
     const uno = await repo.aplicar(CASO, args);
     const dos = await repo.aplicar(CASO, args);
@@ -245,6 +169,7 @@ describe("repositorio del expediente", () => {
   it("revertir crea versión nueva y escribe el evento 'edicion' a mano (no hay RPC en 006)", async () => {
     const almacen = crearAlmacen();
     const repo = crearRepositorioSupabase(clienteFalso(almacen));
+    await sembrarPropuesta(repo);
     await repo.aplicar(CASO, {
       propuesta_id: PROPUESTA,
       version_base: 1,
@@ -288,6 +213,7 @@ describe("repositorio del expediente", () => {
   it("descartar marca la propuesta en forense.propuestas_edicion y no crea versión", async () => {
     const almacen = crearAlmacen();
     const repo = crearRepositorioSupabase(clienteFalso(almacen));
+    await sembrarPropuesta(repo);
     const r = await repo.descartar(CASO, PROPUESTA);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.valor.estado).toBe("descartada");

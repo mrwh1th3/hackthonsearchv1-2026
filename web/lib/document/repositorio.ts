@@ -27,6 +27,7 @@ export interface ClienteForense {
 
 import {
   aplicarPropuestaGuardada,
+  registrarPropuesta as registrarPropuestaDemo,
   descartarPropuestaGuardada,
   guardarBorrador as guardarBorradorDemo,
   hashContenido,
@@ -40,7 +41,7 @@ import {
 } from "./almacen-demo";
 import { normalizarDocumento } from "./documento";
 import { aMarkdown } from "./markdown";
-import type { Documento, Reporte } from "./tipos";
+import type { Documento, Propuesta, Reporte } from "./tipos";
 
 /**
  * Persistencia del expediente para las cinco operaciones **deterministas** del
@@ -75,6 +76,10 @@ export type ModoPersistencia = "supabase" | "fixture" | "no_configurado";
 export interface ContextoEdicion {
   /** Perfil de la sesión (`forense.perfiles.id`), para `registrar_actividad`. */
   perfilId?: string | null;
+  /** `idempotency_key` de la solicitud → `propuestas_edicion.request_id` (UNIQUE). */
+  requestId?: string | null;
+  /** `seleccion.texto_hash` de la solicitud, para auditar contra qué se editó. */
+  seleccionHash?: string | null;
 }
 
 export interface RepositorioExpediente {
@@ -94,6 +99,19 @@ export interface RepositorioExpediente {
     args: { propuesta_id: string; version_base: number; idempotency_key: string },
     ctx?: ContextoEdicion,
   ): Promise<ResultadoEscritura<{ reporte: Reporte; repetido: boolean }>>;
+  /**
+   * Persiste la propuesta ANTES de responderla al cliente. Sin esto, el
+   * `propuesta_id` que la UI recibe no existe en `forense.propuestas_edicion`
+   * y Aplicar devolvería `contexto_invalido` (006 §7 busca la fila por id).
+   * Devuelve el id definitivo: si `request_id` ya estaba (reintento del mismo
+   * `idempotency_key`), se reutiliza la propuesta existente.
+   */
+  registrarPropuesta(
+    casoId: string,
+    propuesta: Propuesta,
+    previsualizacion: Documento,
+    ctx?: ContextoEdicion,
+  ): Promise<{ ok: boolean; propuestaId: string; repetida: boolean }>;
   descartar(casoId: string, propuestaId: string): Promise<ResultadoEscritura<{ estado: string }>>;
   revertir(
     casoId: string,
@@ -124,6 +142,10 @@ export const repositorioFixture: RepositorioExpediente = {
   },
   async aplicar(casoId, args) {
     return aplicarPropuestaGuardada(casoId, args);
+  },
+  async registrarPropuesta(casoId, propuesta, previsualizacion) {
+    registrarPropuestaDemo(casoId, propuesta, previsualizacion);
+    return { ok: true, propuestaId: propuesta.propuesta_id, repetida: false };
   },
   async descartar(casoId, propuestaId) {
     const r = descartarPropuestaGuardada(casoId, propuestaId);
@@ -295,6 +317,47 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
       const reporte = await this.obtenerVersion(casoId, version);
       if (!reporte) return { ok: false, motivo: "version_inexistente" };
       return { ok: true, valor: { reporte, repetido: res.aplicada === false } };
+    },
+
+    /**
+     * INSERT en `forense.propuestas_edicion` (006 §5). `patch` guarda el
+     * documento resultante porque `aplicar_propuesta` hace
+     * `coalesce(p_contenido_json, p.patch)` al versionar. `request_id` lleva el
+     * `idempotency_key` y tiene índice UNIQUE: un reintento no crea una
+     * segunda propuesta, reutiliza la que ya estaba.
+     */
+    async registrarPropuesta(casoId, propuesta, previsualizacion, ctx) {
+      // La previsualización se cachea en memoria para no recalcularla al
+      // aplicar; la VERDAD está en la fila que se inserta aquí.
+      registrarPropuestaDemo(casoId, propuesta, previsualizacion);
+      const fila = {
+        id: propuesta.propuesta_id,
+        caso_id: casoId,
+        perfil_id: ctx?.perfilId ?? null,
+        version_base: propuesta.version_base,
+        seleccion_hash: ctx?.seleccionHash ?? null,
+        mensaje: propuesta.mensaje,
+        modo: "propuesta",
+        patch: previsualizacion,
+        diff: { texto: propuesta.diff },
+        citas: propuesta.citas,
+        estado: "propuesta",
+        request_id: ctx?.requestId ?? null,
+      };
+      const { error } = await cliente.from("propuestas_edicion").insert(fila);
+      if (!error) return { ok: true, propuestaId: propuesta.propuesta_id, repetida: false };
+
+      // Colisión de `request_id`: el mismo idempotency_key ya produjo una.
+      if (ctx?.requestId) {
+        const { data } = await cliente
+          .from("propuestas_edicion")
+          .select("id")
+          .eq("request_id", ctx.requestId)
+          .maybeSingle();
+        const existente = (data as { id?: string } | null)?.id;
+        if (existente) return { ok: true, propuestaId: existente, repetida: true };
+      }
+      return { ok: false, propuestaId: propuesta.propuesta_id, repetida: false };
     },
 
     /** Descartar registra estado y **no** crea versión (07 §4). */
