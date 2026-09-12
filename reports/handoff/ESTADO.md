@@ -23,17 +23,22 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 3. **ElevenLabs/Twilio**: número saliente pendiente de que el usuario lo configure en la UI de ElevenLabs; sin él no hay llamada real.
 4. ~~Repo público~~ resuelto (privado).
 
-## Oleadas 1, 2 y 2b — integradas en main (H7, ≈05:25)
+## Oleadas 1–3 — integradas en main (H9, ≈07:40; commit b5374b8)
 | Módulo | En main | Verificación en main |
 |---|---|---|
-| db | 001–009 (14 pistas calibradas, clusters, 11 RPC + sistema + runtime, producto, voz, ingesta/inyección, eventos de runtime + catálogo de giros), seeds, generator, loaders/load_gen, eval/metricas + comparar_corridas, eval/inyecciones a/b/c | `bash db/tests/run.sh` 313/313. gen-v1: selector 16/17 fraudes, 0/15 trampas, 0/68 fondo; baseline dos pistas FPR 4/15 |
-| runtime | módulos + dispatcher, 9 code nodes, 10 workflows JSON recableados (preparar-sql ok=45, pendientes 28 → 26 funciones SQL que faltan, listadas en la entrega de db 2b), e2e del camino del worker con proveedor simulado: 45 eventos en bitácora | 326/326; generadores --check OK |
-| prompts | 12 prompts, ámbito paquete, ACL, Trayectoria, variantes de reintento; version_prompts 61ed12e965dd | 96/96; manifest --check OK |
-| webapp | 20 rutas, SupabaseDataSource forense, privado por service_role (perfil, investigaciones, notificaciones, inyecciones, vistas), realtime, BFF a n8n, /datos real, /inyecciones diff | typecheck OK, lint 0, build OK, 231/231 (con editor) |
-| editor | DocumentWorkspace + chat + BFF /api/reportes con modos fixture/supabase/n8n, selección verificada por texto_hash, bitácora | hallazgo alto abierto: previsualización de propuesta en memoria en modo supabase (oleada 3) |
-| voice | integrations/elevenlabs (payload, HMAC, dedupe, estados, callback) | 52/52; sin llamadas reales |
-| qa | 67 integración (forense_qa, 001–009) + 6 e2e + informe | 64 pass / 2 todo (QA-003 db) tras corregir un comentario; e2e 4/6: la prueba de propuesta manda un texto_hash que el editor rechaza con 409 (alinear en QA, oleada 3) |
-Contratos **1.3.0** (schemas del editor): 110/110. Supabase remoto: **001–009 + 003 recalibrada + seeds aplicadas** (20/20 funciones de pistas idénticas byte a byte; check de bitácora con 31 valores; 96 funciones en `forense` con ACL explícita: 93 solo service_role y 3 de lectura UI para anon: v_grafo, v_trayectoria_rfc, v_metricas_corrida). Oleada 3 en curso (db4 → runtime4 → qa3; editor3, webapp3, voice2, prompts3).
+| db | 001–011: esquema + runtime, 14 pistas calibradas, clusters, 11 RPC + sistema + 30 funciones del runtime (010), producto, voz, ingesta/inyección, eventos, métricas completas (011 = eval/metricas.py campo a campo); seeds; generator; loaders/load_gen; eval | `bash db/tests/run.sh` 392/392. gen-v1: selector 16/17 fraudes, 0/15 trampas; baseline FPR 4/15 |
+| runtime | 10 workflows JSON cableados al 100% (preparar-sql ok=73/73), e2e del camino completo con dictamen determinista real, ensamblado embebido con sello 33a95afbc976, editar/inyectar/voz | 330/330; generadores --check OK |
+| prompts | 12 prompts, techos por rol, variantes de reintento, Trayectoria | 106/106 |
+| webapp + editor | 20 rutas, Supabase real, privado por perfil_id, realtime, inyección con diff, editor persistente (propuestas en DB, revertir por RPC, bitácora) | typecheck OK, lint 0, build OK, 272/272 |
+| voice | adaptador ElevenLabs con firma t=,v0=, callback post_call_transcription, dedupe por tipo | 67/67 |
+| qa | 131 integración (forense_qa 001–011) + 7 e2e; informes oleadas 2–3 | 131/131, 7/7 |
+Contratos **1.3.1**: 110/110. Supabase remoto: 001–009 + 003 recalibrada + seeds; **010/011 en aplicación** (agente).
+
+## Abierto (oleada 4 en curso)
+- QA-004: garantizar cluster por RFC inyectado en FORENSE_inyectar (armar_cluster_para) y estado_corrida con clusters pendientes (db + runtime).
+- Rendimiento: correr_pistas ≈46 s sobre 8 081 CFDI en el e2e del runtime (domina la latencia de inyección); revisar planes/índices (db).
+- Runtime: prompt_hash por variante y aviso de reintento en bitácora.
+- Bloqueado por .env: credenciales n8n, importación de workflows, carga remota de gen-v1, smoke H4 y gate H8–10 (primer expediente real con API).
 
 ## Acciones pendientes del usuario
 - Rellenar `.env` (raíz, gitignored): `N8N_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`. Con eso el coordinador ejecuta `node scripts/n8n-credentials.mjs`, `node scripts/n8n-import.mjs`, carga gen-v1 en remoto y corre el smoke H4.
