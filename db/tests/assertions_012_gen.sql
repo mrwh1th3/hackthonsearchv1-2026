@@ -4,14 +4,23 @@
 --
 -- (a) carrusel nuevo   -> cruza el selector de dos familias; los 3 RFC
 --                         tienen que terminar en clusters igual.
--- (c) trampa legítima  -> NO cruza el selector (y no debe cruzarlo: es
---                         una trampa). Aun así el juez subió el paquete y
---                         espera respuesta: tiene que existir un cluster
---                         por RFC inyectado. Lo que NO cambia es el
---                         selector: el RFC sigue fuera de
---                         score_entidad. Ahí está la diferencia entre
---                         "garantizamos investigación" y "bajamos el
---                         umbral", que es la alternativa que se rechazó.
+-- (c) trampa legítima  -> PUEDE cruzar el selector, y de hecho se diseñó
+--                         para cruzarlo (eval/inyecciones/README.md §(c):
+--                         dispara R1 por domicilio compartido y F1 por
+--                         crédito comercial). Ahí es donde se mide la
+--                         defensa: el caso entra a investigación y el
+--                         sistema tiene que EXPLICARLO y cerrar
+--                         `anomalia_explicada`. Exigir que quedara fuera
+--                         del selector era medir otra cosa —y contradecía
+--                         al propio paquete—. Lo que sí se afirma aquí es
+--                         lo que depende de la corrida y del paquete:
+--                         (1) cada RFC inyectado termina en un cluster,
+--                         (2) el paquete trae los datos que explican la
+--                         anomalía (compras reales y salida de dinero a
+--                         personas morales) y no se factura a sí mismo,
+--                         así que NO da por sí solo evidencia validable
+--                         de dos familias sin explicación, y
+--                         (3) garantizar el cluster no mueve el selector.
 --
 -- Se ejecuta después de assertions_gen.sql y se omite en silencio si no
 -- hay snapshot gen-v1 o no se cargaron los paquetes.
@@ -57,7 +66,8 @@ do $$
 declare
   v uuid; pkg jsonb; r jsonb; v_ing uuid; v_iny uuid; v_nueva uuid;
   rfcs text[] := array['TRB190311FF6','TRB200714GG7','TRB180205HH8'];
-  n_cubiertos int; n_creados int; n_sel int; n_pri int; n_ev int;
+  n_cubiertos int; n_creados int; n_sel int; n_sel_post int; n_pri int; n_ev int;
+  n_compras int; n_salidas int; n_no_moral int; n_internas int;
 begin
   if not exists (select 1 from pg_tables where schemaname = 'pruebas' and tablename = 'paquetes') then
     return;
@@ -92,12 +102,43 @@ begin
   perform forense.correr_pistas(v_nueva);
   perform forense.armar_clusters(v_nueva);
 
-  -- El selector NO marca la trampa. Esto es lo correcto y se afirma antes
-  -- de garantizar nada: si algún día la marcara, el FPR de eval subiría y
-  -- esta aserción es la que avisa.
+  -- Se registra CUÁNTOS RFC de la trampa cruzan el selector, sin exigir
+  -- un valor: el paquete está hecho para cruzarlo (R1 + F1). Lo que se
+  -- afirma es que el paquete trae con qué explicarlo; el falso positivo,
+  -- si lo hay, lo mide eval/metricas.py sobre el DICTAMEN, no aquí.
   select count(*) into n_sel from forense.score_entidad(v_nueva) s where s.rfc = any(rfcs);
-  perform pruebas.assert('(c) el selector de dos familias NO marca la trampa legítima',
-    n_sel = 0, 'marcados=' || n_sel);
+
+  -- (c1) Compras reales: CFDI de entrada emitidos por proveedores de la
+  -- corrida base. Sin ellas el paquete sería un carrusel disfrazado y la
+  -- trampa no sería una trampa legítima.
+  select count(*) into n_compras from forense.cfdi f
+   where f.corrida_id = v_nueva and f.tipo = 'I' and not f.cancelado
+     and f.receptor_rfc = any(rfcs) and not (f.emisor_rfc = any(rfcs));
+  perform pruebas.assert('(c) el paquete de la trampa trae compras reales a proveedores de la base',
+    n_compras >= 3, 'cfdi de compra=' || n_compras);
+
+  -- (c2) El dinero sale a personas MORALES, y todas identificadas: el
+  -- conteo de salidas hacia un titular que no es moral tiene que ser 0
+  -- *y* tiene que haber salidas (si la CLABE destino no existiera, el
+  -- `not exists` daría 0 por vacío y la aserción pasaría sin medir nada).
+  select count(*) filter (where k.tipo_persona = 'moral'),
+         count(*) filter (where k.tipo_persona is distinct from 'moral')
+    into n_salidas, n_no_moral
+    from forense.movimientos m
+    join forense.cuentas co on co.corrida_id = v_nueva and co.clabe = m.cuenta_origen
+    left join forense.cuentas cd on cd.corrida_id = v_nueva and cd.clabe = m.cuenta_destino
+    left join forense.contribuyentes k on k.corrida_id = v_nueva and k.rfc = cd.rfc_titular
+   where m.corrida_id = v_nueva and co.rfc_titular = any(rfcs);
+  perform pruebas.assert('(c) el dinero de la trampa sale a personas morales identificadas',
+    n_salidas >= 3 and n_no_moral = 0,
+    'salidas a morales=' || n_salidas || ' salidas sin moral identificada=' || n_no_moral);
+
+  -- (c3) No se facturan entre sí: es el discriminador que separa
+  -- "comparten domicilio" de "cluster de facturación".
+  select count(*) into n_internas from forense.cfdi f
+   where f.corrida_id = v_nueva and f.emisor_rfc = any(rfcs) and f.receptor_rfc = any(rfcs);
+  perform pruebas.assert('(c) la trampa no se factura a sí misma (no es un carrusel)',
+    n_internas = 0, 'cfdi internas=' || n_internas);
 
   select count(*) filter (where creado), count(*) into n_creados, n_pri
     from forense.asegurar_clusters_inyectados(v_nueva, v_iny);
@@ -106,13 +147,15 @@ begin
                   where c.corrida_id = v_nueva and x = any(c.rfcs));
   perform pruebas.assert('(c) cada RFC de la trampa inyectada termina en un cluster igual',
     n_cubiertos = 3, 'cubiertos=' || n_cubiertos || ' garantizados=' || n_creados ||
-    ' filas=' || n_pri);
+    ' filas=' || n_pri || ' marcados por el selector=' || n_sel);
 
-  -- ...y garantizar el cluster NO relajó el selector: el umbral de dos
-  -- familias sigue intacto sobre la corrida nueva.
-  select count(*) into n_sel from forense.score_entidad(v_nueva) s where s.rfc = any(rfcs);
-  perform pruebas.assert('(c) garantizar el cluster no mete a la trampa en el selector',
-    n_sel = 0, 'marcados despues=' || n_sel);
+  -- ...y garantizar el cluster NO tocó el selector: el umbral de dos
+  -- familias sigue dando exactamente lo mismo sobre la corrida nueva.
+  -- Esa es la diferencia entre "garantizamos investigación" y "bajamos el
+  -- umbral", que es la alternativa que se rechazó.
+  select count(*) into n_sel_post from forense.score_entidad(v_nueva) s where s.rfc = any(rfcs);
+  perform pruebas.assert('(c) garantizar el cluster no cambia el selector de dos familias',
+    n_sel_post = n_sel, 'antes=' || n_sel || ' despues=' || n_sel_post);
 
   select count(*) into n_ev from forense.bitacora b
    where b.corrida_id = v_nueva and b.tipo_evento = 'inyeccion'
