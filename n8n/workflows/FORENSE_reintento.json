@@ -1,0 +1,640 @@
+{
+  "name": "FORENSE_reintento",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Entrada reintento"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 03: máximo dos reintentos forenses por caso. El padre ya hizo el claim\n// (UPDATE ... WHERE n_reintentos < 2): aquí NO se incrementa nada.\nconst x = $input.first().json;\nconst intento = Number(x.intento);\nif (![1, 2].includes(intento)) throw new Error(`intento fuera de rango: ${x.intento}`);\nif (!x.caso_id) throw new Error('caso_id obligatorio');\nconst motivo = x.motivo ?? null;\nconst MOTIVOS = ['evidencia_insuficiente', 'cadena_incompleta', 'defensa_no_considerada', 'evidencia_invalida', 'contradiccion'];\nif (!MOTIVOS.includes(motivo)) throw new Error(`motivo no tipificado: ${motivo}`);\nconst objetivo = x.objetivo ?? null;\nif (!objetivo || (typeof objetivo === 'string' && objetivo.trim() === '')) {\n  throw new Error('objetivo vacío: un reintento sin objetivo concreto es otra ronda 1');\n}\nconst salida = { caso_id: x.caso_id, intento, motivo, objetivo, corrida_id: x.corrida_id ?? null, cluster_id: x.cluster_id ?? null };\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Validar intento"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Conserva caso, historial y versión de contexto (17 §3): el reintento no reconstruye el cluster.\n-- version_contexto y la cuota de expansión viven en el CLUSTER, no en el\n-- caso (001): el reintento conserva la versión vigente, no la reinicia.\nSELECT c.id AS caso_id, c.corrida_id, c.cluster_id, c.nivel, c.n_reintentos,\n       c.tool_calls, c.presupuesto_agotado,\n       k.version_contexto, k.expandido AS expansiones_usadas,\n       $2::int AS intento, $3::text AS motivo, $4::jsonb AS objetivo\n  FROM forense.casos c\n  LEFT JOIN forense.clusters k ON k.corrida_id = c.corrida_id AND k.id = c.cluster_id\n WHERE c.id = $1::uuid",
+        "options": {
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.intento }}, ={{ $('Validar intento').first().json.motivo }}, ={{ JSON.stringify($json.objetivo) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Cargar caso vigente",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_evidencia_insuficiente",
+                    "leftValue": "={{ $('Validar intento').first().json.motivo }}",
+                    "rightValue": "evidencia_insuficiente",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "evidencia_insuficiente"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_cadena_incompleta",
+                    "leftValue": "={{ $('Validar intento').first().json.motivo }}",
+                    "rightValue": "cadena_incompleta",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cadena_incompleta"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_defensa_no_considerada",
+                    "leftValue": "={{ $('Validar intento').first().json.motivo }}",
+                    "rightValue": "defensa_no_considerada",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "defensa_no_considerada"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_evidencia_invalida",
+                    "leftValue": "={{ $('Validar intento').first().json.motivo }}",
+                    "rightValue": "evidencia_invalida",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "evidencia_invalida"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_contradiccion",
+                    "leftValue": "={{ $('Validar intento').first().json.motivo }}",
+                    "rightValue": "contradiccion",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "contradiccion"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Ruta por motivo"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Por motivo (07 §3): comprobación pendiente en familia evaluable, ruta concreta, trampa con evidencias objetivo, autor de la evidencia inválida o autores en contradicción. NUNCA «todos los faltantes por defecto». DEPENDE de forense-db.\nSELECT * FROM forense.autores_reintento($1::uuid, $2::text, $3::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.motivo }}, ={{ $('Validar intento').first().json.objetivo }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        880,
+        140
+      ],
+      "name": "Seleccionar autores",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.puede_expandir }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1100,
+        140
+      ],
+      "name": "¿Queda cuota de expansión?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Si la única expansión del cluster ya se usó, se registra el límite y el reintento sigue SIN expandir (07 §3).\nWITH ev AS (\n  SELECT forense.log(\n           p_caso => $1::uuid, p_agente => 'sistema', p_tipo => 'presupuesto_agotado',\n           p_payload => $2::jsonb, p_corrida => $3::uuid)\n)\nSELECT $1::uuid AS caso_id, $4::text[] AS autores, false AS expandido,\n       'cuota_expansion_agotada'::text AS limitacion FROM ev",
+        "options": {
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ={{ $('Validar intento').first().json.corrida_id }}, ={{ `{${($json.autores ?? []).join(\",\")}}` }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1320,
+        280
+      ],
+      "name": "Registrar límite de expansión",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Solo para cadena_incompleta y solo si queda la cuota. DEPENDE de forense-db.\nSELECT * FROM forense.expandir_cluster_reintento($1::uuid, $2::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.objetivo }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1320,
+        140
+      ],
+      "name": "Expandir para reintento",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Ronda 2 con intento 1|2 y la version_contexto vigente; las señales nuevas se enlazan a las previas y la historia se conserva. DEPENDE de forense-db.\nSELECT * FROM forense.crear_tareas_revision($1::uuid, $2::int, $3::text[], $4::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.intento }}, ={{ `{${($json.autores ?? []).join(\",\")}}` }}, ={{ $('Validar intento').first().json.objetivo }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1540,
+        140
+      ],
+      "name": "Crear tareas de revisión",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1760,
+        140
+      ],
+      "name": "Despachar revisión"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.\nSELECT * FROM forense.estado_barrera($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ 'reintento' + $('Validar intento').first().json.intento }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1980,
+        140
+      ],
+      "name": "Barrera reintento",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.completa || $json.vencida }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        140
+      ],
+      "name": "¿Barrera reintento completa?"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ 10000 }}",
+        "unit": "ms"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        280
+      ],
+      "name": "Espera barrera reintento"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Repite validaciones y defensas aplicables ANTES del dictamen: evidencia nueva no entra sin validar. DEPENDE de forense-db.\nSELECT * FROM forense.revalidar_caso($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2420,
+        140
+      ],
+      "name": "Revalidar si cambió evidencia",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// El padre reanuda DONDE indica este resultado: no repite preparación ni\n// crea un caso nuevo (07 §3).\nconst x = $input.first().json;\nconst paso = $('Validar intento').first().json;\nconst REANUDAR = {\n  evidencia_insuficiente: 'auditoria',\n  cadena_incompleta: 'auditoria',\n  defensa_no_considerada: 'defensa',\n  evidencia_invalida: 'auditoria',\n  contradiccion: 'replica',\n};\nconst salida = {\n  caso_id: paso.caso_id,\n  intento: paso.intento,\n  reanudar_en: REANUDAR[paso.motivo] ?? 'auditoria',\n  limitaciones: x.limitaciones ?? [],\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        140
+      ],
+      "name": "Retornar al padre"
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_reintento (07 §3, 17 §3).\n\nintento ∈ {1,2} y NO se incrementa aquí: el claim es del padre.\nSe seleccionan autores por motivo, no «todos los faltantes».\nAgotar reintentos nunca sube el nivel (regla 10 de CLAUDE.md).",
+        "height": 220,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        560
+      ],
+      "name": "Nota reintento"
+    }
+  ],
+  "connections": {
+    "Entrada reintento": {
+      "main": [
+        [
+          {
+            "node": "Validar intento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar intento": {
+      "main": [
+        [
+          {
+            "node": "Cargar caso vigente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cargar caso vigente": {
+      "main": [
+        [
+          {
+            "node": "Ruta por motivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ruta por motivo": {
+      "main": [
+        [
+          {
+            "node": "Seleccionar autores",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Seleccionar autores",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Seleccionar autores",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Seleccionar autores",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Seleccionar autores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seleccionar autores": {
+      "main": [
+        [
+          {
+            "node": "¿Queda cuota de expansión?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Queda cuota de expansión?": {
+      "main": [
+        [
+          {
+            "node": "Expandir para reintento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar límite de expansión",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expandir para reintento": {
+      "main": [
+        [
+          {
+            "node": "Crear tareas de revisión",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar límite de expansión": {
+      "main": [
+        [
+          {
+            "node": "Crear tareas de revisión",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear tareas de revisión": {
+      "main": [
+        [
+          {
+            "node": "Despachar revisión",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Barrera reintento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Barrera reintento": {
+      "main": [
+        [
+          {
+            "node": "¿Barrera reintento completa?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Barrera reintento completa?": {
+      "main": [
+        [
+          {
+            "node": "Revalidar si cambió evidencia",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Espera barrera reintento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera barrera reintento": {
+      "main": [
+        [
+          {
+            "node": "Barrera reintento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revalidar si cambió evidencia": {
+      "main": [
+        [
+          {
+            "node": "Retornar al padre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

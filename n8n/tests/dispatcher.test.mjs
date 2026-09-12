@@ -209,3 +209,29 @@ test('[SIMULADO] un paso ya terminal no se vuelve a reclamar', () => {
   assert.equal(claim.ok, false);
   assert.equal(claim.error.codigo, 'paso_terminal');
 });
+
+// DECISIONES H3 01:35: la barrera es POR PASO, así que la firma lleva `paso`.
+// Sin él, cerrar ronda1 podría avanzar la barrera de ronda2 del mismo caso, y
+// deducir «el paso abierto más reciente» dentro de la función es una carrera.
+test('[SIMULADO] advance_case_if_ready distingue el paso y respeta la revisión esperada', () => {
+  const helpers = crearHelpersEnMemoria();
+  helpers.sembrarCaso({ id: UUID.caso });
+  helpers.sembrarEjecucion({ id: 'e-r1', caso_id: UUID.caso, tarea_id: 'r1-t1', rol: 'documental' });
+  helpers.registrarBarrera({ caso_id: UUID.caso, paso: 'ronda1', tareas_esperadas: ['r1-t1'] });
+  helpers.registrarBarrera({ caso_id: UUID.caso, paso: 'ronda2', tareas_esperadas: ['r2-t1'] });
+
+  helpers.finish_step({ execution_id: 'e-r1', fence: '0', estado: 'completada' });
+
+  const r1 = helpers.advance_case_if_ready({ caso_id: UUID.caso, paso: 'ronda1', revision_expected: 1 });
+  assert.equal(r1.avanza, true, 'ronda1 cierra con su propia tarea');
+  const r2 = helpers.advance_case_if_ready({ caso_id: UUID.caso, paso: 'ronda2' });
+  assert.equal(r2.avanza, false, 'la barrera de ronda2 no se cierra con una tarea de ronda1');
+  assert.deepEqual(r2.faltantes, ['r2-t1']);
+
+  // Segundo callback con la revisión vieja: CAS perdido, no avanza, y dice cuál
+  // es la revisión actual (17 §3: dos callbacks no disparan dos auditores).
+  const conflicto = helpers.advance_case_if_ready({ caso_id: UUID.caso, paso: 'ronda1', revision_expected: 1 });
+  assert.equal(conflicto.ok, false);
+  assert.equal(conflicto.error.codigo, 'conflicto_cas');
+  assert.equal(conflicto.revision_actual, 2);
+});
