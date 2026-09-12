@@ -101,9 +101,19 @@ instrucción propia de ese motivo— y no cambian el system, la allowlist, el co
 ni el techo; el bloque compite por el mismo presupuesto que los datos. Reintentar no sube el
 nivel (lo calcula código) ni convierte la falta de pruebas en explicación inocente.
 
-El ensamblador rechaza con código tipificado el reintento mal declarado:
-`motivo_reintento_invalido`, `reintento_no_disponible`, `reintento_sin_intento` (motivo con
-`intento=0`) y `motivo_reintento_ausente` (`intento≥1` sin motivo: no se reintenta a ciegas).
+El ensamblador rechaza con código tipificado el reintento **mal** declarado:
+`motivo_reintento_invalido` (motivo fuera de la lista), `reintento_no_disponible` (rol que no
+reintenta) y `reintento_sin_intento` (motivo con `intento=0`: mentiría al modelo).
+
+El reintento **incompleto** ya no se rechaza (decisión H7). Si el paquete declara `intento≥1`
+y el ensamblado no recibe motivo, `ensamblar()` no lanza: degrada. Añade un bloque de
+reintento genérico que le dice al modelo exactamente lo que no sabe —«el motivo tipificado no
+llegó a este ensamblado, no lo supongas ni lo inventes»—, marca la variante como
+`<rol>+reintento:sin_motivo` y deja el hueco en `meta.aviso_reintento` para que el runtime lo
+registre en bitácora. El motivo del cambio: el runtime no siempre puede recuperar el motivo
+del intento anterior (un checkpoint reanudado tras un fallo lo pierde) y abortar el ensamblado
+convertía un dato faltante en un caso sin investigar. `sin_motivo` **no es un motivo**: no
+está en `MOTIVOS_REINTENTO` y `meta.motivo_reintento` sigue siendo `null`.
 
 La variante se nombra con sufijo, `<rol>+reintento:<motivo>`, y se combina con la anterior
 (`documental+fewshot+reintento:evidencia_invalida`). Las 35 combinaciones no se listan en

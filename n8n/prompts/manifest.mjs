@@ -16,6 +16,7 @@ import {
   ROLES_LLM, SCHEMA_SALIDA_POR_ROL, MODELO_PROPUESTO_POR_ROL, TECHO_CARACTERES,
   TOOLS_DE_SISTEMA, FEWSHOT_POR_ROL, FEWSHOT_POR_DEFECTO, toolsPorRol,
   MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, AMBITO_TECHO_POR_DEFECTO, TECHO_SYSTEM_POR_ROL,
+  VARIANTE_REINTENTO_SIN_MOTIVO,
 } from './ensamblar.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +74,10 @@ export function construirManifest() {
     motivos_reintento: [...MOTIVOS_REINTENTO],
     roles_con_reintento: [...ROLES_CON_REINTENTO],
     sufijo_variante_reintento: 'reintento:<motivo>',
+    // Degradación H7: `intento>=1` sin motivo no aborta, se ensambla con bloque genérico y
+    // esta variante. `sin_motivo` NO está en `motivos_reintento`: no es un motivo, es su
+    // ausencia, y `meta.motivo_reintento` sigue siendo null.
+    variante_reintento_sin_motivo: VARIANTE_REINTENTO_SIN_MOTIVO,
     ambito_techo_por_defecto: AMBITO_TECHO_POR_DEFECTO,
     // Techo del system por rol (H7: 10k especialistas, 12k cierre). Sustituye al escalar
     // `techo_system_caracteres` de H3: un solo número dejaba a los roles de cierre "sobre
@@ -120,7 +125,8 @@ export function verificarManifest() {
     'version_manifest', 'contracts_version', 'regla_hash', 'roles', 'tools_de_sistema_prohibidas',
     'tools_por_rol', 'schema_salida_por_rol', 'modelo_propuesto_por_rol', 'techo_caracteres_por_rol',
     'fewshot_por_rol', 'fewshot_por_defecto', 'variantes', 'motivos_reintento',
-    'roles_con_reintento', 'sufijo_variante_reintento', 'ambito_techo_por_defecto',
+    'roles_con_reintento', 'sufijo_variante_reintento', 'variante_reintento_sin_motivo',
+    'ambito_techo_por_defecto',
     'techo_system_por_rol',
   ]) {
     if (JSON.stringify(actual[clave]) !== JSON.stringify(esperado[clave])) {
