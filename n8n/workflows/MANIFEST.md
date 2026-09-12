@@ -6,10 +6,13 @@ Dueño: **forense-runtime**. Fuentes normativas: `17-runtime-n8n.md` (autoridad 
 normativo sobre 00–20), `06-rpc-herramientas.md` (herramientas), `03-arquitectura-agentica.md`
 (cuotas y despertar).
 
-**Estado real de este archivo:** es el plano nodo por nodo. Ninguno de estos workflows ha sido
-importado, ejecutado ni activado: no hubo red en esta sesión. Lo único verificado aquí por comando
-es la forma de los JSON emitidos (`n8n/tests/workflows.test.mjs`). Que la instancia los acepte
-queda **pendiente** hasta el smoke del coordinador.
+**Estado real de este archivo:** es el plano nodo por nodo de los **diez** workflows
+(153 nodos), todos emitidos por `node n8n/runtime/generar-workflows.mjs`. Ninguno ha sido
+importado, ejecutado ni activado: no hubo red en esta sesión. Verificado por comando:
+la forma de los JSON, el **contrato de datos entre nodos** y que la SQL **parsea contra
+Postgres 17 real** con 001–003 aplicadas (`node n8n/tests/preparar-sql.mjs`, `falla=0`).
+Que la instancia acepte los archivos y que los datos fluyan extremo a extremo queda
+**pendiente** del smoke del coordinador: el guion está en `n8n/workflows/IMPORT.md`.
 
 ---
 
@@ -110,93 +113,109 @@ sustituya.
 8. `FORENSE_reconciliador` y `FORENSE_errores`
 
 `FORENSE_inyectar` es posterior a 17 (viene de 21 §3) y depende de `FORENSE_corrida` e
-`FORENSE_investigar_cluster`: se importa **entre 5 y 6**. Ningún workflow se activa antes del smoke
+`FORENSE_investigar_cluster`: se importa **entre 5 y 6**. La tabla con nodos, IDs `PENDIENTE_*` y
+variables por resolver está en **`n8n/workflows/IMPORT.md`**, que es el documento que ejecuta el
+coordinador. Ningún workflow se activa antes del smoke
 (17 §2). Los webhooks quedan en modo test hasta que el smoke pase.
 
 ---
 
-## 2. `FORENSE_ejecutar_agente` — worker de paso  *(JSON emitido: `FORENSE_ejecutar_agente.json`)*
+## 2. `FORENSE_ejecutar_agente` — worker de paso  *(JSON emitido, 31 nodos)*
 
-Entrada `{tarea_id, execution_id?, owner, motivo?}`. Un paso: **una** petición de modelo **o** un
-lote de herramientas; guarda checkpoint y termina (17 §3). Sustituye al worker con AI Agent de 07.
+Entrada `{tarea_id, execution_id?, owner, motivo?}`. Un paso: **una** petición de
+modelo **o** un lote de herramientas; guarda checkpoint y termina (17 §3).
+Sustituye al worker con AI Agent de 07.
+
+**Convención de cableado (corte 2).** La identidad del claim —`execution_id`,
+`fencing_token`, `revision`, `caso_id`, `tarea_id`, `rol`, `paso`,
+`paso_pipeline`, `request_id`— se lee siempre de `$('Decidir accion')`, que está
+aguas arriba de las tres ramas; la carga de cada paso viaja por `$json` entre
+nodos contiguos. Las funciones de 17 §4 devuelven `jsonb` y se abren con
+`jsonb_to_record`, de modo que cada nodo publica **columnas con nombre**. Eso es
+lo que hace comprobable el contrato entre nodos (§11.15).
 
 | # | Nodo | Tipo | typeV | Parámetros clave | Credencial |
 |---|---|---|---|---|---|
-| 1 | `Paso entrante` | `executeWorkflowTrigger` | 1.2 (SDK MCP) | `inputSource: passthrough` | — |
-| 2 | `Reclamar paso` | `postgres` | 2.7 | `operation: executeQuery`; `SELECT * FROM forense.claim_step($1::uuid, $2::text)`; `queryReplacement` = `execution_id`, `owner`; `options.queryBatching: single` | `Forense Postgres` |
-| 3 | `¿Claim vigente?` | `if` | 2.3 | boolean `={{ $json.ok }}` es true | — |
-| 4 | `Paso no reclamable` | `code` | 2 | Devuelve `{estado:'en_cola', motivo}`. Rama falsa de (3): el slot es de otro owner con lease vigente; **pendiente, no fallido** (17 §3). | — |
-| 4b | `Registrar en_cola` | `postgres` | 2.7 | `SELECT forense.registrar_evento($1::uuid, 'paso_en_cola', $2::jsonb)`. Sin evento persistido no hay progreso visible (regla 2 de CLAUDE.md; 21 §3.3): la rama `en_cola` también deja rastro. | `Forense Postgres` |
-| 5 | `Cargar ejecución` | `postgres` | 2.7 | `SELECT e.*, a.contenido AS contexto, t.caso_id, t.agente, t.ronda, t.intento FROM forense.ejecuciones_agente e JOIN forense.artefactos_contexto a ON a.hash = e.context_hash LEFT JOIN forense.tareas_agente t ON t.id = e.tarea_id WHERE e.id = $1::uuid` | `Forense Postgres` |
-| 6 | `Decidir accion` | `code` | 2 | **Generado** desde `n8n/runtime/nodos/decidir-paso.mjs`. Lee `estado_interno`, `deadline_at`, `reparaciones_json` y cola pendiente → `{accion, motivo_request, evento}`. No inventa estados. | — |
-| 7 | `Ruta del paso` | `switch` | 3.4 | `rules.values` sobre `={{ $json.accion }}`: `solicitar_modelo` → salida 0; `ejecutar_herramienta` → 1; `cerrar` → 2. `fallbackOutput: none` (un valor no previsto no avanza en silencio). | — |
-| 8 | `Reservar request` | `postgres` | 2.7 | `SELECT * FROM forense.reserve_request($1::uuid,$2::bigint,$3::uuid)`. **Antes** del HTTP (17 §5.3). | `Forense Postgres` |
-| 9 | `Construir cuerpo Messages` | `code` | 2 | **Generado** (`nodos/construir-cuerpo.mjs`). Falla si falta el modelo o si un `tool_use` quedó sin su `tool_result`. `{model, max_tokens, temperature:0, system, messages, tools}`. `model` se resuelve de configuración de cuenta, nunca del prompt del usuario (17 §5.3). En reparación: `tools` ausente. | — |
-| 10 | `POST /v1/messages` | `httpRequest` | 4.2 | `method: POST`; `url: https://api.anthropic.com/v1/messages`; `authentication: predefinedCredentialType`, `nodeCredentialType: anthropicApi`; header único `anthropic-version: 2023-06-01`; `sendBody: true`, `specifyBody: json`, `jsonBody: ={{ JSON.stringify($json.cuerpo) }}`; `options.timeout: 45000`; `options.response.fullResponse: true`, `neverError: true` (429/5xx llegan como dato al clasificador, no como fallo de nodo); `retryOnFail: false` **a propósito** — el reintento propio honra `Retry-After` (17 §6). | `Anthropic account` |
-| 11 | `Clasificar transporte` | `code` | 2 | **Generado** (`nodos/clasificar-transporte.mjs`). `{clase: ok\|reintentable\|ambiguo\|error, ruta, espera_ms, intento, reintentar}`. `ruta` es **excluyente** para el switch: `continuar` \| `reintentar` \| `desconocido` \| `error`. Timeout ambiguo → `desconocido`, **no** se reintenta (17 §6). | — |
-| 12 | `Ruta de transporte` | `switch` | 3.4 | Cuatro salidas sobre `={{ $json.ruta }}`; `fallbackOutput: none`. El Code node decide, el switch solo enruta: una respuesta correcta no puede caer además en la rama de «desconocido». | — |
-| 13 | `Backoff` | `wait` | 1.1 (SDK MCP) | `resume: timeInterval`, `amount: ={{ $json.espera_ms }}`, `unit: ms`. Vuelve a (10). Máximo dos vueltas; **no** es reintento forense. | — |
-| 14 | `Marcar desconocido` | `postgres` | 2.7 | `UPDATE forense.llm_solicitudes SET estado='desconocido', error=$2::jsonb WHERE request_id=$1::uuid`. Puede haber coste externo sin respuesta: no se anuncia exactly-once (17 §6). | `Forense Postgres` |
-| 14b | `Marcar error de request` | `postgres` | 2.7 | `UPDATE ... SET estado='error', error=$2::jsonb`. Error permanente del proveedor o reintentos de transporte agotados: el paso cierra en error y no reintenta por su cuenta. | `Forense Postgres` |
-| 15 | `Interpretar respuesta` | `code` | 2 | **Generado** (`nodos/interpretar-respuesta.mjs`). Clasifica `stop_reason` → `tool_use` \| `end_turn` \| `max_tokens` \| `refusal` \| `stop_desconocido`, extrae bloques assistant y cola de `tool_use` con sus IDs, y calcula el evento de la máquina. No ejecuta herramientas mencionadas en texto (17 §5.6). **Límite declarado:** un Code node no puede cargar el validador de `contracts/`, así que comprueba estructura por rol y marca `requiere_validacion_contrato: true`; la validación autoritativa la hace el backend. | — |
-| 15b | `Validar salida contra contrato` | `postgres` | 2.7 | `SELECT * FROM forense.validar_salida_rol($1::uuid, $2::text, $3::jsonb)`. **Segundo nivel de 17 §8**: schema del rol, IDs, unidades y sustento, en backend. Sin este nodo, un `salida_estructura_ok` del Code node llegaría al checkpoint como si fuera salida válida. **Depende de forense-db.** | `Forense Postgres` |
-| 16 | `Completar request` | `postgres` | 2.7 | `UPDATE forense.llm_solicitudes SET estado='completado', provider_request_id=$2, usage=$3::jsonb, modelo=$4, duracion_ms=$5 WHERE request_id=$1::uuid` | `Forense Postgres` |
-| 17 | `Reclamar tool` | `postgres` | 2.7 | `SELECT * FROM forense.claim_tool($1::uuid,$2::bigint,$3::uuid,$4::text,$5::text)` (execution, fence, request, tool_use_id, args_hash). Unicidad `(request_id, tool_use_id)`: la reentrega devuelve el registro previo. | `Forense Postgres` |
-| 18 | `¿Tool nueva?` | `if` | 2.3 | `={{ $json.nuevo }}` es true. Falsa → (19). | — |
-| 19 | `Reentrega registrada` | `code` | 2 | Devuelve el resultado ya guardado. **No** consume cuota ni repite mutación (17 §6). | — |
-| 20 | `Llamar RPC forense` | `httpRequest` | 4.2 | `POST ={{ $json.base_rest }}/rpc/{{ $json.nombre }}`; `authentication: predefinedCredentialType`, `nodeCredentialType: supabaseApi`; `jsonBody` = argumentos validados + `p_operacion`, `p_tarea`, `p_caso` fijados por backend; **sin** `Content-Profile` (wrappers `public.forense_*`, 07); `options.timeout: 20000`, `neverError: true`. | `Forense Supabase` |
-| 21 | `Registrar resultado tool` | `postgres` | 2.7 | `UPDATE forense.tool_ejecuciones SET estado=$2, resultado=$3::jsonb, duracion_ms=$4 WHERE request_id=$5::uuid AND tool_use_id=$6::text`. La RPC ya escribió evidencia/bitácora una sola vez (17 §4). | `Forense Postgres` |
-| 22 | `Armar tool_results` | `code` | 2 | **Generado** (`nodos/armar-tool-results.mjs`). Un `tool_result` por **cada** `tool_use_id`, en orden, incluidos errores tipificados, sin texto ordinario antes (17 §5.5). | — |
-| 23 | `Guardar checkpoint` | `postgres` | 2.7 | `SELECT * FROM forense.save_checkpoint($1::uuid,$2::bigint,$3::int,$4::jsonb)`. CAS sobre `(caso_id,paso,revision)` + fencing. Un proceso con lease vencido no puede escribir. | `Forense Postgres` |
-| 24 | `¿Estado terminal?` | `if` | 2.3 | `={{ ['terminado','error','timeout'].includes($json.estado_interno) }}` | — |
-| 25 | `Redespachar paso` | `executeWorkflow` | 1.3 (SDK MCP) | Se llama a sí mismo con `{tarea_id, execution_id, owner}`; `options.waitForSubWorkflow: false` (dispatcher inmediato al guardar checkpoint, 17 §3). Cota: el `deadline_at` del paso y el presupuesto; no es un bucle libre. | — |
-| 26 | `Finalizar paso` | `postgres` | 2.7 | `SELECT * FROM forense.finish_step($1::uuid,$2::bigint,$3::text,$4::jsonb)` → tarea `completada\|error\|timeout\|omitida`, libera slot y lease, escribe bitácora. | `Forense Postgres` |
-| 27 | `Avanzar caso si listo` | `postgres` | 2.7 | `SELECT * FROM forense.advance_case_if_ready($1::uuid,$2::int)`. Es quien cierra la barrera; **no** un Merge de cinco ramas. | `Forense Postgres` |
-| 28 | `Nota worker` | `stickyNote` | 1 | Recuerda: un paso = un request **o** un lote de tools; sin `$fromAI`; sin AI Agent. | — |
+| 1 | `Paso entrante` | `executeWorkflowTrigger` | 1.2 | `inputSource: passthrough` | — |
+| 2 | `Reclamar paso` | `postgres` | 2.7 | `jsonb_to_record(forense.claim_step($1::uuid,$2::text))` → `ok, error, fence AS fencing_token, revision, paso, estado_interno, rol, tarea_id, caso_id, corrida_id, checkpoint, deadline_at` | `Forense Postgres` |
+| 3 | `¿Claim vigente?` | `if` | 2.3 | boolean `={{ $json.ok }}` | — |
+| 4 | `Paso no reclamable` | `code` | 2 | `{estado:'en_cola', motivo, …}`. El slot es de otro owner con lease vigente: **pendiente, no fallido** (17 §3). | — |
+| 5 | `Registrar en_cola` | `postgres` | 2.7 | `forense.log(p_caso, p_agente, p_tipo=>'paso_en_cola', …)`. `forense.registrar_evento` **no existe**; el escritor de bitácora es `forense.log` (002). | `Forense Postgres` |
+| 6 | `Cargar ejecución` | `postgres` | 2.7 | Eco de la identidad del claim + `artefactos_contexto.contenido AS paquete` + `ronda/intento` de la tarea + `paso_pipeline` del `pasos_pipeline` abierto. | `Forense Postgres` |
+| 7 | `Decidir accion` | `code` | 2 | **Generado** (`nodos/decidir-paso.mjs`). Traduce el checkpoint a `{accion, estado_interno DESTINO, estado_tarea, evento, request_id, pending_tool_use_ids, checkpoint}`. El `request_id` es determinista (`execution:paso:motivo`): un reintento de transporte reusa el mismo y no consume cuota. | — |
+| 8 | `Ruta del paso` | `switch` | 3.4 | `solicitar_modelo` → 0, `ejecutar_herramienta` → 1, `cerrar` → 2; `fallbackOutput: none`. | — |
+| 9 | `Reservar request` | `postgres` | 2.7 | `reserve_request($1::uuid,$2::bigint,$3::text,$4::int,$5::text)` — `request_id` es **text**. **Antes** del HTTP (17 §5.3). | `Forense Postgres` |
+| 10 | `Construir cuerpo Messages` | `code` | 2 | **Generado** + **prompts embebidos**: el generador inyecta `CATALOGO_PROMPTS` (bloque común, instrucciones por rol, contrato de salida renderizado desde `contracts`, allowlist por ronda) sellado con `version_prompts` y el sha256 del manifest. El system resultante es **idéntico** al de `n8n/prompts/ensamblar.mjs`, bloque de identidad incluido (test). `ambito_techo='paquete'`. | — |
+| 11 | `POST /v1/messages` | `httpRequest` | 4.2 | `jsonBody` desde `$('Construir cuerpo Messages')` (tras el Backoff, `$json` ya no trae el cuerpo); `fullResponse` + `neverError`; `timeout 45000`; `retryOnFail:false` a propósito. | `Anthropic account` |
+| 12 | `Clasificar transporte` | `code` | 2 | **Generado**. `ruta` excluyente: `continuar｜reintentar｜desconocido｜error`. | — |
+| 13 | `Ruta de transporte` | `switch` | 3.4 | Cuatro salidas; `fallbackOutput: none`. | — |
+| 14 | `Backoff` | `wait` | 1.1 | `espera_ms` del clasificador; vuelve a (11). Máximo dos vueltas. | — |
+| 15 | `Marcar desconocido` | `postgres` | 2.7 | `llm_solicitudes.error` es **text**; devuelve además `estado_interno='error'` y el patch de checkpoint. | `Forense Postgres` |
+| 16 | `Marcar error de request` | `postgres` | 2.7 | Igual, para error permanente o reintentos agotados. | `Forense Postgres` |
+| 17 | `Interpretar respuesta` | `code` | 2 | **Generado**. `stop_reason` → evento → **estado interno destino**; guarda el transcript completo (assistant con sus `tool_use`) y la cola con todos los IDs. | — |
+| 18 | `Validar salida contra contrato` | `postgres` | 2.7 | `validar_salida_rol` (segundo nivel de 17 §8). **Depende de 004/005.** | `Forense Postgres` |
+| 19 | `Completar request` | `postgres` | 2.7 | `estado='completado'`, `usage`, `tokens_in/out` reales del proveedor. | `Forense Postgres` |
+| 20 | `Expandir cola de tools` | `code` | 2 | **Generado** (`nodos/expandir-cola-tools.mjs`). Un **ítem por `tool_use`**, en orden, con `p_tarea`/`p_caso`/`p_operacion` fijados por backend y la allowlist del rol comprobada. | — |
+| 21 | `Reclamar tool` | `postgres` | 2.7 | `claim_tool(..., forense.args_hash($5::jsonb), $6)`; devuelve `duplicado` (no `nuevo`). El hash lo calcula SQL: un Code node no depende de un módulo de criptografía del host. | `Forense Postgres` |
+| 22 | `Llamar RPC forense` | `httpRequest` | 4.2 | Una llamada por ítem, secuencial; argumentos y nombre desde `$('Expandir cola de tools').item`. Sin `Content-Profile`. | `Forense Supabase` |
+| 23 | `Registrar resultado tool` | `postgres` | 2.7 | `finish_tool($1::bigint, …)`, no un UPDATE suelto. | `Forense Postgres` |
+| 24 | `Armar tool_results` | `code` | 2 | **Generado**. Lee la cola de `$('Expandir cola de tools').all()` y los resultados de `$input.all()`: un `tool_result` por **cada** `tool_use_id`, en orden, errores tipificados incluidos. | — |
+| 25 | `Guardar checkpoint` | `postgres` | 2.7 | `save_checkpoint` con CAS + fencing; devuelve `ok, revision` y repite `estado_interno` para el IF siguiente. | `Forense Postgres` |
+| 26 | `¿Estado terminal?` | `if` | 2.3 | `['terminado','error','timeout'].includes($json.estado_interno)` | — |
+| 27 | `Registrar paso guardado` | `postgres` | 2.7 | **Rama NO terminal.** `forense.log(... 'paso_checkpoint' ...)` antes de redespachar: regla 2 de CLAUDE.md, sin excepción para la rama que continúa. | `Forense Postgres` |
+| 28 | `Redespachar paso` | `executeWorkflow` | 1.3 | Se llama a sí mismo, `waitForSubWorkflow:false`. | — |
+| 29 | `Finalizar paso` | `postgres` | 2.7 | `finish_step($1::uuid,$2::bigint,$3::int,$4::text,'{}'::jsonb,$5::text)` — recibe el estado **interno** y deriva el de la tarea. | `Forense Postgres` |
+| 30 | `Avanzar caso si listo` | `postgres` | 2.7 | `advance_case_if_ready($1::uuid,$2::text,$3::int)` (DECISIONES H3 01:35). | `Forense Postgres` |
+| 31 | `Nota worker` | `stickyNote` | 1 | — | — |
 
-Conexiones (tal como salen del generador): 1→2→3; 3(true)→5, 3(false)→4→4b; 5→6→7;
-7[0]→8→9→10→11→12; 12[continuar]→15→15b→16→23; 12[reintentar]→13→10; 12[desconocido]→14→23;
-12[error]→14b→23; 7[1]→17→18; 18(true)→20→21→22→23, 18(false)→19→22; 7[2]→23;
-23→24; 24(true)→26→27; 24(false)→25.
+Conexiones: 1→2→3; 3(true)→6, 3(false)→4→5; 6→7→8;
+8[0]→9→10→11→12→13; 13[continuar]→17→18→19→25; 13[reintentar]→14→11;
+13[desconocido]→15→25; 13[error]→16→25; 8[1]→20→21→22→23→24→25; 8[2]→25;
+25→26; 26(true)→29→30; 26(false)→27→28.
 
-### 2.1 Qué falta para que este grafo **corra**, no solo para que importe
+### 2.1 Por qué la rama de herramientas no se bifurca
 
-El JSON es estructuralmente válido y pasa el test de forma; **no está cableado
-extremo a extremo**. Los tests prueban cada Code node contra entradas construidas
-a mano y el workflow contra su topología: nadie comprueba todavía que lo que un
-nodo emite sea lo que el siguiente espera. Saltos pendientes de conciliar, uno
-por uno:
+En n8n un nodo se ejecuta **una vez por conexión de entrada que le entrega
+datos**. El diseño anterior bifurcaba en `¿Tool nueva?` (nueva vs. reentrega) y
+volvía a unir en `Armar tool_results`: con varios `tool_use` en la misma
+respuesta, ambas ramas pueden traer ítems, el nodo correría dos veces y emitiría
+**dos mensajes user incompletos**, que es justo lo que prohíbe 17 §5.5. No hay
+nodo Merge disponible: su `typeVersion` no está verificado contra la instancia y
+aquí no hay red.
 
-| Nodo | Espera | Lo que hoy llega | Falta |
-|---|---|---|---|
-| `Decidir accion` | `x.checkpoint` | `Cargar ejecución` devuelve la columna `checkpoint_json` | renombrar en el SELECT o en un Set previo |
-| `Reservar request` | `execution_id`, `fencing_token`, `request_id` | la salida de `Decidir accion`, que no los arrastra | propagar la identidad del claim por la cadena |
-| `Construir cuerpo Messages` | `modelo`, `max_tokens`, `system_bloques`, `herramientas`, `mensajes` | nada del grafo los produce todavía | un SELECT de prompts/definiciones (depende de forense-prompts y forense-db) |
-| `Llamar RPC forense` | `base_rest`, `nombre`, `argumentos_backend` | la cola de `tool_use` sin resolver a argumentos de backend | nodo que fije `p_tarea`/`p_caso`/`p_operacion` desde el claim |
-| `Guardar checkpoint` | `checkpoint`, `revision`, `fencing_token` | cada rama trae su propia forma | normalizar la forma del checkpoint antes del guardado |
+La rama es por tanto lineal, y la idempotencia vive donde 17 §4 y 06 la ponen:
 
-Esto se cablea cuando existan las tablas y funciones de 17 §4 y los prompts
-versionados: cablearlo antes obligaría a inventar nombres de columna que otro
-dueño va a fijar. **Hasta entonces, el worker importa pero no ejecuta una
-investigación.**
+- `claim_tool` tiene unicidad `(request_id, tool_use_id)` y marca `duplicado`;
+- la RPC resuelve por `p_operacion = (tarea_id, paso, tool_use_id)` y, en una
+  reentrega, **devuelve el resultado registrado sin consumir cuota ni insertar
+  señal** (06 §Runtime).
 
-Dos divergencias más que conviene no «arreglar» a ciegas:
+Esa última garantía es una **dependencia declarada**: si 004/005 no la
+implementa, una reentrega consume cuota de más. Está en IMPORT.md §3.3.
 
-- `advance_case_if_ready`: 17 §4 la congela como `(caso_id, revision_expected)` y
-  así se llama en el JSON, pero la barrera es **por paso**, así que la
-  implementación en memoria de `dispatcher.mjs` necesita además `paso`. La firma
-  no es de este worker: el coordinador y forense-db deciden cuál queda.
-- El estado de error por `max_tokens` se alcanza por dos vocabularios: en proceso
-  (`loop.mjs`) con el evento `max_tokens_agotado`, y en n8n vía
-  `reparar_json` → guardia de presupuesto en `decidir-paso`. Es la misma regla de
-  17 §7; unificar uno sin el otro rompe la prueba del contrario.
+### 2.2 Qué queda pendiente para que el grafo **corra**
 
-Familias y herramientas por rol que el nodo (9) mete en `tools` (07 §Worker, 03):
+El corte 2 cerró los cinco saltos que esta sección listaba (`checkpoint`
+renombrado, identidad propagada, insumos del cuerpo, argumentos de backend y
+forma del checkpoint): hoy un test recorre el grafo y exige que cada `$json.campo`
+y cada `$('Nodo').first().json.campo` venga de un antecesor que lo publique
+(§11.15). Lo que **no** está cerrado:
+
+- Las funciones de 004–008 que el JSON llama (48 referencias). `CONTRATOS_NODOS`
+  declara qué columnas debe devolver cada una; `FORMA_PENDIENTE` lista los nodos
+  cuya forma no se puede comprobar contra el texto de la consulta.
+- `advance_case_if_ready` con tres argumentos: 002 publica hoy la de dos.
+- `paso_en_cola` y `paso_checkpoint` en el check de `bitacora`.
+
+Detalle y reproducción en `n8n/workflows/IMPORT.md`.
+
+Familias y herramientas por rol que el nodo (10) mete en `tools` (07 §Worker, 03):
 Documental `perfil,facturas,pares`; Financiero `conciliar,seguir_dinero,facturas`;
 Relacional `relacionados,ciclos,facturas`; Temporal `perfil,facturas,pares`;
-Externo `listas,relacionados`; todos con `escribir_senal`, y `leer_senal` **solo** en ronda
-informada (R2/reintento). Las cuotas (D/F/R 8, T 6, E 4; Auditor 12, Defensor 15) las impone
-`n8n/runtime/presupuesto.mjs`, no el modelo.
+Externo `listas,relacionados`; todos con `escribir_senal` y `registrar_evidencia`
+(DECISIONES H3 01:37), y `leer_senal` **solo** en ronda informada (R2/reintento).
+Las cuotas (D/F/R 8, T 6, E 4; Auditor 12, Defensor 15) las impone
+`n8n/runtime/presupuesto.mjs` y `forense.reservar_tool`, no el modelo.
 
 ---
 
@@ -390,10 +409,11 @@ workflow se entrega con adaptador y pruebas sin llamada real.
 
 ---
 
-## 11. Verificación mecánica de los JSON
+## 11. Verificación mecánica
 
-`n8n/tests/workflows.test.mjs` (se ejecuta en la misma corrida que el resto:
-`node --test "n8n/tests/*.test.mjs"`) comprueba para **cada** archivo de `n8n/workflows/*.json`:
+Todo esto corre con `node --test "n8n/tests/*.test.mjs"` (**317 pasan, 0 fallan**).
+
+`n8n/tests/workflows.test.mjs` comprueba, para **cada** archivo de `n8n/workflows/*.json`:
 
 1. Parsea y tiene `name`, `nodes`, `connections`, `active`, `settings`.
 2. `active === false` y `settings.executionOrder === 'v1'`.
@@ -406,37 +426,81 @@ workflow se entrega con adaptador y pruebas sin llamada real.
 9. Barrido de secretos: `sk-ant`, `service_role`, `eyJ` (JWT), y ningún valor literal en cabeceras
    `x-api-key` / `apikey` / `Authorization`.
 10. `pinData` y `staticData` ausentes o vacíos.
-11. En `FORENSE_ejecutar_agente`: el nodo `Reservar request` alcanza a `POST /v1/messages` por el
-    grafo, y no al revés (17 §5.3, reservar antes del HTTP).
+11. En `FORENSE_ejecutar_agente`: `Reservar request` alcanza a `POST /v1/messages` por el grafo,
+    y no al revés (17 §5.3, reservar antes del HTTP).
 12. En `FORENSE_investigar_cluster`: el cuerpo del Code node `Auditor Final` es **idéntico** al
-    archivo generado `n8n/code/auditor-final.js` (sin deriva respecto de `n8n/runtime/auditor-final.mjs`).
-13. Las cuatro rutas de transporte son excluyentes y cada una lleva a un solo destino (una respuesta
-    correcta no puede caer además en la rama de «desconocido»), con `fallbackOutput: none`.
+    archivo generado `n8n/code/auditor-final.js`.
+13. Las cuatro rutas de transporte son excluyentes y cada una lleva a un solo destino, con
+    `fallbackOutput: none`.
 14. Toda rama del worker llega a `Guardar checkpoint` antes de cerrar, y el cierre pasa por
     `Finalizar paso` → `Avanzar caso si listo`.
 
-Lo que el test **no** prueba: que n8n importe el archivo, que los `typeVersion` existan en la
-instancia, que la SQL referenciada exista, que los datos fluyan de un nodo al siguiente (§2.1), ni
-nada de conectividad. Eso es el smoke del coordinador.
+`n8n/tests/contratos-nodos.test.mjs` (corte 2) añade el contrato **entre** nodos:
+
+15. Para los **diez** workflows: cada `$json.campo` lo publica un antecesor inmediato, y cada
+    `$('Nodo').first().json.campo` apunta a un nodo que existe, **es antecesor** y publica ese
+    campo. Los nodos de paso (`if`/`switch`/`wait`/`respondToWebhook`) reenvían los campos de su
+    antecesor en vez de publicar los suyos.
+16. `CONTRATOS_NODOS` cubre exactamente los nodos que publican datos, y lo declarado aparece en la
+    fuente del nodo (texto de la consulta o cuerpo del Code node). Los nodos con `SELECT * FROM f()`
+    sobre funciones de 004–008 se listan en `FORMA_PENDIENTE`: no se aprueban en silencio.
+17. La rama de herramientas es **lineal** (una sola entrada por nodo hasta `Armar tool_results`):
+    ver §2.1.
+18. La rama NO terminal pasa por `Registrar paso guardado` antes de redespachar (regla 2).
+19. `advance_case_if_ready` se llama con tres argumentos, y ninguna función de 17 §4 con su firma
+    vieja (`reserve_request` con `::uuid`, `finish_step` con cuatro, `registrar_evento`, UPDATE
+    suelto sobre `tool_ejecuciones`).
+
+`n8n/tests/prompts-embebidos.test.mjs` cubre el system que viaja dentro del JSON:
+
+20. El JSON lleva `version_prompts` y el sha256 del manifest de `n8n/prompts/`.
+21. El system embebido es **idéntico** al que produce `n8n/prompts/ensamblar.mjs` para los seis
+    roles con fixture de contexto en `contracts/fixtures/valid/`, y su parte fija coincide para los
+    diez roles.
+22. Un `.md` de prompts modificado sin regenerar el manifest **hace fallar la generación** (se
+    comprueba sobre una copia en tmp; `n8n/prompts/` es de otro dueño y no se toca).
+23. Los roles sin herramientas no reciben la clave `tools`, y el techo de caracteres se aplica al
+    **paquete**, no al system (`ambito_techo='paquete'`).
+
+`n8n/tests/preparar-sql.mjs` (fuera de `node --test`: necesita una base local) hace `PREPARE` de las
+73 consultas contra Postgres 17 con 001–003 aplicadas: **`ok=25 pendiente_004_005=48 falla=0`**.
+`PREPARE` analiza y comprueba tipos sin ejecutar nada. Así se encontraron y corrigieron tres
+defectos reales que ningún test de forma veía: `forense.registrar_evento` no existe,
+`pasos_pipeline.snapshot_senales` es `bigint[]` (y `estado` no admite `'esperando'`), y
+`forense.casos` no tiene `version_contexto` ni `expansiones_usadas` —están en `clusters`—.
+
+Lo que **nada** de esto prueba: que n8n importe el archivo, que los `typeVersion` existan en la
+instancia, que las funciones de 004–008 existan o devuelvan la forma declarada, ni un solo byte de
+conectividad. Eso es el smoke del coordinador: `n8n/workflows/IMPORT.md` §5.
 
 ---
 
 ## 12. Dependencias abiertas (para el coordinador)
 
-- **Migraciones de control (17 §4), propiedad de forense-db:** `ejecuciones_agente`,
-  `artefactos_contexto`, `llm_solicitudes`, `tool_ejecuciones`, `pasos_pipeline`, `slots_runtime`,
-  y las funciones `claim_step`, `reserve_request`, `claim_tool`, `save_checkpoint`, `finish_step`,
-  `advance_case_if_ready`, `recover_expired`. Todo el SQL citado en este manifiesto los asume.
-  Además: `forense.reclamar_cluster`, `forense.estado_barrera`, `forense.registrar_evento`,
-  `forense.validar_salida_rol` (segundo nivel de validación de 17 §8) y el enlace
-  `ejecuciones_agente.context_hash → artefactos_contexto.hash` (confirmar nombre de columna).
-- **Firma de `advance_case_if_ready`**: 17 §4 la congela con dos argumentos y la barrera es por
-  paso. Decidir si lleva `paso` y alinear JSON y `dispatcher.mjs` (hoy divergen, §2.1).
+El detalle accionable, con comandos y tablas, está en **`n8n/workflows/IMPORT.md`**. Resumen:
+
+- **`forense.advance_case_if_ready(caso_id, paso, revision_expected)`**: DECISIONES H3 01:35 le da
+  el `paso`, el JSON y `dispatcher.mjs` ya la llaman con tres argumentos, y `db/002_views.sql`
+  publica hoy la de dos. **Bloquea el cierre de cualquier paso terminal.**
+- **Dos valores en el check `ck_bitacora_tipo_evento`**: `paso_en_cola` y `paso_checkpoint`
+  (comprobado contra la base local: no están). Los exige la regla 2 para la rama en cola y la rama
+  que continúa. Alternativa de una línea por nodo si el coordinador prefiere no ampliar el enum,
+  a costa de que la UI no distinga esos eventos del `razonamiento`.
+- **Funciones de 004–008** que el JSON llama (48 referencias, listadas por `preparar-sql.mjs`).
+  Para cada nodo, `CONTRATOS_NODOS` declara las **columnas que debe devolver**: ésa es la
+  especificación que la migración tiene que cumplir.
+- **Idempotencia por `p_operacion`** en los wrappers `public.forense_*` (06 §Runtime): la rama de
+  herramientas es lineal y depende de que una reentrega devuelva el resultado registrado sin
+  consumir cuota (§2.1).
 - **`008_ingesta.sql`** con `forense.inyecciones`, `forense.clonar_corrida_con_inyeccion` y
-  `tipo_evento='inyeccion'` en el enum de 05 (21 §3.2).
+  `tipo_evento='inyeccion'` (21 §3.2; el enum ya lo trae en 001).
 - **Credenciales**: crear `Forense Postgres`, `Forense Supabase`, `Forense Webhook` y
-  `ElevenLabs Forense` en la instancia; confirmar que la del modelo se llama `Anthropic account`.
-- **Versión de n8n**: `targets.n8n_version` sigue en `null`. Confirmarla antes de importar; si algún
-  `typeVersion` de §0.3 no existe, se ajusta el JSON y se reexporta.
-- **IDs de subworkflow**: sustituir los `PENDIENTE_*` tras importar, en el orden de §1.
-- **contracts 1.1.0**: reconciliar `FORENSE_inyectar` con `product.inyectar` / `product.inyeccion`.
+  `ElevenLabs Forense`; la del modelo se llama `Anthropic account`.
+- **`BASE_REST`**: sustituir `https://PENDIENTE_SUPABASE_REF.supabase.co/rest/v1` en el Code node
+  `Expandir cola de tools` por la URL REST del proyecto de la corrida.
+- **Versión de n8n**: `launch.config.json` dice 2.33.7; los `typeVersion` marcados «según SDK MCP»
+  siguen sin observarse en esta instancia. Si alguno no existe, se ajusta el JSON y se reexporta.
+- **IDs de subworkflow**: sustituir los quince `PENDIENTE_*` tras importar, en el orden de §1.
+- **Adaptador de voz**: `integrations/elevenlabs` (forense-voice) todavía no existe.
+  `n8n/runtime/voz-adaptador.mjs` deja la interfaz y un stub marcado; sin verificador HMAC, el
+  workflow de callback **rechaza** en vez de aceptar sin firma.
