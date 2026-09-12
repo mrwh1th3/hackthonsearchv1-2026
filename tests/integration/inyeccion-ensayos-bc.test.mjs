@@ -37,7 +37,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { dictaminar, NIVELES } from '../../n8n/runtime/auditor-final.mjs';
-import { CORRIDA_GEN_V1, DB_QA, RAIZ, correr, correrOk, escalar, filas, hayBase, json } from './_ayudas.mjs';
+import { CORRIDA_GEN_V1, DB_QA, RAIZ, correr, correrOk, escalar, filas, hayBase, json, techoPrueba } from './_ayudas.mjs';
 
 const saltar = !hayBase(DB_QA) && 'sin base forense_qa (corre tests/integration/preparar-db.sh)';
 
@@ -213,7 +213,7 @@ async function comprobarGarantiaDeClusters(t, r) {
 // ---------------------------------------------------------------------
 
 test('(b) retorno-efos: la base queda intacta y F2 aparece en el EFOS sólo en el clon',
-  { skip: saltar, timeout: 900000 }, async (t) => {
+  { skip: saltar, timeout: techoPrueba(3) }, async (t) => {
     const antes = digest(CORRIDA_GEN_V1);
     const EFOS = 'ASE250301Z86';
     const NUEVA = 'RET251001DD4';
@@ -268,7 +268,7 @@ test('(b) retorno-efos: la base queda intacta y F2 aparece en el EFOS sólo en e
 // ---------------------------------------------------------------------
 
 test('(c) trampa-comercializadora: entra al selector y el dictamen determinista no sube a presuncion',
-  { skip: saltar, timeout: 900000 }, async (t) => {
+  { skip: saltar, timeout: techoPrueba(3) }, async (t) => {
     const TRB = ['TRB190311FF6', 'TRB200714GG7', 'TRB180205HH8'];
     const antes = digest(CORRIDA_GEN_V1);
 

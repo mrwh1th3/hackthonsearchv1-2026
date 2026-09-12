@@ -25,8 +25,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { CORRIDA_GEN_V1, DB_QA, correr, correrOk, escalar, filas, hayBase } from './_ayudas.mjs';
+import { CORRIDA_GEN_V1, DB_QA, correr, correrOk, escalar, filas, hayBase, techoPrueba, TIMEOUT_MS } from './_ayudas.mjs';
 
 /** Gate de la inyección en vivo (21 §3). No se relaja desde QA. */
 const UMBRAL_MS = 30000;
@@ -80,7 +83,7 @@ function estadisticas() {
 }
 
 test('correr_pistas sobre un clon de gen-v1 cabe en el gate de 30 s de la inyección en vivo',
-  { skip: saltar, timeout: 1800000 }, async (t) => {
+  { skip: saltar, timeout: techoPrueba(6) }, async (t) => {
     t.after(() => creadas.forEach(limpiar));
 
     await t.test('la base sólo tiene lo que debe: el número se puede interpretar', () => {
@@ -139,3 +142,26 @@ test('correr_pistas sobre un clon de gen-v1 cabe en el gate de 30 s de la inyecc
       }
     });
   });
+
+// ---------------------------------------------------------------------
+// Guarda del orden de techos (QA-006)
+// ---------------------------------------------------------------------
+
+test('ninguna prueba del banco declara un techo por debajo del techo del cliente psql', () => {
+  // El orden tiene que ser statement_timeout < timeout del cliente < timeout
+  // de la prueba. Invertido, node mata la prueba antes de que el servidor
+  // cancele la consulta: se pierde el error de SQL y el backend sigue vivo con
+  // el lock de `v_pares_giro`. Así fallaba inyeccion-008 con la máquina
+  // cargada. `techoPrueba()` lo deriva del cliente; esta guarda impide que
+  // vuelva a colarse un literal por debajo.
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const malos = [];
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.test.mjs'))) {
+    const texto = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const m of texto.matchAll(/timeout:\s*(\d+)/g)) {
+      if (Number(m[1]) < TIMEOUT_MS) malos.push(`${f}: timeout: ${m[1]} < ${TIMEOUT_MS}`);
+    }
+  }
+  assert.deepEqual(malos, [],
+    `techos de prueba por debajo del techo del cliente psql (usa techoPrueba(n)): ${malos.join('; ')}`);
+});

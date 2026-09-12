@@ -26,7 +26,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
-import { DB_QA, correr, correrOk, escalar, filas, hayBase, json } from './_ayudas.mjs';
+import { DB_QA, correr, correrOk, escalar, filas, hayBase, json, techoPrueba } from './_ayudas.mjs';
 
 const saltar = !hayBase(DB_QA) && 'sin base forense_qa (corre tests/integration/preparar-db.sh)';
 
@@ -74,7 +74,7 @@ const hayCola = saltar || (escalar(DB_QA,
   : 'falta forense.cola_corrida: aplica db/012_inyeccion_clusters.sql');
 
 test('estado_corrida no cierra una corrida con clusters pendientes (6 clusters, 4 despachados)',
-  { skip: saltar || hayCola, timeout: 300000 }, async (t) => {
+  { skip: saltar || hayCola, timeout: techoPrueba(2) }, async (t) => {
     correrOk(DB_QA, `
       insert into forense.corridas (id, nombre, dataset, dataset_hash, fecha_corte, estado, modo)
       values (${lit(CORRIDA)}::uuid, ${lit(SELLO)}, 'qa-cola', md5(${lit(SELLO)}),

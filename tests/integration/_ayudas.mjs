@@ -137,3 +137,87 @@ export const FIXTURE = Object.freeze({
 });
 
 export const CORRIDA_GEN_V1 = '3fc52b5a-3e4b-54f4-a714-b3303b6f0347';
+
+// ---------------------------------------------------------------------
+// Techos de tiempo: el orden importa
+// ---------------------------------------------------------------------
+
+/**
+ * Techo de una prueba de `node --test`, derivado del techo del cliente.
+ *
+ * INVARIANTE (QA-006): `statement_timeout` < timeout del cliente psql
+ * (`TIMEOUT_MS`) < timeout de la prueba de node. Si se invierte, node mata la
+ * prueba ANTES de que el servidor cancele la consulta y pasan dos cosas, las
+ * dos malas: el diagnóstico se pierde (node reporta «test timed out», no el
+ * error de SQL) y el backend sigue vivo con el lock de `v_pares_giro` que
+ * `correr_pistas` toma para refrescarla, así que la siguiente prueba se
+ * bloquea detrás de un proceso que ya nadie mira.
+ *
+ * Así estaba `inyeccion-008.test.mjs`: tres pruebas a 120 s contra un cliente
+ * de 300 s. Con la máquina descargada pasaban (el clon de gen-v1 tarda ~3 s
+ * desde 014); con la máquina cargada —que es justo cuando corre la suite
+ * entera y cuando el juez inyecta en vivo— node cortaba primero.
+ *
+ * @param consultasLargas cuántas consultas que pueden agotar el techo del
+ *   cliente encadena la prueba (clonar, correr_pistas, armar_clusters...).
+ */
+export function techoPrueba(consultasLargas = 1) {
+  return TIMEOUT_MS * Math.max(1, consultasLargas) + 60000;
+}
+
+// ---------------------------------------------------------------------
+// Limpieza de clones huérfanos
+// ---------------------------------------------------------------------
+
+/**
+ * Borra los clones de gen-v1 que dejó una ejecución anterior del banco.
+ *
+ * Cada clon copia el dominio entero (~8 mil CFDI). Acumulados hacen dos daños
+ * medibles: `rendimiento-pistas.test.mjs` mide compitiendo contra ellos (su
+ * propio aviso «N corrida(s) grandes además de gen-v1» lo dice) y la base de
+ * QA crece hasta que un `psql` con timeout parece un fallo de la prueba.
+ *
+ * Dos anclas para que esto no pueda borrar de más:
+ *  a) `corrida_origen_id = gen-v1`. gen-v1 tiene origen NULL, así que la
+ *     consulta no la alcanza ni aunque su nombre cambie. Un `LIKE` sobre el
+ *     nombre sí podría: 'gen-v1 + inyección …' y 'gen-v1' comparten prefijo.
+ *  b) edad > EDAD_HUERFANO_MIN. El timeout más alto del banco es 15 min, así
+ *     que un clon de la sesión EN CURSO nunca llega a esa edad: el barrido
+ *     sólo alcanza restos de ejecuciones anteriores, aunque node lance los
+ *     ficheros de prueba en paralelo.
+ *
+ * No lanza: la base de QA es desechable y una limpieza fallida no es un
+ * resultado de prueba.
+ */
+export const EDAD_HUERFANO_MIN = Number(process.env.QA_EDAD_HUERFANO_MIN || 30);
+
+export function limpiarClonesHuerfanos({ db = DB_QA, minutos = EDAD_HUERFANO_MIN } = {}) {
+  if (!hayPsql()) return [];
+  const r = correr(db, `
+    with muertas as (
+      select c.id, c.nombre,
+             (select count(*) from forense.cfdi f where f.corrida_id = c.id) as cfdi
+        from forense.corridas c
+       where c.corrida_origen_id = '${CORRIDA_GEN_V1}'::uuid
+         and coalesce(c.inicio, 'epoch'::timestamptz) < now() - interval '${Number(minutos)} minutes'
+    ), borradas as (
+      delete from forense.corridas where id in (select id from muertas) returning id
+    )
+    select m.nombre || ' (' || m.cfdi || ' CFDI)' from muertas m
+     where m.id in (select id from borradas);`);
+  if (r.code !== 0) {
+    console.log(`[limpieza] barrido de clones huérfanos no ejecutado: ${r.error.slice(0, 200)}`);
+    return [];
+  }
+  const nombres = r.salida ? r.salida.split('\n').filter(Boolean) : [];
+  if (nombres.length) {
+    console.log(`[limpieza] ${nombres.length} clon(es) huérfano(s) de gen-v1 borrados ` +
+      `(> ${minutos} min): ${nombres.join('; ')}`);
+  }
+  return nombres;
+}
+
+// Se ejecuta al cargar el módulo, o sea al arrancar CADA fichero de prueba y
+// antes de que ninguno cree estado. Es idempotente y la ancla de edad la hace
+// inofensiva para los clones de la sesión en curso.
+if (hayBase(DB_QA)) limpiarClonesHuerfanos();

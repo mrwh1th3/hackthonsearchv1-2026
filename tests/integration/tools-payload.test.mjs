@@ -33,7 +33,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DB_QA, FIXTURE, contratos, correrOk, escalar, filas, hayBase, json } from './_ayudas.mjs';
+import { DB_QA, FIXTURE, contratos, correrOk, escalar, filas, hayBase, json, techoPrueba } from './_ayudas.mjs';
 
 const saltar = !hayBase(DB_QA) && 'sin base forense_qa (corre tests/integration/preparar-db.sh)';
 
@@ -188,7 +188,7 @@ const ORDEN = [
 ];
 
 test('el payload de cada tool valida contra su $def de contracts y la RPC lo acepta por nombre',
-  { skip: saltar, timeout: 180000 }, async (t) => {
+  { skip: saltar, timeout: techoPrueba(2) }, async (t) => {
     const c = await contratos();
     assert.ok(c, 'contracts/index.mjs no carga: npm ci --prefix contracts --ignore-scripts');
 
