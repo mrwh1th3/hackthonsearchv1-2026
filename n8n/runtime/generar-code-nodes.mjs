@@ -18,14 +18,32 @@ const RAIZ_N8N = path.resolve(AQUI, '..');
 const MARCA_INICIO = '// <<<CODE_NODE_INICIO';
 const MARCA_FIN = '// <<<CODE_NODE_FIN';
 
+const PREAMBULO = 'const x = $input.first().json;';
+const EPILOGO = 'return [{ json: salida }];';
+
+const nodo = (archivo, nota) => ({
+  fuente: path.join(RAIZ_N8N, 'runtime', 'nodos', `${archivo}.mjs`),
+  destino: path.join(RAIZ_N8N, 'code', `${archivo}.js`),
+  preambulo: PREAMBULO,
+  epilogo: EPILOGO,
+  nota,
+});
+
 export const GENERADOS = [
   {
     fuente: path.join(RAIZ_N8N, 'runtime', 'auditor-final.mjs'),
     destino: path.join(RAIZ_N8N, 'code', 'auditor-final.js'),
-    preambulo: 'const x = $input.first().json;',
-    epilogo: 'return [{ json: salida }];',
+    preambulo: PREAMBULO,
+    epilogo: EPILOGO,
     nota: 'Auditor Final (07). Entrada preparada por backend, nunca JSON de agente sin validar.',
   },
+  nodo('decidir-paso', 'Worker: traduce el checkpoint a la rama de ESTA ejecución (17 §3).'),
+  nodo('construir-cuerpo', 'Worker: compone el body de /v1/messages con insumos de DB (17 §5.2).'),
+  nodo('clasificar-transporte', 'Worker: 429/5xx con Retry-After, timeout ambiguo (17 §6).'),
+  nodo('interpretar-respuesta', 'Worker: stop_reason, cola de tool_use y parseo de salida (17 §5.5–5.8).'),
+  nodo('armar-tool-results', 'Worker: un tool_result por cada tool_use_id, en orden (17 §5.5).'),
+  nodo('evaluar-frontera', 'Investigación: tabla de despertar de 03 y frontera material (07 §2.6).'),
+  nodo('normalizar-investigacion', 'Investigación: une webhook y subworkflow; rechaza campos no aceptados.'),
 ];
 
 export function extraerRegion(rutaFuente) {
