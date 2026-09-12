@@ -154,15 +154,41 @@ clusterizado agrupa por vecindad de grafo con tope de 40 RFC, así que 300
 contribuyentes dan 6 clusters, no 60. Con tan pocos casos por corrida, exigir
 "otro CASO del mismo giro" no puede funcionar por volumen de datos.
 
-**Decidido: se cambia el emparejamiento, no el dataset.** El comparable no
-tiene que ser otro caso: `casos.resultado_por_rfc` ya lleva el nivel **por
-RFC** del cluster (`guardar_dictamen` lo escribe, y 13 §2:00–2:45 manda
-explícitamente "no atribuir el resultado a todos los integrantes del cluster:
-cada RFC lleva el suyo"). Un cluster tiene hasta 40 RFC, así que el vecino
-comparable del mismo giro se busca **dentro del cluster**, donde además la
-respuesta es más fuerte para el jurado: las dos entidades están en la misma
-investigación, no son dos casos sin relación. Reasignado a forense-db con
-estas cifras; la comparación caso-a-caso actual se conserva como respaldo.
+**Hecho: el emparejamiento se cambió** (`db/020_contraste_cluster.sql`). El
+comparable es otro RFC del **mismo cluster**, con su nivel de
+`resultado_por_rfc`, mismo giro, al menos una pista en común y nivel
+estrictamente menos grave; la comparación caso-a-caso de 018 queda como
+respaldo. Las dos entidades quedan en la misma investigación, que es una
+respuesta más fuerte para el jurado que dos casos sin relación. Por el camino
+hubo que arreglar que **nadie emitía `resultado_por_rfc`** (ver abajo).
+
+**Y el cuello de botella se movió: ya no es el emparejamiento, es la
+evidencia.** Medido con la función real sobre un clon de datos de
+`forense_rt` (15 casos dictaminados, los 15 con `resultado_por_rfc` poblada):
+**0 de 15 por el camino de cluster y 0 de 15 por el respaldo**. La causa está
+en el dato, no en el SQL: esa base es un smoke de runtime con **5 filas de
+evidencia para 15 casos**, así que no hay familias que contar ni defensas que
+descartar, y ninguna de las tres razones tipificables puede darse. Ninguna
+versión del panel —ni 018, ni 020, ni una con el contrato relajado— podía
+disparar ahí.
+
+Corrección de una cifra que circuló antes: relajar `pistas_solapadas` a
+`minItems 0` daría **1 de 15**, no 9 de 15. La estimación previa era una cota
+sin exigir razón tipificable.
+
+**Decidido: NO se relaja el contrato.** El panel no está roto ni bloqueado por
+construcción: las aserciones de 020 lo muestran disparando con una fila real
+("del mismo cluster", `familia_faltante`, 1 familia frente a 3), y la regla de
+nivel hace que un vecino con una sola familia caiga en `no_concluyente`
+mientras el principal con dos presume — o sea, comparte pista Y es menos
+grave. Lo que falta es una corrida con evidencia repartida entre varios RFC, y
+eso es el **gate H8–10 con la API real**. Lo que sí es inalcanzable con
+`minItems 1` son los vecinos `sin_hallazgos`, porque ese nivel exige cero
+pistas propias y por tanto cero solape; es un subconjunto, no el panel.
+
+**Sin adornos para el guion:** el panel Contraste **no ha disparado todavía
+sobre datos enteramente reales**. La única medición no nula es 1 de 4 en
+gen-v1 del corte anterior, y ahí los niveles estaban puestos a mano.
 
 ### Hallazgo H11-e: con T2 evaluable, la regla de dos familias deja de discriminar
 Sobre gen-v2, el selector de dos familias y el baseline de dos pistas dan
