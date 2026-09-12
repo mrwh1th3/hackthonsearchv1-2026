@@ -276,15 +276,42 @@ npm --prefix web run dev
 # Escucha en http://localhost:3000
 ```
 
-Acceder como usuario `auditor` / contraseña `1234` (fixture). Las rutas disponibles:
-- `/login`: formulario de demo
-- `/perfil`: configuración de usuario (perfil privado sin teléfono)
-- `/historial`: investigaciones anteriores
-- `/datos`: explorador de entidades y grafo
-- `/casos/[id]`: detalle de caso
-- `/casos/[id]/expediente`: documento estructurado con editor
-- `/estadisticas`: comparativas entre corridas
-- etc. (18 rutas totales)
+Usuario `auditor`. La contraseña es la de `DEMO_PASSWORD` en
+`web/.env.local`; **`1234` sólo es el respaldo de desarrollo** que usa
+`lib/auth/session.ts` cuando esa variable NO está puesta, así que si está
+puesta y pruebas con `1234` te da "usuario o contraseña incorrectos" y parece
+que el login está roto.
+
+No hace falta Supabase: con `NEXT_PUBLIC_DATA_SOURCE=fixture` arranca con
+fixtures y cada vista lo rotula con su badge (regla 3).
+
+Enlaces que funcionan, con los ids reales de los fixtures (verificado el
+2026-09-12: todos 200; las rutas con `[id]` dan 404 con un id inventado, que es
+lo que pasa si se copian literales):
+
+```
+http://localhost:3000/
+http://localhost:3000/corridas
+http://localhost:3000/corridas/00000000-0000-4000-8000-000000000001
+http://localhost:3000/corridas/00000000-0000-4000-8000-000000000001/raw
+http://localhost:3000/clusters/00000000-0000-4000-8000-000000000200
+http://localhost:3000/casos/00000000-0000-4000-8000-000000000100              # presuncion
+http://localhost:3000/casos/00000000-0000-4000-8000-000000000101              # anomalia_explicada
+http://localhost:3000/casos/00000000-0000-4000-8000-000000000102              # no_concluyente
+http://localhost:3000/casos/00000000-0000-4000-8000-000000000100/expediente
+http://localhost:3000/entidades/DEMO:ENTIDAD-0
+http://localhost:3000/datos
+http://localhost:3000/estadisticas
+http://localhost:3000/metodo
+http://localhost:3000/historial
+http://localhost:3000/notificaciones
+http://localhost:3000/perfil
+```
+
+Los tres casos traen **tres niveles distintos** a propósito, y conviene abrirlos
+en ese orden para el demo: `presuncion`, `anomalia_explicada` (la capa de
+descarte: la anomalía existe y queda explicada) y `no_concluyente` (evidencia
+insuficiente, que nunca se sube a base de reintentos — regla 10).
 
 ### Paso 7: Smoke local (gate H4 — DB → herramientas → runtime → evento → UI)
 
