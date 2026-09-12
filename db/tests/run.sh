@@ -67,6 +67,7 @@ fi
 echo "== migraciones =="
 aplicar "$DBDIR/001_schema.sql" "001_schema.sql"
 aplicar "$DBDIR/002_views.sql"  "002_views.sql"
+aplicar "$DBDIR/003_pistas.sql" "003_pistas.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 
@@ -74,7 +75,7 @@ aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 
 echo "== reaplicación (idempotencia) =="
 reaplicar_ok=true
-for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/seeds/seed_fake.sql"; do
+for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" "$DBDIR/seeds/seed_fake.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
   else
@@ -88,6 +89,7 @@ anotar "reaplicar 001+002+seed no falla" "$reaplicar_ok" "aplicado dos veces sob
 
 echo "== aserciones =="
 aplicar "$HERE/assertions.sql" "tests/assertions.sql"
+aplicar "$HERE/assertions_003.sql" "tests/assertions_003.sql"
 
 echo "== concurrencia ($WORKERS sesiones) =="
 aplicar "$HERE/concurrencia_setup.sql" "tests/concurrencia_setup.sql"
