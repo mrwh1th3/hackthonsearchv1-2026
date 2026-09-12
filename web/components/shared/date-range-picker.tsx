@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { RANGO_PRESET_LABEL, resolveDateRangePreset, type AlcanceRango, type RangoPreset, type RangoResuelto } from "@/lib/date/range";
 
@@ -15,6 +15,8 @@ export interface DateRangePickerProps {
   datasetDesde?: Date;
   datasetHastaExclusivo?: Date;
   onChange?: (rango: RangoResuelto & { preset: RangoPreset }) => void;
+  /** Preset seleccionado al montar (default "30d"); el llamador lo ajusta cuando 30 días dejaría vacía la vista (p.ej. datos históricos fijos de un fixture). */
+  presetInicial?: RangoPreset;
   className?: string;
 }
 
@@ -33,9 +35,10 @@ export function DateRangePicker({
   datasetDesde,
   datasetHastaExclusivo,
   onChange,
+  presetInicial = "30d",
   className,
 }: DateRangePickerProps) {
-  const [preset, setPreset] = useState<RangoPreset>("30d");
+  const [preset, setPreset] = useState<RangoPreset>(presetInicial);
   const [personalizadoDesde, setPersonalizadoDesde] = useState("");
   const [personalizadoHasta, setPersonalizadoHasta] = useState("");
   const idBase = useId();
@@ -63,12 +66,17 @@ export function DateRangePicker({
     }
   }, [preset, personalizadoDesde, personalizadoHasta, timezone, referencia, datasetDesde, datasetHastaExclusivo]);
 
+  // Propaga el rango resuelto al montar y cada vez que cambia — así el
+  // preset visualmente activo (incluido `presetInicial`) siempre coincide
+  // con lo que el llamador está filtrando, sin esperar al primer click.
+  // 'personalizado' es la excepción: solo se propaga al pulsar "Aplicar"
+  // (evita recalcular en cada tecla mientras se escribe la fecha).
+  useEffect(() => {
+    if (preset !== "personalizado" && rango) onChange?.({ ...rango, preset });
+  }, [rango, preset, onChange]);
+
   function selectPreset(p: RangoPreset) {
     setPreset(p);
-    if (p !== "personalizado") {
-      const r = resolveDateRangePreset({ preset: p, timezone, referencia, datasetDesde, datasetHastaExclusivo });
-      onChange?.({ ...r, preset: p });
-    }
   }
 
   function applyPersonalizado() {
@@ -76,11 +84,9 @@ export function DateRangePicker({
   }
 
   function limpiar() {
-    setPreset("30d");
+    setPreset(presetInicial);
     setPersonalizadoDesde("");
     setPersonalizadoHasta("");
-    const r = resolveDateRangePreset({ preset: "30d", timezone, referencia, datasetDesde, datasetHastaExclusivo });
-    onChange?.({ ...r, preset: "30d" });
   }
 
   return (
