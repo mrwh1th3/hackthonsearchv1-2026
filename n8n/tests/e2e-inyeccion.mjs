@@ -79,9 +79,18 @@ const ENSAYOS = [
     niveles: ['anomalia_explicada', 'no_concluyente'],
     porque: 'comercializadora legítima: entra al selector y el sistema la explica (21 §3.4)',
     // Con cobertura incompleta CUALQUIER caso sale `no_concluyente`: acertar así
-    // no es discriminar. Sin cobertura completa el ensayo se reporta
-    // `requiere_api_real`.
+    // no es discriminar.
     exige_cobertura: true,
+    // Y con proveedor simulado NO CORRE EL DEFENSOR, que es la capa que
+    // convierte una trampa legítima en `anomalia_explicada` (el nivel exige
+    // que todas las pistas evaluables queden `descartada` en
+    // casos.evaluacion_pistas, y sólo la defensa escribe ahí). Sin defensa
+    // este ensayo no puede juzgarse: ni un nivel alto prueba que el sistema
+    // falle, ni un nivel bajo prueba que discrimine. Se reporta
+    // `requiere_api_real` ANTES de comparar el nivel. Simular refutaciones
+    // sería fijar el resultado que la prueba dice medir, igual que fabricar
+    // una evidencia por familia.
+    exige_defensa: true,
   },
 ];
 
@@ -404,6 +413,12 @@ function correrEnsayo(ensayo) {
   // `dictaminar()` (monto en hecho_validado, no en la raíz del ítem). Leer la
   // función cruda daba «Monto validado ausente» — el desajuste que IMPORT.md
   // documenta y que el nodo ya resuelve.
+  // ¿Corrió la defensa? Es la capa de descarte de falsos positivos: sin
+  // filas en `forense.defensas` ni evaluación por caso, `anomalia_explicada`
+  // es inalcanzable por construcción (db/017, auditor-final.mjs).
+  const defensas = Number(psql(`select count(*) from forense.defensas d
+      where d.caso_id = ${lit(caso.caso_id)}::uuid and d.aceptado is not null`));
+
   const paquete = pasoJson('nodo Paquete auditor final',
     `select to_jsonb(t)::text from (${sqlDeNodo('Paquete auditor final', [caso.caso_id], 'FORENSE_investigar_cluster')}) t`);
   const dictamen = dictaminar(paquete);
@@ -440,15 +455,28 @@ function correrEnsayo(ensayo) {
     // sabe distinguir una comercializadora legítima de un carrusel -eso es lo
     // que investiga el modelo-, así que ese caso se reporta como
     // `requiere_api_real`, no como CUMPLE.
+    defensas_aplicadas: defensas,
     veredicto: (() => {
-      if (!ensayo.niveles.includes(dictamen.nivel)) return 'falla';
+      // El orden importa. Las dos condiciones que hacen INJUZGABLE la
+      // corrida se comprueban ANTES del nivel: si la capa que decide el
+      // resultado no se ejecutó, el nivel que salga no es evidencia de nada.
+      if (ensayo.exige_defensa && defensas === 0) return 'requiere_api_real';
       if (ensayo.exige_cobertura && paquete.cobertura_completa !== true) return 'requiere_api_real';
+      if (!ensayo.niveles.includes(dictamen.nivel)) return 'falla';
       return 'cumple';
     })(),
     cumple: ensayo.niveles.includes(dictamen.nivel)
-      && (!ensayo.exige_cobertura || paquete.cobertura_completa === true),
+      && (!ensayo.exige_cobertura || paquete.cobertura_completa === true)
+      && (!ensayo.exige_defensa || defensas > 0),
     cobertura_completa: paquete.cobertura_completa,
     cobertura_sql: coberturaSql,
+    // Por qué el ensayo quedó injuzgable, si lo quedó. Sin esto el informe
+    // culpa a la cobertura de algo que es la defensa ausente.
+    motivo_api_real: (ensayo.exige_defensa && defensas === 0)
+      ? 'no corrió el Defensor (0 defensas resueltas): sin capa de descarte, anomalia_explicada es inalcanzable'
+      : ((ensayo.exige_cobertura && paquete.cobertura_completa !== true)
+        ? 'cobertura incompleta: cualquier caso sale no_concluyente por construcción'
+        : null),
     // Por qué la cobertura quedó como quedó, con los tres términos de la regla
     // de 015 a la vista: así el veredicto se puede discutir sin releer el script.
     motivo_cobertura: paquete.cobertura_completa === true ? 'completa'
@@ -505,6 +533,8 @@ const resumen = {
   corrida_base: CORRIDA_BASE,
   db_012: true,
   db_015: true,
+  db_016: true,
+  db_017: true,
   requieren_api_real: resultados.filter((r) => r.veredicto === 'requiere_api_real').map((r) => r.ensayo),
   ensayos: resultados,
   tiempos_por_etapa: tiempos,
@@ -518,8 +548,10 @@ else {
   const pendientesApi = resumen.requieren_api_real;
   if (fallo) console.log(`FALLA ${fallo}`);
   else if (pendientesApi.length > 0) {
-    console.log(`ok con reservas: ensayo(s) ${pendientesApi.join(', ')} REQUIEREN API REAL `
-      + '(el nivel esperado salió sin cobertura completa: el simulado no discrimina)');
+    console.log(`ok con reservas: ensayo(s) ${pendientesApi.join(', ')} REQUIEREN API REAL`);
+    for (const r of resultados.filter((x) => x.veredicto === 'requiere_api_real')) {
+      console.log(`  (${r.ensayo}) nivel observado ${r.nivel}, no juzgable: ${r.motivo_api_real}`);
+    }
   } else console.log('ok: los ensayos (a) y (c) cumplen su nivel esperado con cobertura completa');
 }
 process.exit(fallo ? 1 : 0);

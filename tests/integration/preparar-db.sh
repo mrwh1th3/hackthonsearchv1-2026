@@ -135,7 +135,7 @@ done
 # no la lista de candidatos del cluster) y siembra `max_expansiones_caso=1`.
 # Sin ella `rls-scope` ve tres funciones SECURITY DEFINER abiertas a PUBLIC y
 # la cobertura vuelve a quedar en false para todo cluster real.
-for n in 010 011 012 013 014 015 016; do
+for n in 010 011 012 013 014 015 016 017; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional

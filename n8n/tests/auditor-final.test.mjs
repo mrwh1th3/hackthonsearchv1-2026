@@ -32,7 +32,7 @@ const ev = (familia, overrides = {}) => evidenciaValidadaSimulada({
 
 test('dos familias validadas → presuncion', () => {
   const r = dictaminar(entrada({
-    pistas: [{ id: '1', estado: 'confirmada' }],
+    pistas: [{ id: '1', estado: 'disparada' }],
     evidencia: [ev('D'), ev('F')],
   }));
   assert.equal(r.nivel, 'presuncion');
@@ -42,7 +42,7 @@ test('dos familias validadas → presuncion', () => {
 
 test('tres familias → presuncion_alta; nunca "definitivo" como nivel', () => {
   const r = dictaminar(entrada({
-    pistas: [{ id: '1', estado: 'confirmada' }],
+    pistas: [{ id: '1', estado: 'disparada' }],
     evidencia: [ev('D'), ev('F'), ev('R')],
   }));
   assert.equal(r.nivel, 'presuncion_alta');
@@ -55,7 +55,7 @@ test('dos familias + E1 directo de lista 69-B → presuncion_alta', () => {
     hecho_validado: { comprobacion: 'E1', descripcion: 'simulado', estatus: 'definitivo', saltos: 0 },
     tipo: 'lista',
   });
-  const r = dictaminar(entrada({ pistas: [{ id: '1', estado: 'confirmada' }], evidencia: [ev('D'), e1] }));
+  const r = dictaminar(entrada({ pistas: [{ id: '1', estado: 'disparada' }], evidencia: [ev('D'), e1] }));
   assert.equal(r.nivel, 'presuncion_alta');
   // `definitivo` aquí es el ESTATUS de la lista del SAT en el dato de entrada,
   // jamás un nivel de salida del sistema.
@@ -68,16 +68,59 @@ test('E1 directo sin segunda familia no sustituye la regla de dos familias', () 
     hecho_validado: { comprobacion: 'E1', descripcion: 'simulado', estatus: 'definitivo', saltos: 0 },
     tipo: 'lista',
   });
-  const r = dictaminar(entrada({ pistas: [{ id: '1', estado: 'confirmada' }], evidencia: [e1] }));
+  const r = dictaminar(entrada({ pistas: [{ id: '1', estado: 'disparada' }], evidencia: [e1] }));
   assert.equal(r.nivel, 'no_concluyente');
 });
 
-test('todas las pistas refutadas → anomalia_explicada', () => {
+// H11-b: `estado: 'refutada'` NO EXISTE. `forense.pistas.estado` sólo admite
+// 'disparada'|'no_evaluable' (001) y el contrato entities.pista declara ese
+// mismo par. La versión anterior de estas pruebas alimentaba ese valor
+// imposible, así que pasaban mientras `anomalia_explicada` era inalcanzable
+// con datos reales. El resultado de la defensa llega por `evaluacion_caso`
+// (casos.evaluacion_pistas, indexado por id de pista; db/017).
+const descartada = (id) => ({ id, estado: 'disparada',
+  evaluacion_caso: { resultado: 'descartada', defensa_id: Number(id), trampa_codigo: 'margen_delgado' } });
+const sostenida = (id) => ({ id, estado: 'disparada',
+  evaluacion_caso: { resultado: 'sostenida', defensa_id: Number(id) } });
+
+test('todas las pistas evaluables descartadas por la defensa → anomalia_explicada', () => {
   const r = dictaminar(entrada({
-    pistas: [{ id: '1', estado: 'refutada' }, { id: '2', estado: 'refutada' }],
+    pistas: [descartada('1'), descartada('2')],
     evidencia: [],
   }));
   assert.equal(r.nivel, 'anomalia_explicada');
+});
+
+test('una pista no_evaluable no bloquea el descarte: nunca sostuvo nada', () => {
+  const r = dictaminar(entrada({
+    pistas: [descartada('1'), { id: '2', estado: 'no_evaluable' }],
+    evidencia: [],
+  }));
+  assert.equal(r.nivel, 'anomalia_explicada');
+});
+
+test('una sola pista sostenida impide anomalia_explicada', () => {
+  const r = dictaminar(entrada({
+    pistas: [descartada('1'), sostenida('2')],
+    evidencia: [],
+  }));
+  assert.notEqual(r.nivel, 'anomalia_explicada');
+});
+
+test('sin defensa aplicada no hay descarte: evaluacion_caso ausente o null', () => {
+  for (const pista of [{ id: '1', estado: 'disparada' },
+                       { id: '1', estado: 'disparada', evaluacion_caso: null }]) {
+    const r = dictaminar(entrada({ pistas: [pista], evidencia: [] }));
+    assert.notEqual(r.nivel, 'anomalia_explicada');
+  }
+});
+
+test('todas no_evaluables no es un descarte: no hay nada que descartar', () => {
+  const r = dictaminar(entrada({
+    pistas: [{ id: '1', estado: 'no_evaluable' }, { id: '2', estado: 'no_evaluable' }],
+    evidencia: [],
+  }));
+  assert.notEqual(r.nivel, 'anomalia_explicada');
 });
 
 test('cero hallazgos con cobertura completa → sin_hallazgos', () => {
@@ -90,7 +133,7 @@ test('cero hallazgos con cobertura completa → sin_hallazgos', () => {
 test('cobertura incompleta o pendientes → no_concluyente, nunca presunción forzada', () => {
   const r = dictaminar(entrada({
     cobertura_completa: false,
-    pistas: [{ id: '1', estado: 'confirmada' }],
+    pistas: [{ id: '1', estado: 'disparada' }],
     evidencia: [ev('D'), ev('F'), ev('R')],
   }));
   assert.equal(r.nivel, 'no_concluyente');
@@ -128,7 +171,7 @@ test('prioridad de motivos: evidencia_invalida antes que evidencia_insuficiente'
 
 test('el mismo CFDI citado por varias familias cuenta una vez', () => {
   const r = dictaminar(entrada({
-    pistas: [{ id: '1', estado: 'confirmada' }],
+    pistas: [{ id: '1', estado: 'disparada' }],
     evidencia: [
       ev('D', { ref_id: UUID.cfdi, tipo: 'cfdi' }),
       ev('F', { ref_id: UUID.cfdi, tipo: 'cfdi' }),
@@ -155,7 +198,7 @@ test('un monto ausente o no numérico rompe con error tipificado', () => {
 
 test('la evidencia refutada o sin validar no suma familia', () => {
   const r = dictaminar(entrada({
-    pistas: [{ id: '1', estado: 'confirmada' }],
+    pistas: [{ id: '1', estado: 'disparada' }],
     evidencia: [ev('D'), ev('F', { refutada: true }), ev('R', { valida_tecnica: false, validada: false })],
   }));
   assert.deepEqual(r.familias, ['D']);
@@ -166,14 +209,14 @@ test('ningún camino devuelve "definitivo" como nivel', () => {
   const casos = [
     entrada(),
     entrada({ cobertura_completa: false }),
-    entrada({ pistas: [{ id: '1', estado: 'refutada' }] }),
-    entrada({ pistas: [{ id: '1', estado: 'confirmada' }], evidencia: [ev('D'), ev('F'), ev('R'), ev('T'), ev('E')] }),
+    entrada({ pistas: [descartada('1')] }),
+    entrada({ pistas: [{ id: '1', estado: 'disparada' }], evidencia: [ev('D'), ev('F'), ev('R'), ev('T'), ev('E')] }),
   ];
   for (const c of casos) assert.notEqual(dictaminar(c).nivel, 'definitivo');
 });
 
 test('la salida alimenta entities.dictamen sin que el LLM toque el nivel', () => {
-  const r = dictaminar(entrada({ pistas: [{ id: '1', estado: 'confirmada' }], evidencia: [ev('D'), ev('F')] }));
+  const r = dictaminar(entrada({ pistas: [{ id: '1', estado: 'disparada' }], evidencia: [ev('D'), ev('F')] }));
   const dictamen = {
     nivel: r.nivel,
     familias: r.familias,
@@ -197,7 +240,7 @@ test('n8n/code/auditor-final.js está generado y no editado a mano', () => {
 test('el Code node generado produce el mismo resultado que la función pura', () => {
   const codigo = fs.readFileSync(path.join(RAIZ, 'code', 'auditor-final.js'), 'utf8');
   const ejecutar = new Function('$input', codigo);
-  const x = entrada({ pistas: [{ id: '1', estado: 'confirmada' }], evidencia: [ev('D'), ev('F')] });
+  const x = entrada({ pistas: [{ id: '1', estado: 'disparada' }], evidencia: [ev('D'), ev('F')] });
   const salidaNodo = ejecutar({ first: () => ({ json: x }) });
   assert.ok(Array.isArray(salidaNodo));
   assert.deepEqual(salidaNodo[0].json, dictaminar(x));

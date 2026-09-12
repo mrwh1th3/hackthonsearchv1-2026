@@ -18,14 +18,24 @@ const puedeReintentar = Number(x.caso.n_reintentos) < 2
 const rechazo = pendiente && puedeReintentar
   ? { motivo: pendiente.motivo, objetivo: pendiente.objetivo } : null;
 const completo = x.cobertura_completa === true && pendientes.length === 0;
-const todasRefutadas = pistas.length > 0
-  && pistas.every(p => p.estado === 'refutada');
+// Capa de descarte de falsos positivos. La defensa NO toca el estado
+// global de la pista: `forense.pistas.estado` sólo admite
+// 'disparada'|'no_evaluable' (001, y el contrato entities.pista dice el
+// mismo par), así que comparar contra 'refutada' era una condición
+// imposible y `anomalia_explicada` resultaba inalcanzable. El resultado
+// de la defensa vive POR CASO en `casos.evaluacion_pistas`, que el
+// paquete expone como `evaluacion_caso` indexado por id de pista (017).
+// Una pista `no_evaluable` no se pudo descartar porque nunca sostuvo
+// nada: no cuenta ni a favor ni en contra del descarte.
+const evaluables = pistas.filter(p => p.estado !== 'no_evaluable');
+const todasDescartadas = evaluables.length > 0
+  && evaluables.every(p => p.evaluacion_caso?.resultado === 'descartada');
 const e1def = ev.some(e => e.pista_codigo === 'E1' && e.familia === 'E'
   && e.hecho_validado?.estatus === 'definitivo'
   && e.hecho_validado?.saltos === 0);
 let nivel;
 if (!completo) nivel = 'no_concluyente';
-else if (todasRefutadas) nivel = 'anomalia_explicada';
+else if (todasDescartadas) nivel = 'anomalia_explicada';
 else if (ev.length === 0 && pistas.length === 0) nivel = 'sin_hallazgos';
 else if (familias.size >= 3 || (familias.size >= 2 && e1def)) nivel = 'presuncion_alta';
 else if (familias.size >= 2) nivel = 'presuncion';

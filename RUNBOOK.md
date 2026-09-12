@@ -85,6 +85,7 @@ psql -d forense -f db/013_rendimiento.sql
 psql -d forense -f db/014_estadisticas.sql
 psql -d forense -f db/015_cobertura.sql
 psql -d forense -f db/016_permisos_cobertura.sql
+psql -d forense -f db/017_evaluacion_pistas.sql
 ```
 
 - `001_schema.sql`: tablas, índices, RLS, realtime, control de runtime.
@@ -103,8 +104,9 @@ psql -d forense -f db/016_permisos_cobertura.sql
 - `014_estadisticas.sql` (hotfix H11): `forense.analizar_snapshot()` y su llamada al final de cada clonado y como primer paso de `correr_pistas`. Sin ella el barrido sobre un clon recién creado no terminaba en 300 s; con ella, clonado 417 ms y barrido 1 473 ms.
 - `015_cobertura.sql` (hotfix H11): `forense.cobertura_caso` / `recalcular_cobertura`. Antes nadie escribía `casos.cobertura_completa`, así que el dictaminador determinista devolvía `no_concluyente` en todos los casos.
 - `016_permisos_cobertura.sql` (hotfix H11, coordinador): revoca el `execute` a PUBLIC que 014/015 no revocaron, hace que la cobertura mida la frontera pedida por las señales en vez de la lista de candidatos del cluster, siembra `max_expansiones_caso=1` y deja un solo escritor de la columna.
+- `017_evaluacion_pistas.sql` (hotfix H11, coordinador): `paquete_auditor_final` lee `casos.evaluacion_pistas` por ID de pista, que es como la escribe la réplica. Sin esto `evaluacion_caso` viajaba en null y `anomalia_explicada` —la capa de descarte de falsos positivos— era inalcanzable. También mueve el recálculo de cobertura a después del update en `guardar_dictamen`.
 
-**Estado actual:** 001–013 aplicadas en la instancia `forense` local y en Supabase `hackthon2026` (H10); 014–016 aplicadas en local y pendientes de aplicar en Supabase.
+**Estado actual:** 001–013 aplicadas en la instancia `forense` local y en Supabase `hackthon2026` (H10); 014–017 aplicadas en local y pendientes de aplicar en Supabase.
 
 #### 2.3 Cargar fixture manual (UI)
 
@@ -190,17 +192,17 @@ node --test "n8n/tests/*.test.mjs"
 # Devuelve: 337 tests, 0 fallos, ~360ms (oleada 4: e2e-inyeccion + variante-prompt)
 ```
 
-Valida que cada workflow JSON tenga nodos válidos, que las referencias de subworkflows sean resolvibles tras importar, y que las queries SQL parseen contra Postgres 17 con migraciones 001–016.
+Valida que cada workflow JSON tenga nodos válidos, que las referencias de subworkflows sean resolvibles tras importar, y que las queries SQL parseen contra Postgres 17 con migraciones 001–017.
 
 #### 5.3 Tests de BD (migraciones + concurrencia)
 
 ```bash
 PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh
-# Devuelve: 453 aserciones (001-016) con GEN=1, 0 fallos; 411 con GEN=0 (4 omitidas)
-# Archivos: assertions.sql, assertions_003…016.sql, assertions_*_gen.sql (gen-v1)
+# Devuelve: 461 aserciones (001-017) con GEN=1, 0 fallos; 417 con GEN=0 (4 omitidas)
+# Archivos: assertions.sql, assertions_003…017.sql, assertions_*_gen.sql (gen-v1)
 ```
 
-Crea base temporal, aplica migraciones 001–016, corre aserciones de función e idempotencia, valida pistas contra esquema de contratos. Borra base al terminar.
+Crea base temporal, aplica migraciones 001–017, corre aserciones de función e idempotencia, valida pistas contra esquema de contratos. Borra base al terminar.
 
 **Resultado esperado:** todas las pistas proyectadas al tipo `entities.pista` del contrato sin errores, clusters por RFC inyectado garantizados, rendimiento del barrido completo ≈1–2 s sobre gen-v1 con estadísticas actualizadas (ANALYZE tras clonar; 014).
 
@@ -730,7 +732,7 @@ git stash push -u -m "WIP-worktree"
 
 **Responsables de secciones (oleada 4):**
 - (a)–(b): forense-docs (haiku), verificado en H10
-  - Migraciones 001–016, scripts n8n con --dry-run, conteos reales de tests
+  - Migraciones 001–017, scripts n8n con --dry-run, conteos reales de tests
   - Tests: 110 (contracts) + 337 (n8n) + 106 (prompts) + 67 (voice) + 272 (webapp) + ~400 (db assertions)
 - (c): coordinador (opus), ESTADO.md y DECISIONES.md
 - (d): inyección en vivo (oleada 4) — QA-004, cluster por RFC garantizado, e2e-inyeccion.mjs
