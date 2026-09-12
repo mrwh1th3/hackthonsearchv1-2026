@@ -75,7 +75,24 @@ test('verificarFirma: cuerpo no crudo (objeto en vez de string) rechazado sin la
   assert.equal(resultado.motivo, 'cuerpo_no_crudo');
 });
 
-test('verificarFirma: forma objeto de voz-adaptador.mjs ({crudo, firma, ahora_ms}) es compatible', () => {
+test('verificarFirma: forma objeto con secreto por nombre ({crudo, firma, secreto, ahora_ms}) es la forma canónica (hallazgo QA #3)', () => {
+  const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
+  const tEpochS = Math.floor(ahoraMs / 1000);
+  const firma = firmar(CUERPO, SECRETO, tEpochS);
+  const resultado = verificarFirma({ crudo: CUERPO, firma, secreto: SECRETO, ahora_ms: ahoraMs });
+  assert.equal(resultado.valido, true);
+});
+
+test('verificarFirma: forma objeto con secreto por nombre y tolerancia_s propia respeta esa ventana', () => {
+  const tEpochS = Math.floor(Date.UTC(2026, 0, 31, 12, 0, 0) / 1000);
+  const firma = firmar(CUERPO, SECRETO, tEpochS);
+  const ahoraMsFueraDeVentanaCorta = (tEpochS + 30) * 1000;
+  const resultado = verificarFirma({ crudo: CUERPO, firma, secreto: SECRETO, ahora_ms: ahoraMsFueraDeVentanaCorta, tolerancia_s: 10 });
+  assert.equal(resultado.valido, false);
+  assert.equal(resultado.motivo, 'fuera_de_ventana');
+});
+
+test('verificarFirma: forma objeto SIN secreto nombrado cae al secreto posicional (compatibilidad transicional, no la forma canónica)', () => {
   const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
   const tEpochS = Math.floor(ahoraMs / 1000);
   const firma = firmar(CUERPO, SECRETO, tEpochS);

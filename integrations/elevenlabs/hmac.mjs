@@ -46,16 +46,22 @@ function analizarFirma(valor, opciones) {
  *
  * Dos formas de llamada, ambas soportadas para no dejar una trampa de
  * integración si el runtime importa esta función con la convención del stub:
- *   - Posicional (18, canónica aquí): verificarFirma(rawBody, headers, secreto, ahora, opciones?)
- *   - Objeto (paridad con n8n/runtime/voz-adaptador.mjs): verificarFirma({crudo, firma, ahora_ms, tolerancia_s})
+ *   - Posicional (canónica aquí): verificarFirma(rawBody, headers, secreto, ahora, opciones?)
+ *   - Objeto (paridad con n8n/runtime/voz-adaptador.mjs): verificarFirma({crudo, firma, secreto, ahora_ms, tolerancia_s})
+ *     El secreto se lee POR NOMBRE del propio objeto (hallazgo QA #3) — no
+ *     de un segundo argumento posicional — para que la forma objeto sea
+ *     autocontenida y no dependa de recordar un orden de parámetros aparte.
  *
  * @returns {{valido:boolean, motivo:string|null}}
  */
 export function verificarFirma(a, b, c, d, e) {
   if (a && typeof a === 'object' && !Buffer.isBuffer(a)) {
-    const { crudo, firma, ahora_ms, tolerancia_s } = a;
+    const { crudo, firma, secreto, ahora_ms, tolerancia_s } = a;
     const opciones = tolerancia_s ? { ventanaS: tolerancia_s } : undefined;
-    return verificarFirma(crudo, { 'elevenlabs-signature': firma }, c ?? b, ahora_ms, opciones);
+    // `c ?? b` es compatibilidad transicional con un llamador que aún pasara
+    // el secreto posicional en vez de dentro del objeto; `secreto` nombrado
+    // es la forma correcta y la que debe usarse de aquí en adelante.
+    return verificarFirma(crudo, { 'elevenlabs-signature': firma }, secreto ?? c ?? b, ahora_ms, opciones);
   }
 
   const rawBody = a;
