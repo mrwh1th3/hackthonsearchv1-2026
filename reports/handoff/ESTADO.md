@@ -141,12 +141,28 @@ caso del mismo giro cambiaría conteos de fixture en aserciones de varios dueño
 y en el remoto ya cargado, y sólo arreglaría la ruta de respaldo. La ruta del
 demo es gen-v2.
 
-Dos salidas, y son excluyentes:
-1. **Más densidad por giro en gen-v2** (pedido a forense-db en esta oleada): que haya varios clusters del mismo giro con solape de pistas y resultados distintos. Es la salida limpia: no cambia ninguna regla.
-2. **Relajar el emparejamiento** en `product.contraste`: comparar por grupo de pares (tamaño y giro cercano) en vez de giro exacto, o admitir comparables más graves añadiendo un cuarto valor a `razon_tipificada`. Es decisión de contrato, o sea mía, y **no** se toma hasta medir la opción 1 sobre gen-v2.
+**Medido (2026-09-12): más datos NO lo arreglan.** Generé los dos snapshots en
+bases desechables, corrí pistas y clusters, y conté:
 
-Medir sobre gen-v2 en cuanto exista: cuántos casos de cuántos obtienen
-contraste. Si sigue por debajo de la mitad, se toma la opción 2.
+| snapshot | contribuyentes | clusters | clusters que comparten giro | giros distintos | pares con solape |
+|---|---|---|---|---|---|
+| gen-v2 (intradía) | 100 | 4 | **0** | 4 | 0 |
+| prueba de 300 | 300 | 6 | 2 | 5 | 1 (giro `comercializadora`, 2 pistas en común) |
+
+Triplicar el dataset pasó de 0 pares a 1. La causa es estructural: el
+clusterizado agrupa por vecindad de grafo con tope de 40 RFC, así que 300
+contribuyentes dan 6 clusters, no 60. Con tan pocos casos por corrida, exigir
+"otro CASO del mismo giro" no puede funcionar por volumen de datos.
+
+**Decidido: se cambia el emparejamiento, no el dataset.** El comparable no
+tiene que ser otro caso: `casos.resultado_por_rfc` ya lleva el nivel **por
+RFC** del cluster (`guardar_dictamen` lo escribe, y 13 §2:00–2:45 manda
+explícitamente "no atribuir el resultado a todos los integrantes del cluster:
+cada RFC lleva el suyo"). Un cluster tiene hasta 40 RFC, así que el vecino
+comparable del mismo giro se busca **dentro del cluster**, donde además la
+respuesta es más fuerte para el jurado: las dos entidades están en la misma
+investigación, no son dos casos sin relación. Reasignado a forense-db con
+estas cifras; la comparación caso-a-caso actual se conserva como respaldo.
 
 ## Abierto
 - ~~Aplicar 014–017 a Supabase~~ **hecho** (2026-09-12 14:32–14:35, versiones 20260912143247/143340/143417/143459). Verificado en remoto, no por el "ok" del aplicador: las cinco funciones tocadas con `md5(prosrc)` idéntico al cuerpo del archivo que las define en último lugar (`cobertura_caso` contra 016; `paquete_auditor_final` y `guardar_dictamen` contra 017); `proacl` de las cinco sin ninguna entrada de PUBLIC (`{postgres=X/postgres, service_role=X/postgres}`); `max_expansiones_caso=1`; `evaluacion_pistas->(p.id::text)` presente y `->p.codigo` ausente; asesores idénticos a la línea base tomada antes de aplicar (22 INFO + 2 WARN preexistentes, ningún ERROR nuevo). Prueba funcional sobre el remoto, en un bloque revertido por excepción: sin frontera pedida `true`, con la lista de candidatos poblada `true`, con una señal que pide frontera `false`; cero residuos.
