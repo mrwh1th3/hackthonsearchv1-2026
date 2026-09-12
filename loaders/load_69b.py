@@ -98,6 +98,13 @@ OBLIGATORIAS = ("rfc", "razon_social", "estatus", "fecha_publicacion")
 # Estatus canónicos. Lo que no mapea se conserva tal cual en `estatus`
 # (texto del portal) y se reporta: no se reescribe una resolución de la
 # autoridad para que encaje en nuestro enum.
+#
+# El término "definitivo" que aparece abajo es el ESTATUS que publica la
+# autoridad en la lista del art. 69-B, y es el único uso legítimo de esa
+# palabra en el repo. NUNCA es un nivel de salida del sistema: el máximo que
+# emite el dictaminador es `presuncion_alta` (regla 7 de CLAUDE.md). Quien
+# lea este diccionario no debe confundir una resolución del SAT con una
+# conclusión nuestra.
 ESTATUS = {
     "presunto": "presunto",
     "presuntos": "presunto",

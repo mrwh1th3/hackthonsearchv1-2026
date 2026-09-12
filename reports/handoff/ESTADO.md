@@ -231,6 +231,32 @@ muestra del repo es sintética con ese esquema. Si el archivo real trae otro
 encabezado, el loader falla nombrando la columna y se amplía su tabla de
 sinónimos.
 
+### Hallazgo H11-f: `/metodo` habría salido vacía en producción
+La pantalla que responde "¿cómo llegaron aquí?" (21 §El camino) lee
+`reports/handoff/DECISIONES.md`, `ESTADO.md` y `RUNBOOK.md` de la **raíz del
+repo** en tiempo de petición. Es una ruta dinámica (`ƒ` en el build, porque el
+layout de `(app)` lee la cookie de sesión), así que el `readFileSync` corre en
+el servidor. En Vercel el Root Directory es `web/` y la función serverless
+sólo lleva lo que el rastreo de Next incluye: esos tres archivos están FUERA
+de `web/`, así que no viajaban. Pasaba en local y en las pruebas —que tienen
+el repo entero— y habría fallado sólo en el demo.
+
+Arreglado con el mecanismo propio de Next en `web/next.config.ts`
+(`outputFileTracingRoot` un nivel arriba + `outputFileTracingIncludes` para
+`/metodo`), sin duplicar los documentos ni generar copias que se desincronicen.
+
+**Verificado por contrafactual, no por suposición:** en el artefacto de
+rastreo `web/.next/server/app/(app)/metodo/page.js.nft.json`, sin la
+configuración entran **0** archivos `.md` (73 rastreados); con ella entran los
+**3** (76 rastreados).
+
+**Queda por comprobar en el primer despliegue real** (no se puede antes, el
+proyecto Vercel todavía no existe): abrir `/metodo` y ver las tres secciones
+con contenido. Si sale el mensaje de "no se encontró ninguno", el rastreo no
+los incluyó y hay que pasar a plan B (generar un módulo con los tres
+documentos en tiempo de build e importarlo, que garantiza el empaquetado a
+costa de duplicar el texto).
+
 ## Abierto
 - ~~Aplicar 014–017 a Supabase~~ **hecho** (2026-09-12 14:32–14:35, versiones 20260912143247/143340/143417/143459). Verificado en remoto, no por el "ok" del aplicador: las cinco funciones tocadas con `md5(prosrc)` idéntico al cuerpo del archivo que las define en último lugar (`cobertura_caso` contra 016; `paquete_auditor_final` y `guardar_dictamen` contra 017); `proacl` de las cinco sin ninguna entrada de PUBLIC (`{postgres=X/postgres, service_role=X/postgres}`); `max_expansiones_caso=1`; `evaluacion_pistas->(p.id::text)` presente y `->p.codigo` ausente; asesores idénticos a la línea base tomada antes de aplicar (22 INFO + 2 WARN preexistentes, ningún ERROR nuevo). Prueba funcional sobre el remoto, en un bloque revertido por excepción: sin frontera pedida `true`, con la lista de candidatos poblada `true`, con una señal que pide frontera `false`; cero residuos.
 - ~~Deriva de `003_pistas_recalibrada_2b`~~ **resuelta por comprobación** (2026-09-12): el remoto registra esa migración sin archivo en `db/`, pero es solo historia del nombre con que se aplicó el 003 ya calibrado. Los cuerpos coinciden byte a byte: `pista_d3` `b69e55c8…` (6 354), `pista_f3` `28ab859a…` (5 325), `pista_t2` `454f6019…` (7 101), los tres idénticos a `db/003_pistas.sql`. `correr_pistas` difiere del 003 local a propósito: el remoto tiene `66f1be11…` (3 726), que es exactamente el cuerpo de `db/014_estadisticas.sql` (014 la redefine para meter el ANALYZE como primer paso). Una instalación limpia desde `db/` reproduce el mismo estado; no falta ningún archivo.
