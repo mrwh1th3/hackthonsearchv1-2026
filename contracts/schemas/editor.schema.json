@@ -594,6 +594,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 2147483647
+        },
+        "bitacora": {
+          "type": "boolean",
+          "description": "true si la operación dejó evento en forense.bitacora (regla 2); false en modo fixture"
         }
       }
     },
