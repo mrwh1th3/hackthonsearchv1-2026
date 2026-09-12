@@ -84,6 +84,25 @@ nivel es inalcanzable por construcción, así que el e2e lo reporta
 (0/15) miden el **selector**, no el descarte. Queda como gate H8–10 con la
 API real: una trampa legítima que cierre en `anomalia_explicada`.
 
+### Hallazgo H11-d (bajo, sin corregir): el contexto del especialista no ve el descarte
+`db/005_rpc.sql:416` proyecta el estado de la pista como
+`coalesce(evaluacion_pistas->(p.id::text)->>'estado', p.estado)`, pero la
+réplica escribe la clave `resultado`, no `estado`: el `coalesce` cae siempre
+al estado global y es código inerte. Consecuencia: en un reintento, el
+especialista ve como viva una pista que la defensa ya descartó. **No afecta al
+veredicto** (el dictaminador lee `evaluacion_caso`, corregido en 017), sólo a
+la calidad del prompt de reintento. No se corrige aquí porque el arreglo
+limpio toca contrato del contexto, prompt y runtime a la vez: es material de
+oleada, no de parche de integración. Nota: el estado global de la pista no
+puede llevar el resultado de la defensa, porque el catálogo de 001 y el
+contrato `entities.pista` sólo admiten `disparada|no_evaluable`.
+
+### Comprobado contra el documento normativo
+- 07 §135 pide literalmente que el paquete del auditor "combina catálogo y `casos.evaluacion_pistas` del caso"; eso es lo que 017 implementa y lo que faltaba.
+- 07 §135 también fija que `cobertura_completa` "proviene de tareas/errores/frontera/presupuestos": la frontera pertenece a la regla, como hacen 015/016.
+- 07 §153 fija `completo = cobertura_completa && pendientes.length === 0`, así que una limitación `cobertura_incompleta` deja el caso en `no_concluyente` **por diseño**, no por un defecto. El nodo de frontera emite esa limitación cuando la cadena sigue hacia RFC no investigados, tanto si la frontera no era significativa como si ya se gastó la cuota.
+- 03 §187 exige para `anomalia_explicada` "refutación demostrada de todas las pistas investigadas y ninguna limitación pendiente": el dictaminador pide ahora que todas las pistas **evaluables** estén descartadas, y `completo` sigue exigiendo la lista de pendientes vacía.
+
 ## Abierto
 - Aplicar 014–017 al proyecto Supabase `hackthon2026` (en curso por el coordinador).
 - Bloqueado por .env: credenciales n8n, importación de workflows, carga remota de gen-v1, smoke H4 y gate H8–10 (primer expediente real con API).
