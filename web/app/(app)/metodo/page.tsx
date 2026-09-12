@@ -11,35 +11,46 @@ export const metadata = { title: "Forense · Método" };
 // que no hay lógica de servidor más allá de leer el archivo.
 export const dynamic = "force-dynamic";
 
-const RUTAS = [
-  ["reports", "handoff", "DECISIONES.md"],
-  ["ESTADO.md"],
-];
+/**
+ * Corte 3 hallazgo 6: antes solo se leía "el primero disponible" de
+ * [DECISIONES.md, ESTADO.md] — con `ESTADO.md` movido a
+ * `reports/handoff/ESTADO.md` (ya no en la raíz), esa cadena solo llegaba a
+ * mostrar DECISIONES.md y nunca ESTADO.md ni RUNBOOK.md, aunque los tres
+ * existieran. Ahora los tres se leen de forma independiente y se muestran
+ * todos, cada uno con su propio estado "encontrado/no encontrado" — solo
+ * lectura, nunca se editan desde aquí.
+ */
+const DOCUMENTOS = [
+  { id: "decisiones", titulo: "Decisiones", partes: ["reports", "handoff", "DECISIONES.md"] },
+  { id: "runbook", titulo: "Runbook", partes: ["RUNBOOK.md"] },
+  { id: "estado", titulo: "Estado", partes: ["reports", "handoff", "ESTADO.md"] },
+] as const;
 
-function leerPrimeroDisponible(): { contenido: string; ruta: string } | null {
+interface DocumentoLeido {
+  id: string;
+  titulo: string;
+  ruta: string;
+  contenido: string | null;
+  error: string | null;
+}
+
+function leerDocumentosMetodo(): DocumentoLeido[] {
   // Raíz del repo = un nivel arriba de `web/` (process.cwd() en runtime de
-  // Next.js es `web/`). Ruta relativa a la raíz, como pide 21 §2.
+  // Next.js es `web/`). Rutas relativas a la raíz, como pide 21 §2.
   const raizRepo = path.resolve(process.cwd(), "..");
-  for (const partes of RUTAS) {
-    const rutaAbsoluta = path.join(raizRepo, ...partes);
+  return DOCUMENTOS.map(({ id, titulo, partes }) => {
+    const ruta = partes.join("/");
     try {
-      const contenido = fs.readFileSync(rutaAbsoluta, "utf8");
-      return { contenido, ruta: partes.join("/") };
-    } catch {
-      continue;
+      return { id, titulo, ruta, contenido: fs.readFileSync(path.join(raizRepo, ...partes), "utf8"), error: null };
+    } catch (e) {
+      return { id, titulo, ruta, contenido: null, error: e instanceof Error ? e.message : "Error desconocido leyendo el archivo." };
     }
-  }
-  return null;
+  });
 }
 
 export default function MetodoPage() {
-  let leido: { contenido: string; ruta: string } | null = null;
-  let error: string | null = null;
-  try {
-    leido = leerPrimeroDisponible();
-  } catch (e) {
-    error = e instanceof Error ? e.message : "Error desconocido leyendo el archivo.";
-  }
+  const documentos = leerDocumentosMetodo();
+  const disponibles = documentos.filter((d) => d.contenido !== null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -48,19 +59,47 @@ export default function MetodoPage() {
         <FixtureBadge origen="local" />
       </div>
 
-      {!leido ? (
+      {disponibles.length > 0 && (
+        <nav className="flex flex-wrap gap-2 text-xs" aria-label="Documentos de método">
+          {documentos.map((d) => (
+            <a
+              key={d.id}
+              href={`#${d.id}`}
+              aria-disabled={d.contenido === null}
+              className={
+                d.contenido === null
+                  ? "cursor-not-allowed rounded-full border border-dashed border-border px-2.5 py-1 text-text-subtle opacity-60"
+                  : "rounded-full border border-border px-2.5 py-1 text-text hover:bg-surface-hover"
+              }
+            >
+              {d.titulo}
+            </a>
+          ))}
+        </nav>
+      )}
+
+      {disponibles.length === 0 && (
         <div className="rounded-[var(--radius-card)] border border-dashed border-border bg-surface p-6 text-sm text-text-subtle">
           <p>
-            No se encontró <code>reports/handoff/DECISIONES.md</code> ni <code>ESTADO.md</code> en la raíz del repo todavía.
+            No se encontró ninguno de <code>reports/handoff/DECISIONES.md</code>, <code>RUNBOOK.md</code> ni{" "}
+            <code>reports/handoff/ESTADO.md</code> en la raíz del repo todavía.
           </p>
-          {error && <p className="mt-1 text-error">{error}</p>}
-        </div>
-      ) : (
-        <div className="rounded-[var(--radius-card)] border border-border bg-surface p-6">
-          <p className="mb-4 text-xs text-text-subtle">Fuente: {leido.ruta}</p>
-          <MarkdownLite contenido={leido.contenido} />
         </div>
       )}
+
+      {documentos.map((d) => (
+        <section key={d.id} id={d.id} className="scroll-mt-4 rounded-[var(--radius-card)] border border-border bg-surface p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-medium text-text">{d.titulo}</h2>
+            <p className="text-xs text-text-subtle">Fuente: {d.ruta}</p>
+          </div>
+          {d.contenido !== null ? (
+            <MarkdownLite contenido={d.contenido} />
+          ) : (
+            <p className="text-sm text-text-subtle">No encontrado todavía en esta ubicación.</p>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -79,7 +118,14 @@ function MarkdownLite({ contenido }: { contenido: string }) {
 function Bloque({ bloque }: { bloque: BloqueMd }) {
   if (bloque.tipo === "encabezado") {
     const clases = bloque.nivel === 1 ? "text-xl font-semibold" : bloque.nivel === 2 ? "text-lg font-medium" : "text-base font-medium";
-    return <h2 className={`${clases} text-text`}>{bloque.texto}</h2>;
+    return <h3 className={`${clases} text-text`}>{bloque.texto}</h3>;
+  }
+  if (bloque.tipo === "codigo") {
+    return (
+      <pre className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-surface-muted p-3 text-[11px] leading-relaxed text-text">
+        <code>{bloque.texto}</code>
+      </pre>
+    );
   }
   if (bloque.tipo === "tabla") {
     return (

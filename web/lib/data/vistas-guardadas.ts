@@ -53,19 +53,49 @@ export function borrarVista(id: string): boolean {
 
 // ---------------------------------------------------------------------------
 // BFF (006 §3, `forense.vistas_guardadas`) con caída a localStorage — mismo
-// patrón que el wizard de `/datos` con `product.inyectar`: sin sesión válida
-// o sin `SUPABASE_SERVICE_ROLE_KEY` de servidor, `/api/vistas` responde
-// 401/503 y aquí se cae a lo de arriba, nunca se rompe la UI por eso.
+// patrón que el wizard de `/datos` con `product.inyectar`, pero SOLO cuando
+// el backend en sí no está configurado (503 `backend_no_configurado`) o no
+// hay red (fetch lanza): esos son los dos casos en que "vistas guardadas"
+// simplemente no existe en este entorno. Un 400 (`argumento_invalido`), 401
+// (`no_autenticado`), 403 (`origen_no_permitido`) o 429
+// (`demasiadas_solicitudes`) es un rechazo REAL de la solicitud — caer a
+// localStorage ahí escondería el error (p.ej. "guardado" mientras la sesión
+// ya expiró, o el nombre no pasó validación) detrás de un éxito falso en el
+// navegador. Corte 3 hallazgo 4.
 // ---------------------------------------------------------------------------
 
 export type FuenteVistas = "servidor" | "local";
 
-export async function listarVistasConFallback(ruta: string): Promise<{ vistas: VistaGuardada[]; fuente: FuenteVistas }> {
+/** Único caso en que el backend no "existe" para este entorno, no que la solicitud fue rechazada. */
+function esBackendNoConfigurado(status: number): boolean {
+  return status === 503;
+}
+
+async function mensajeError(res: Response): Promise<string> {
+  let body: { error?: string; retry_after_ms?: number } = {};
+  try {
+    body = (await res.json()) as { error?: string; retry_after_ms?: number };
+  } catch {
+    // cuerpo no-JSON o vacío: se sigue con el mensaje genérico de abajo
+  }
+  if (res.status === 429) {
+    const s = typeof body.retry_after_ms === "number" ? Math.ceil(body.retry_after_ms / 1000) : null;
+    return s ? `Demasiadas solicitudes; intenta de nuevo en ${s}s.` : "Demasiadas solicitudes; intenta de nuevo en unos segundos.";
+  }
+  if (res.status === 401 || res.status === 403) return "Tu sesión ya no es válida; vuelve a iniciar sesión.";
+  if (res.status === 400) return "La vista no pasó la validación del servidor.";
+  return body.error ? `${body.error} (${res.status}).` : `Error del servidor (${res.status}).`;
+}
+
+export async function listarVistasConFallback(ruta: string): Promise<{ vistas: VistaGuardada[]; fuente: FuenteVistas; error?: string }> {
   try {
     const res = await fetch(`/api/vistas?ruta=${encodeURIComponent(ruta)}`);
     if (res.ok) {
       const body = (await res.json()) as { vistas: VistaGuardada[] };
       return { vistas: body.vistas, fuente: "servidor" };
+    }
+    if (!esBackendNoConfigurado(res.status)) {
+      return { vistas: [], fuente: "servidor", error: await mensajeError(res) };
     }
   } catch {
     // sin red: cae a local, silencioso a propósito (no es un error del usuario)
@@ -73,20 +103,26 @@ export async function listarVistasConFallback(ruta: string): Promise<{ vistas: V
   return { vistas: leerVistasGuardadas().filter((v) => v.ruta === ruta), fuente: "local" };
 }
 
-export async function guardarVistaConFallback(input: { nombre: string; ruta: string; filtros: Record<string, unknown> }): Promise<{ ok: boolean; fuente: FuenteVistas }> {
+export async function guardarVistaConFallback(input: { nombre: string; ruta: string; filtros: Record<string, unknown> }): Promise<{ ok: boolean; fuente: FuenteVistas; error?: string }> {
   try {
     const res = await fetch("/api/vistas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
     if (res.ok) return { ok: true, fuente: "servidor" };
+    if (!esBackendNoConfigurado(res.status)) {
+      return { ok: false, fuente: "servidor", error: await mensajeError(res) };
+    }
   } catch {
     // sin red: cae a local
   }
   return { ok: guardarVista(input), fuente: "local" };
 }
 
-export async function borrarVistaConFallback(id: string): Promise<{ ok: boolean; fuente: FuenteVistas }> {
+export async function borrarVistaConFallback(id: string): Promise<{ ok: boolean; fuente: FuenteVistas; error?: string }> {
   try {
     const res = await fetch(`/api/vistas?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (res.ok) return { ok: true, fuente: "servidor" };
+    if (!esBackendNoConfigurado(res.status)) {
+      return { ok: false, fuente: "servidor", error: await mensajeError(res) };
+    }
   } catch {
     // sin red: cae a local
   }

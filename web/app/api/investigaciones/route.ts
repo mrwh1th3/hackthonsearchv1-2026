@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { validateContract } from "@/lib/contracts/validate";
-import { obtenerPerfilPrivado } from "@/lib/data/privado";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { checkRateLimit, clientKeyFromRequest } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -55,8 +54,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "backend_no_configurado" }, { status: 503 });
   }
 
-  const perfil = await obtenerPerfilPrivado();
-  const solicitud = { ...(body as Record<string, unknown>), perfil_id: perfil.id };
+  // `session.perfil_id` ya está verificado arriba: no hace falta una segunda
+  // lectura de `lib/data/privado.ts` para saber quién es (Corte 3 hallazgo
+  // 1 — ese módulo es para leer datos privados, no para resolver identidad).
+  const solicitud = { ...(body as Record<string, unknown>), perfil_id: session.perfil_id };
 
   const reenvio = await reenviarAWebhook(config, "investigaciones", solicitud);
   if (!reenvio.ok) {

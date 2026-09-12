@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
-import { NivelBadge } from "@/components/shared/badges";
+import { EstadoInyeccionBadge, INYECCION_ESTADOS_TERMINALES_DE_FALLO, NivelBadge } from "@/components/shared/badges";
 import { fuentePrivadaActual, obtenerInyeccionPrivada } from "@/lib/data/privado";
+import { requerirSesionServidor } from "@/lib/auth/session";
 
 export const metadata = { title: "Forense · Inyección" };
 export const dynamic = "force-dynamic";
@@ -31,13 +32,19 @@ const PASO_LABEL: Record<string, string> = {
  * 21 §3.3: timeline recibida→validada→snapshot→pistas→clusters→
  * investigación→dictamen con timestamps reales; nada se anima sin evento
  * persistido. Diff antes/después por RFC responde literalmente a "¿qué
- * pasó y cómo se explica?" (21 §1.3).
+ * pasó y cómo se explica?" (21 §1.3). Corte 3 hallazgo 2: `inyeccion.estado`
+ * se muestra explícito (nunca solo se infiere del timeline), y una
+ * inyección `rechazada`/`error` nunca finge progreso — ni una latencia
+ * "hasta el dictamen" que nunca llegó, ni pasos futuros marcados "pendiente"
+ * como si todavía fueran a ejecutarse.
  */
 export default async function InyeccionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const inyeccion = await obtenerInyeccionPrivada(id);
+  const session = await requerirSesionServidor();
+  const inyeccion = await obtenerInyeccionPrivada(id, session.perfil_id);
   if (!inyeccion) notFound();
 
+  const fallida = INYECCION_ESTADOS_TERMINALES_DE_FALLO.has(inyeccion.estado);
   const pasosPorNombre = new Map(inyeccion.timeline.map((p) => [p.paso, p.ts]));
 
   return (
@@ -62,18 +69,27 @@ export default async function InyeccionPage({ params }: { params: Promise<{ id: 
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <EstadoInyeccionBadge estado={inyeccion.estado} />
           <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-xs text-text-muted">{inyeccion.origen}</span>
           {fuentePrivadaActual() === "fixture" && <FixtureBadge />}
         </div>
       </div>
 
       {inyeccion.diagnostico?.mensaje && (
-        <p className="rounded-[var(--radius-input)] border border-dashed border-border bg-surface-muted p-3 text-xs text-text-subtle">
+        <p
+          className={`rounded-[var(--radius-input)] border p-3 text-xs ${
+            fallida ? "border-error/30 bg-error/10 text-error" : "border-dashed border-border bg-surface-muted text-text-subtle"
+          }`}
+        >
           {inyeccion.diagnostico.mensaje}
         </p>
       )}
 
-      {/* Timeline */}
+      {/* Timeline: un estado terminal de fallo (rechazada/error) nunca
+          "finge latencia" -- los pasos posteriores al último ejecutado se
+          marcan "no ejecutado", no "pendiente" (eso implicaría que todavía
+          van a correr), y no hay línea de "latencia hasta el dictamen"
+          porque nunca hubo dictamen. */}
       <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-surface p-4">
         <ol className="flex min-w-[640px] items-start justify-between">
           {PASOS_ORDEN.map((paso, i) => {
@@ -86,15 +102,20 @@ export default async function InyeccionPage({ params }: { params: Promise<{ id: 
                   <span className={`h-px flex-1 ${i === PASOS_ORDEN.length - 1 ? "opacity-0" : ts ? "bg-primary" : "bg-border"}`} />
                 </div>
                 <p className="mt-1 text-[11px] font-medium text-text">{PASO_LABEL[paso]}</p>
-                <p className="text-[10px] text-text-subtle">{ts ? new Date(ts).toLocaleTimeString("es-MX") : "pendiente"}</p>
+                <p className="text-[10px] text-text-subtle">{ts ? new Date(ts).toLocaleTimeString("es-MX") : fallida ? "no ejecutado" : "pendiente"}</p>
               </li>
             );
           })}
         </ol>
-        {inyeccion.terminado && (
+        {inyeccion.terminado && inyeccion.estado === "completada" && (
           <p className="mt-3 text-center text-xs text-text-subtle">
             Latencia recibida → dictamen:{" "}
             {Math.round((new Date(inyeccion.terminado).getTime() - new Date(inyeccion.creado).getTime()) / 1000)}s
+          </p>
+        )}
+        {inyeccion.terminado && fallida && (
+          <p className="mt-3 text-center text-xs text-error">
+            Terminó en {Math.round((new Date(inyeccion.terminado).getTime() - new Date(inyeccion.creado).getTime()) / 1000)}s sin llegar a dictamen ({inyeccion.estado === "rechazada" ? "rechazada" : "error"}).
           </p>
         )}
       </div>

@@ -198,6 +198,14 @@ export function DatosWizard({ mapperEjemplo, corridas }: { mapperEjemplo: Mapper
 
       {paso === "mapping" && (
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-text-subtle">
+              {columnasDetectadas
+                ? "Aunque tu CSV ya fue leído (paso 1), el mapeo de abajo sigue siendo el ejemplo fixture: no hay backend de mapper IA conectado en este corte, así que no refleja las columnas de tu archivo."
+                : "Mapeo de ejemplo (fixture) — sube un CSV en el paso 1 para reemplazar este ejemplo cuando el mapper IA esté conectado."}
+            </p>
+            <FixtureBadge origen="contrato" />
+          </div>
           <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border">
             <table className="w-full min-w-[560px] border-collapse text-xs">
               <thead>
@@ -280,8 +288,10 @@ export function DatosWizard({ mapperEjemplo, corridas }: { mapperEjemplo: Mapper
       {paso === "confirmacion" && (
         <div className="space-y-3 text-sm">
           <div className="rounded-[var(--radius-input)] border border-border bg-surface-muted p-3 text-xs">
-            <p>Resumen: {mapperEjemplo.field_mappings.length} columna(s) mapeada(s), {mapperEjemplo.missing_required_fields.length} campo(s) faltante(s).</p>
-            <p className="mt-1 text-text-subtle">La importación nunca dispara por sí sola una investigación completa.</p>
+            <p>Resumen del mapeo fixture: {mapperEjemplo.field_mappings.length} columna(s) mapeada(s), {mapperEjemplo.missing_required_fields.length} campo(s) faltante(s) — no describe tu CSV, ver aviso en el paso &ldquo;Mapeo&rdquo;.</p>
+            <p className="mt-1 text-text-subtle">
+              {nFilas > 0 ? `Se enviarán las ${nFilas} fila(s) reales de tu CSV a la tabla "${tablaDestino}".` : "Sin CSV real, no hay filas que enviar."} La importación nunca dispara por sí sola una investigación completa.
+            </p>
           </div>
           {enviado ? (
             <p className="text-xs font-medium text-ok">Importación recibida por el BFF (product.inyectar).</p>

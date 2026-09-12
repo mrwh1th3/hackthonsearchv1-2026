@@ -4,15 +4,23 @@ import { notFound } from "next/navigation";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
 import { fuentePrivadaActual, obtenerInvestigacionPrivada } from "@/lib/data/privado";
+import { requerirSesionServidor } from "@/lib/auth/session";
 
 export const metadata = { title: "Forense · Investigación" };
 export const dynamic = "force-dynamic";
 
-/** La investigación es privada (CLAUDE.md regla 3, `lib/data/privado.ts`); caso/bitácora siguen en el DataSource público — el caso en sí no es privado. */
+/**
+ * La investigación es privada (CLAUDE.md regla 3, `lib/data/privado.ts`),
+ * filtrada por id Y por el `perfil_id` de la sesión: una investigación de
+ * OTRO perfil da el mismo 404 que un id inexistente, nunca se distingue
+ * (Corte 3 hallazgo 1). Caso/bitácora siguen en el DataSource público — el
+ * caso en sí no es privado.
+ */
 export default async function InvestigacionDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ds = getDataSource();
-  const inv = await obtenerInvestigacionPrivada(id);
+  const session = await requerirSesionServidor();
+  const inv = await obtenerInvestigacionPrivada(id, session.perfil_id);
   if (!inv) notFound();
 
   const casoId = inv.caso_ids[0];

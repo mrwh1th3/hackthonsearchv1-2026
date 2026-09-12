@@ -104,3 +104,47 @@ export function EstadoCasoBadge({ estado, nReintentos, className }: { estado: st
     </span>
   );
 }
+
+/**
+ * Estado de una inyección (008 §1, `forense.inyecciones.estado`). Distinto
+ * catálogo que `EstadoCasoBadge` (una inyección nunca está "en_cola" ni
+ * "dictaminado"): recibida→validada→snapshot_creado→pistas_recalculadas→
+ * investigando→completada, o un terminal de fallo (rechazada/error).
+ * `activo` controla el spinner — CLAUDE.md regla 12: sin evento persistido
+ * no hay animación, así que un estado terminal (éxito o fallo) nunca gira.
+ */
+const INYECCION_ESTADO_ESTILO: Record<string, string> = {
+  recibida: "bg-surface-muted text-text-subtle border-border",
+  validada: "bg-info/10 text-info border-info/30",
+  snapshot_creado: "bg-info/10 text-info border-info/30",
+  pistas_recalculadas: "bg-info/10 text-info border-info/30",
+  investigando: "bg-info/10 text-info border-info/30",
+  completada: "bg-ok/10 text-ok border-ok/30",
+  rechazada: "bg-error/10 text-error border-error/30",
+  error: "bg-error/10 text-error border-error/30",
+};
+
+const INYECCION_ESTADO_LABEL: Record<string, string> = {
+  recibida: "Recibida",
+  validada: "Validada",
+  snapshot_creado: "Snapshot creado",
+  pistas_recalculadas: "Pistas recalculadas",
+  investigando: "Investigando",
+  completada: "Completada",
+  rechazada: "Rechazada",
+  error: "Error",
+};
+
+const INYECCION_ESTADO_ACTIVO = new Set(["recibida", "validada", "snapshot_creado", "pistas_recalculadas", "investigando"]);
+export const INYECCION_ESTADOS_TERMINALES_DE_FALLO = new Set(["rechazada", "error"]);
+
+export function EstadoInyeccionBadge({ estado, className }: { estado: string; className?: string }) {
+  const estilo = INYECCION_ESTADO_ESTILO[estado] ?? "bg-surface-muted text-text-subtle border-border";
+  const label = INYECCION_ESTADO_LABEL[estado] ?? estado;
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium", estilo, className)}>
+      {INYECCION_ESTADO_ACTIVO.has(estado) && <Loader2 size={11} className="animate-spin motion-reduce:animate-none" aria-hidden />}
+      {label}
+    </span>
+  );
+}

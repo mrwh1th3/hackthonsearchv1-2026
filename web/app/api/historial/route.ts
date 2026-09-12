@@ -27,6 +27,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "demasiadas_solicitudes", retry_after_ms: rate.retryAfterMs }, { status: 429 });
   }
 
-  const investigaciones = await obtenerHistorialPrivado();
+  const investigaciones = await obtenerHistorialPrivado(session.perfil_id);
   return NextResponse.json({ investigaciones });
 }

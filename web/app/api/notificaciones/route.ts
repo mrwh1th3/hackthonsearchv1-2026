@@ -29,6 +29,6 @@ export async function GET(req: Request) {
   }
 
   const desde = new URL(req.url).searchParams.get("since") ?? undefined;
-  const notificaciones = await obtenerNotificacionesPrivadas(desde);
+  const notificaciones = await obtenerNotificacionesPrivadas(session.perfil_id, desde);
   return NextResponse.json({ notificaciones, servidor_ts: new Date().toISOString() });
 }
