@@ -129,11 +129,15 @@ export interface RepositorioExpediente {
    * dice si ese evento quedó escrito de verdad.
    */
   descartar(casoId: string, propuestaId: string): Promise<ResultadoEscritura<{ estado: string; bitacora: boolean }>>;
+  /**
+   * Revertir crea versión nueva (09 §8: el historial no se destruye).
+   * `bitacora` dice si el evento `edicion` de ESTA reversión quedó escrito.
+   */
   revertir(
     casoId: string,
     args: { version_objetivo: number; version_base: number; idempotency_key: string },
     ctx?: ContextoEdicion,
-  ): Promise<ResultadoEscritura<{ reporte: Reporte; repetido: boolean }>>;
+  ): Promise<ResultadoEscritura<{ reporte: Reporte; repetido: boolean; bitacora: boolean }>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +177,8 @@ export const repositorioFixture: RepositorioExpediente = {
     return r.ok ? { ok: true, valor: { estado: r.valor.estado, bitacora: false } } : r;
   },
   async revertir(casoId, args) {
-    return revertirAVersion(casoId, args);
+    const r = revertirAVersion(casoId, args);
+    return r.ok ? { ok: true, valor: { ...r.valor, bitacora: false } } : r;
   },
 };
 
@@ -489,23 +494,76 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
 
     /**
      * Revertir copia la versión elegida a una NUEVA (07 §4: sin borrado, sin
-     * LLM). No hay RPC para esto en 006 —se pide en `solicitudes_coordinador`—
-     * así que aquí va INSERT + evento `edicion` explícito. La idempotencia se
-     * apoya en `expedientes.idempotency_key` (UNIQUE).
+     * LLM). Dos caminos, y el gate entre ellos es estrecho a propósito:
+     *
+     * 1. `forense.revertir_expediente(p_caso, p_version_objetivo,
+     *    p_version_base, p_idempotency, p_perfil)` —la entrega forense-db en
+     *    010— hace versionado, idempotencia y bitácora en UNA transacción.
+     * 2. Mientras esa migración no esté aplicada, PostgREST responde
+     *    `PGRST202` («could not find the function in the schema cache») y el
+     *    BFF hace INSERT + `forense.log`, sin transacción.
+     *
+     * Se cae al camino 2 **solo** con `PGRST202`. Cualquier otro error —args
+     * mal, permiso denegado, `raise` interno— se propaga: si la función existe
+     * y falló, repetir la escritura a mano duplicaría o corrompería versiones.
+     * Nunca se retrocede por ambigüedad.
      */
     async revertir(casoId, args, ctx) {
+      const rpc = await cliente.rpc("revertir_expediente", {
+        p_caso: casoId,
+        p_version_objetivo: args.version_objetivo,
+        p_version_base: args.version_base,
+        p_idempotency: args.idempotency_key,
+        p_perfil: ctx?.perfilId ?? null,
+      });
+      if (!rpc.error) {
+        const res = (rpc.data ?? null) as {
+          ok?: boolean;
+          error?: string;
+          revertida?: boolean;
+          version?: number;
+          version_resultante?: number;
+          version_actual?: number;
+        } | null;
+        // Envoltura desconocida: se dice, no se adivina ni se reescribe a mano.
+        if (!res || typeof res.ok !== "boolean") {
+          throw new Error("revertir_expediente: envoltura inesperada");
+        }
+        if (!res.ok) {
+          if (res.error === "conflicto_version") {
+            const actual = await cabeza(casoId);
+            return { ok: false, motivo: "conflicto_version", version_actual: res.version_actual ?? actual?.version ?? 0 };
+          }
+          return { ok: false, motivo: "version_inexistente" };
+        }
+        const version = res.version ?? res.version_resultante ?? 0;
+        const reporte = await this.obtenerVersion(casoId, version);
+        if (!reporte) return { ok: false, motivo: "version_inexistente" };
+        // La bitácora la escribe la propia transacción de 010 (es parte del
+        // contrato que se le pide; ver `solicitudes_coordinador`).
+        return { ok: true, valor: { reporte, repetido: res.revertida === false, bitacora: true } };
+      }
+      if (rpc.error.code !== "PGRST202") {
+        throw new Error(`revertir_expediente: ${rpc.error.message}`);
+      }
+
       const todas = await filas(casoId);
       if (todas.length === 0) return { ok: false, motivo: "version_inexistente" };
       const actual = todas[todas.length - 1];
+
+      // Idempotencia PRIMERO: el doble click manda dos veces la misma
+      // `version_base` y la segunda llega cuando la reversión ya subió la
+      // cabeza; comprobar el conflicto antes convertiría un doble click en 409.
+      const clave = `revertir:${args.idempotency_key}`;
+      const yaHecha = todas.find((f) => f.idempotency_key === clave);
+      // Repetida: no se vuelve a anotar, y se dice (bitacora:false).
+      if (yaHecha) return { ok: true, valor: { reporte: aReporte(yaHecha), repetido: true, bitacora: false } };
+
       if (actual.version !== args.version_base) {
         return { ok: false, motivo: "conflicto_version", version_actual: actual.version };
       }
       const objetivo = todas.find((f) => f.version === args.version_objetivo);
       if (!objetivo) return { ok: false, motivo: "version_inexistente" };
-
-      const clave = `revertir:${args.idempotency_key}`;
-      const yaHecha = todas.find((f) => f.idempotency_key === clave);
-      if (yaHecha) return { ok: true, valor: { reporte: aReporte(yaHecha), repetido: true } };
 
       const nueva = actual.version + 1;
       const reporteObjetivo = aReporte(objetivo);
@@ -523,11 +581,12 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
         // Clave repetida o carrera de versión: se relee y se responde honesto.
         const cabezaNueva = await cabeza(casoId);
         if (cabezaNueva && cabezaNueva.version === nueva) {
-          return { ok: true, valor: { reporte: aReporte(cabezaNueva), repetido: true } };
+          return { ok: true, valor: { reporte: aReporte(cabezaNueva), repetido: true, bitacora: false } };
         }
         return { ok: false, motivo: "conflicto_version", version_actual: cabezaNueva?.version ?? actual.version };
       }
-      await bitacoraEdicion(casoId, {
+      const anotado = await bitacoraEdicion(casoId, {
+        evento_real: "revertir",
         accion: "revertir",
         version_objetivo: args.version_objetivo,
         version_base: actual.version,
@@ -536,7 +595,7 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
       });
       const creada = await this.obtenerVersion(casoId, nueva);
       if (!creada) return { ok: false, motivo: "version_inexistente" };
-      return { ok: true, valor: { reporte: creada, repetido: false } };
+      return { ok: true, valor: { reporte: creada, repetido: false, bitacora: anotado } };
     },
   };
 }

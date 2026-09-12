@@ -50,8 +50,20 @@ export function crearAlmacen(): Almacen {
   };
 }
 
+/**
+ * Opciones del doble. `revertirExpediente` decide si `forense.revertir_expediente`
+ * (migración 010, forense-db) EXISTE: con `false` —el estado de main hoy— la
+ * llamada devuelve el `PGRST202` de PostgREST, que es lo único que autoriza al
+ * BFF a usar su camino a mano. `errorRevertir` fuerza un fallo AMBIGUO (la
+ * función existe y revienta) para comprobar que entonces NO hay respaldo.
+ */
+export interface OpcionesDoble {
+  revertirExpediente?: boolean;
+  errorRevertir?: { message: string; code?: string };
+}
+
 /** Doble con la forma de PostgREST: `from().select().eq().order()`, `rpc()`. */
-export function clienteFalso(almacen: Almacen): ClienteForense {
+export function clienteFalso(almacen: Almacen, opciones: OpcionesDoble = {}): ClienteForense {
   function consulta(tabla: string): ConsultaForense {
     const filtros: [string, unknown][] = [];
     let operacion: { tipo: "select" } | { tipo: "update" | "insert"; valores: Fila } = { tipo: "select" };
@@ -133,8 +145,61 @@ export function clienteFalso(almacen: Almacen): ClienteForense {
         });
         return Promise.resolve({ data: null, error: null });
       }
+      if (nombre === "revertir_expediente") {
+        if (opciones.errorRevertir) return Promise.resolve({ data: null, error: opciones.errorRevertir });
+        if (!opciones.revertirExpediente) {
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: "PGRST202",
+              message: "Could not find the function forense.revertir_expediente in the schema cache",
+            },
+          });
+        }
+        // La idempotencia se mira ANTES que el conflicto: el doble click
+        // manda dos veces la misma `version_base`, y la segunda llega cuando
+        // la reversión ya subió la cabeza. Si se mirara el conflicto primero,
+        // un doble click sería 409 en vez de la misma versión.
+        const clave = `revertir:${String(args.p_idempotency)}`;
+        const yaHecha = almacen.expedientes.find((e) => e.idempotency_key === clave);
+        if (yaHecha) {
+          return Promise.resolve({ data: { ok: true, revertida: false, version: yaHecha.version }, error: null });
+        }
+        const maxima = Math.max(...almacen.expedientes.map((e) => Number(e.version)));
+        if (Number(args.p_version_base) !== maxima) {
+          return Promise.resolve({ data: { ok: false, error: "conflicto_version", version_actual: maxima }, error: null });
+        }
+        const objetivo = almacen.expedientes.find((e) => Number(e.version) === Number(args.p_version_objetivo));
+        if (!objetivo) return Promise.resolve({ data: { ok: false, error: "version_inexistente" }, error: null });
+        const nueva = maxima + 1;
+        almacen.expedientes.push({
+          caso_id: args.p_caso,
+          idempotency_key: clave,
+          version: nueva,
+          markdown: objetivo.markdown,
+          contenido_json: objetivo.contenido_json,
+          // Marca de autoría del SERVIDOR: si esta fila lleva `servidor`, la
+          // escribió la función, no el INSERT a mano del BFF.
+          autor: "servidor",
+          estado_revision: "borrador",
+          creado: "2026-09-12T02:00:00Z",
+        });
+        almacen.bitacora.push({
+          corrida_id: CORRIDA,
+          caso_id: args.p_caso,
+          agente: "editor",
+          tipo_evento: "edicion",
+          payload: { evento_real: "revertir", version_objetivo: args.p_version_objetivo, version_resultante: nueva },
+        });
+        return Promise.resolve({ data: { ok: true, revertida: true, version: nueva }, error: null });
+      }
       if (nombre !== "aplicar_propuesta") {
-        return Promise.resolve({ data: null, error: { message: `rpc desconocida: ${nombre}` } });
+        // PostgREST responde así a una función que no está en el cache de
+        // esquema; el código es lo que el BFF mira, no el texto.
+        return Promise.resolve({
+          data: null,
+          error: { code: "PGRST202", message: `rpc desconocida: ${nombre}` },
+        });
       }
       const propuesta = almacen.propuestas_edicion.find((p) => p.id === args.p_propuesta);
       if (!propuesta) return Promise.resolve({ data: { ok: false, error: "contexto_invalido" }, error: null });

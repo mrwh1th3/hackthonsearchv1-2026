@@ -13,9 +13,10 @@ import { rangoDeBloque, textoEntre } from "@/lib/document/seleccion";
 import { POST as postPropuestas } from "@/app/api/reportes/propuestas/route";
 import { POST as postAplicar } from "@/app/api/reportes/aplicar/route";
 import { POST as postDescartar } from "@/app/api/reportes/descartar/route";
+import { POST as postRevertir } from "@/app/api/reportes/revertir/route";
 import { GET as getVersiones } from "@/app/api/reportes/versiones/route";
 
-import { CASO, clienteFalso, crearAlmacen, type Almacen } from "./_doble-postgrest";
+import { CASO, clienteFalso, crearAlmacen, type Almacen, type OpcionesDoble } from "./_doble-postgrest";
 
 /**
  * Recorrido completo del editor **en modo `supabase`**, extremo a extremo por
@@ -39,11 +40,23 @@ const BLOQUE_CUERPO = documentoBase.content[1].attrs.id;
 
 let almacen: Almacen;
 
-function montar(): Almacen {
+function montar(opciones: OpcionesDoble = {}): Almacen {
   reiniciarAlmacen();
   almacen = crearAlmacen();
-  forzarRepositorio(crearRepositorioSupabase(clienteFalso(almacen)));
+  forzarRepositorio(crearRepositorioSupabase(clienteFalso(almacen, opciones)));
   return almacen;
+}
+
+async function revertir(clave: string) {
+  return postRevertir(
+    await post("/api/reportes/revertir", {
+      caso_id: CASO,
+      accion: "revertir",
+      version_objetivo: 1,
+      version_base: 1,
+      idempotency_key: clave,
+    }),
+  );
 }
 
 afterEach(() => forzarRepositorio(null));
@@ -267,6 +280,58 @@ describe("BFF del editor en modo supabase (repositorio inyectado)", () => {
     // La selección se verifica contra lo persistido, no contra la memoria.
     expect(json.seleccion_verificada).toBe(true);
     expect(JSON.stringify(db.propuestas_edicion[0].patch)).not.toContain("CONTAMINADO");
+  });
+
+  /**
+   * Hallazgo 2: revertir tiene que usar `forense.revertir_expediente` cuando
+   * exista (010) y solo entonces. Las dos ramas se prueban, porque la rama
+   * que nadie ejercita es la que se rompe al integrar.
+   */
+  describe("revertir: RPC de 010 con respaldo solo ante PGRST202", () => {
+    it("sin 010 aplicada (PGRST202) el BFF versiona y anota por forense.log", async () => {
+      const db = montar(); // revertirExpediente: false
+      const res = await revertir("00000000-0000-4000-8000-000000000490");
+      expect(res.status).toBe(200);
+      const cuerpo = await res.json();
+      expect(cuerpo.version).toBe(2);
+      expect(cuerpo.bitacora).toBe(true);
+      // Lo intentó primero, y solo después escribió a mano.
+      expect(db.rpc.map((r) => r.nombre)).toEqual(["revertir_expediente", "log"]);
+      expect(db.expedientes.find((e) => e.version === 2)!.autor).toBe("humano");
+      const evento = db.bitacora.at(-1)!;
+      expect(evento.tipo_evento).toBe("edicion");
+      expect((evento.payload as { accion: string }).accion).toBe("revertir");
+    });
+
+    it("con 010 aplicada la versión la escribe la función, no el BFF", async () => {
+      const db = montar({ revertirExpediente: true });
+      const res = await revertir("00000000-0000-4000-8000-000000000491");
+      expect(res.status).toBe(200);
+      expect((await res.json()).version).toBe(2);
+      // La fila lleva la marca del servidor: el BFF no hizo su INSERT.
+      expect(db.expedientes.find((e) => e.version === 2)!.autor).toBe("servidor");
+      // Y no duplicó el evento: la bitácora la escribió la transacción.
+      expect(db.rpc.map((r) => r.nombre)).toEqual(["revertir_expediente"]);
+      expect(db.bitacora.filter((b) => b.tipo_evento === "edicion")).toHaveLength(1);
+    });
+
+    it("repetir con la misma clave devuelve la misma versión (camino RPC)", async () => {
+      const db = montar({ revertirExpediente: true });
+      const uno = await (await revertir("00000000-0000-4000-8000-000000000492")).json();
+      const dos = await (await revertir("00000000-0000-4000-8000-000000000492")).json();
+      expect(dos.version).toBe(uno.version);
+      expect(dos.repetido).toBe(true);
+      expect(db.expedientes).toHaveLength(2);
+    });
+
+    it("un fallo AMBIGUO de la RPC no autoriza el respaldo: 502 y cero escrituras", async () => {
+      const db = montar({ errorRevertir: { code: "42501", message: "permission denied for function" } });
+      const res = await revertir("00000000-0000-4000-8000-000000000493");
+      expect(res.status).toBe(502);
+      expect((await res.json()).error).toBe("persistencia_no_disponible");
+      expect(db.expedientes).toHaveLength(1);
+      expect(db.bitacora).toHaveLength(0);
+    });
   });
 
   it("dos peticiones con el mismo idempotency_key no crean dos propuestas", async () => {

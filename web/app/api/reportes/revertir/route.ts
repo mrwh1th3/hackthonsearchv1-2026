@@ -53,13 +53,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: resultado.motivo }, { status: 404 });
   }
 
-  const { reporte, repetido } = resultado.valor;
+  const { reporte, repetido, bitacora } = resultado.valor;
   const valido = validateContract("editor.reporte", reporte);
   if (!valido.ok) return NextResponse.json({ error: "reporte_invalido", detalles: valido.errors }, { status: 500 });
 
   return NextResponse.json({
     origen: repo.origen,
-    bitacora: repo.dejaBitacora,
+    // CLAUDE.md regla 2: `bitacora` es lo que ESTA reversión dejó escrito, no
+    // la capacidad del modo. Una reversión repetida no vuelve a anotar.
+    bitacora,
     repetido,
     version: reporte.version,
     reporte,
