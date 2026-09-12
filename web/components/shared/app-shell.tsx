@@ -1,42 +1,47 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
-import * as Popover from "@radix-ui/react-popover";
-import {
-  BarChart3,
-  Bell,
-  Database,
-  FolderKanban,
-  Gauge,
-  HelpCircle,
-  History,
-  LogOut,
-  Menu,
-  Search,
-  User,
-  X,
-} from "lucide-react";
+import { BarChart3, Bell, Database, FolderKanban, Gauge, HelpCircle, History, LogOut, Search, User, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-import { Logo } from "./logo";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ESTADO_LABEL } from "./execution-history";
 import { cn } from "@/lib/utils";
+import type { Investigacion } from "@/lib/data";
 
 /**
- * Mapeo de navegación (18/15 §3 vs 09 mapa de vistas): doc15 nombra el
- * ítem "Historial de ejecuciones" (técnico) y separa "Investigaciones"; el
- * mapa de rutas 09 solo materializa `/historial` (solicitudes/llamadas,
- * producto) y `/corridas` (bitácora técnica). Resolución tomada aquí:
- * "Investigaciones" -> /historial (vista de producto: solicitudes,
- * ejecuciones y llamadas del usuario); "Historial" -> /corridas (vista
- * técnica de ejecuciones, como dice 15 §7: "El historial de /corridas se
- * conserva como vista técnica"). Documentado en solicitudes_coordinador
- * para confirmar o ajustar cuando exista una ruta /investigaciones propia.
+ * Shell del diseño Inspector (docs/22-frontend-inspector.md, corrección del
+ * 2026-09-12: "La UI del diseño ES la navegación principal, y va exacta").
+ * Sustituye a la barra lateral fija anterior: el panel izquierdo deslizante
+ * de `design-ref/Agents.dc.html` (líneas 22–56) ES la única navegación,
+ * alimentado con investigaciones reales (`obtenerHistorialPrivado`, pasado
+ * como prop desde `app/(app)/layout.tsx` porque es un dato privado por
+ * perfil — CLAUDE.md regla 3 — nunca `DataSource.listInvestigaciones()`
+ * público). Las rutas que el diseño no contempla (perfil, notificaciones,
+ * historial, estadísticas, datos, método) se alcanzan desde ese mismo panel,
+ * en una sección "Secciones" añadida debajo de "Investigaciones": el diseño
+ * no tiene hueco para ellas, pero seguir existiendo es requisito de 09/15 y
+ * de CLAUDE.md regla 9 (no se borra funcionalidad), y una segunda barra
+ * lateral al lado sería exactamente la navegación duplicada que se pidió
+ * evitar.
+ *
+ * Adaptación necesaria frente al original: `Agents.dc.html` es una vista de
+ * una sola pantalla (`position:relative;min-height:100vh;overflow:hidden`
+ * en el contenedor raíz) — aquí hay páginas reales con contenido más alto
+ * que el viewport (tablas, expedientes). El overlay y el panel usan
+ * `position:fixed` (no `absolute` sobre un contenedor con `overflow:hidden`)
+ * para que el contenido de cada ruta pueda desplazarse con normalidad sin
+ * romper el layout ni cortar la parte baja de la página.
+ *
+ * `router.push` (next/navigation) mantiene este layout montado entre
+ * navegaciones (no hay recarga completa ni remonte del shell, docs/22 "Ser
+ * idéntico y tener URLs no son cosas opuestas") siempre que las páginas no
+ * fuercen `<a>`/recarga dura, que es el caso en todo el árbol de `(app)`.
  */
 const NAV_ITEMS = [
   { href: "/", label: "Inicio", icon: Gauge },
-  { href: "/historial", label: "Investigaciones", icon: FolderKanban },
-  { href: "/corridas", label: "Historial", icon: History },
+  { href: "/corridas", label: "Corridas", icon: History },
+  { href: "/historial", label: "Historial", icon: FolderKanban },
   { href: "/estadisticas", label: "Estadísticas", icon: BarChart3 },
   { href: "/notificaciones", label: "Notificaciones", icon: Bell },
   { href: "/datos", label: "Datos", icon: Database },
@@ -48,31 +53,41 @@ export interface AppShellProps {
   perfilNombre: string;
   perfilOrganizacion?: string;
   notificacionesNoLeidas?: number;
-  breadcrumb?: string;
+  /**
+   * Investigaciones reales del perfil de la sesión (privadas, CLAUDE.md
+   * regla 3). El panel las lista y filtra por texto; un perfil sin
+   * investigaciones ve el estado vacío honesto, nunca una lista fabricada.
+   */
+  investigaciones: Investigacion[];
 }
 
-export function AppShell({ children, perfilNombre, perfilOrganizacion, notificacionesNoLeidas = 0, breadcrumb }: AppShellProps) {
+const ESTADOS_EN_CURSO: ReadonlySet<Investigacion["estado"]> = new Set(["en_cola", "investigando", "generando_reporte"]);
+
+export function AppShell({ children, perfilNombre, perfilOrganizacion, notificacionesNoLeidas = 0, investigaciones }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [buscadorOpen, setBuscadorOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
   const [cerrandoSesion, setCerrandoSesion] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setBuscadorOpen(true);
-      }
+      if (e.key === "Escape") setPanelOpen(false);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Cerrar el panel al navegar (mismo comportamiento que el drawer anterior).
   useEffect(() => {
-    setDrawerOpen(false);
+    setPanelOpen(false);
   }, [pathname]);
+
+  const filtradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return investigaciones;
+    return investigaciones.filter((inv) => (inv.titulo ?? inv.mensaje ?? "").toLowerCase().includes(q));
+  }, [investigaciones, busqueda]);
 
   async function salir() {
     setCerrandoSesion(true);
@@ -92,224 +107,139 @@ export function AppShell({ children, perfilNombre, perfilOrganizacion, notificac
     .toUpperCase();
 
   return (
-    <div className="min-h-screen bg-app-bg">
-      {/* Sidebar de escritorio */}
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-surface transition-[width] duration-150 lg:flex",
-          collapsed ? "w-16" : "w-[232px]",
-        )}
-        aria-label="Navegación principal"
+    <div className="min-h-screen bg-app-bg" style={{ fontFamily: "var(--font-display)" }}>
+      {/* Disparador del panel: mismo botón en todas las rutas (design-ref líneas 24, 173-175, 194-196). */}
+      <button
+        type="button"
+        onClick={() => setPanelOpen(true)}
+        aria-label="Abrir navegación"
+        className="fixed left-[22px] top-5 z-30 flex h-[38px] items-center gap-2 border-none bg-transparent p-0 text-text"
       >
-        <SidebarContent collapsed={collapsed} pathname={pathname} perfilNombre={perfilNombre} perfilOrganizacion={perfilOrganizacion} iniciales={iniciales} onSalir={salir} cerrandoSesion={cerrandoSesion} />
-      </aside>
+        <Image src="/inspector-logo.png" alt="" width={22} height={22} className="block h-[22px] w-[22px] rounded-[6px]" priority />
+        <span className="text-[17px] font-semibold tracking-tight text-text">Forense</span>
+      </button>
 
-      {/* Drawer móvil/tablet (<1024) */}
-      <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30 lg:hidden" />
-          <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-[232px] flex-col border-r border-border bg-surface lg:hidden">
-            <Dialog.Title className="sr-only">Navegación</Dialog.Title>
-            <div className="flex justify-end p-2">
-              <Dialog.Close asChild>
-                <button aria-label="Cerrar navegación" className="rounded-md p-1.5 hover:bg-surface-hover">
-                  <X size={18} />
-                </button>
-              </Dialog.Close>
-            </div>
-            <SidebarContent collapsed={false} pathname={pathname} perfilNombre={perfilNombre} perfilOrganizacion={perfilOrganizacion} iniciales={iniciales} onSalir={salir} cerrandoSesion={cerrandoSesion} />
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      {/* Overlay (design-ref línea 26). */}
+      <div
+        aria-hidden={!panelOpen}
+        onClick={() => setPanelOpen(false)}
+        className={cn(
+          "fixed inset-0 z-40 bg-[rgba(20,20,19,.12)] transition-opacity duration-200",
+          panelOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+        )}
+      />
 
-      <div className={cn("flex min-h-screen flex-col transition-[margin] duration-150", collapsed ? "lg:ml-16" : "lg:ml-[232px]")}>
-        {/* Header, 60px */}
-        <header className="sticky top-0 z-20 flex h-[60px] items-center gap-3 border-b border-border bg-surface px-4">
+      {/* Panel deslizante — navegación única (design-ref líneas 28-56). */}
+      <nav
+        aria-label="Navegación"
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-[300px] max-w-[86vw] flex-col border-r border-border bg-surface shadow-[0_0_30px_rgba(20,20,19,.06)] transition-transform duration-[240ms] ease-[cubic-bezier(.22,.7,.3,1)]",
+          panelOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <div className="flex items-center justify-between gap-2.5 border-b border-border px-4 pb-3.5 pt-4">
+          <span className="flex items-center gap-2 text-[15px] font-semibold text-text">
+            <Image src="/inspector-logo.png" alt="" width={19} height={19} className="block h-[19px] w-[19px] rounded-[5px]" />
+            Forense
+          </span>
           <button
             type="button"
-            aria-label="Abrir navegación"
-            className="rounded-md p-1.5 hover:bg-surface-hover lg:hidden"
-            onClick={() => setDrawerOpen(true)}
+            onClick={() => setPanelOpen(false)}
+            aria-label="Cerrar navegación"
+            className="insp-focus-ring flex h-7 w-7 flex-none items-center justify-center rounded-[var(--radius-control)] border-none bg-transparent text-text-subtle transition-colors hover:bg-surface-hover"
           >
-            <Menu size={20} />
+            <X size={17} />
           </button>
-          <button
-            type="button"
-            aria-label={collapsed ? "Expandir sidebar" : "Compactar sidebar"}
-            className="hidden rounded-md p-1.5 hover:bg-surface-hover lg:inline-flex"
-            onClick={() => setCollapsed((c) => !c)}
-          >
-            <Menu size={18} />
-          </button>
-          <nav aria-label="Ruta actual" className="min-w-0 flex-1 truncate text-sm text-text-muted">
-            {breadcrumb ?? NAV_ITEMS.find((n) => n.href === pathname)?.label ?? "Forense"}
-          </nav>
-          <button
-            type="button"
-            onClick={() => setBuscadorOpen(true)}
-            className="hidden h-9 items-center gap-2 rounded-[var(--radius-input)] border border-border bg-surface-muted px-3 text-xs text-text-subtle hover:bg-surface-hover sm:inline-flex"
-          >
-            <Search size={14} aria-hidden />
-            Buscar por RFC, UUID o nombre
-            <kbd className="rounded border border-border bg-surface px-1 text-[10px]">⌘K</kbd>
-          </button>
-          <button type="button" onClick={() => setBuscadorOpen(true)} className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-surface-hover sm:hidden" aria-label="Buscar">
-            <Search size={18} />
-          </button>
-          <Link
-            href="/notificaciones"
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-surface-hover"
-            aria-label={`Notificaciones${notificacionesNoLeidas > 0 ? `, ${notificacionesNoLeidas} sin leer` : ""}`}
-          >
-            <Bell size={18} />
-            {notificacionesNoLeidas > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-medium text-white">
-                {notificacionesNoLeidas > 9 ? "9+" : notificacionesNoLeidas}
-              </span>
-            )}
-          </Link>
-          <Link
-            href="/perfil"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-medium text-white"
-            aria-label="Perfil"
-          >
-            {iniciales || <User size={16} />}
-          </Link>
-        </header>
+        </div>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:mx-auto lg:w-full lg:max-w-[1440px] lg:px-8">{children}</main>
-      </div>
-
-      {/* Búsqueda global (Cmd/Ctrl+K) */}
-      <Dialog.Root open={buscadorOpen} onOpenChange={setBuscadorOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30" />
-          <Dialog.Content className="fixed left-1/2 top-24 z-50 w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-[var(--radius-card)] border border-border bg-surface p-4 shadow-lg">
-            <Dialog.Title className="mb-2 text-sm font-medium text-text">Buscar</Dialog.Title>
+        <div className="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5 pt-3.5">
+          <div className="focus-within:border-border-stronger mx-0.5 mb-2 flex h-8 items-center gap-2 rounded-[var(--radius-control)] border border-border bg-surface px-2.5 transition-colors">
+            <Search size={13} className="text-placeholder" aria-hidden />
             <input
-              autoFocus
-              type="search"
-              placeholder="RFC, UUID de CFDI, nombre o código de pista…"
-              className="h-10 w-full rounded-[var(--radius-input)] border border-border bg-surface-muted px-3 text-sm outline-none focus:border-focus"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar investigaciones"
+              className="min-w-0 flex-1 border-none bg-transparent text-xs text-text outline-none"
             />
-            <p className="mt-2 text-xs text-text-subtle">
-              Búsqueda global pendiente de conectar a datos persistidos (fixtures de este corte no indexan todavía). Escape para cerrar.
+          </div>
+          <span className="px-2 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-subtle">Investigaciones</span>
+
+          {filtradas.length === 0 ? (
+            <p className="px-2 py-3 text-xs text-text-subtle">
+              {investigaciones.length === 0 ? "Sin investigaciones todavía." : `Ninguna investigación coincide con “${busqueda}”.`}
             </p>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </div>
-  );
-}
-
-function SidebarContent({
-  collapsed,
-  pathname,
-  perfilNombre,
-  perfilOrganizacion,
-  iniciales,
-  onSalir,
-  cerrandoSesion,
-}: {
-  collapsed: boolean;
-  pathname: string;
-  perfilNombre: string;
-  perfilOrganizacion?: string;
-  iniciales: string;
-  onSalir: () => void;
-  cerrandoSesion: boolean;
-}) {
-  return (
-    <>
-      <div className={cn("flex h-[60px] items-center gap-2 border-b border-border px-4", collapsed && "justify-center px-0")}>
-        <Logo className="h-5 w-5 text-text" />
-        {!collapsed && <span className="text-sm font-semibold text-text">Forense</span>}
-      </div>
-
-      <div className={cn("p-3", collapsed && "px-1.5")}>
-        <Link
-          href="/"
-          className={cn(
-            "flex h-9 items-center justify-center gap-2 rounded-[var(--radius-input)] bg-primary text-sm font-medium text-white hover:bg-primary-hover",
-            collapsed ? "px-0" : "px-3",
+          ) : (
+            filtradas.map((inv) => (
+              <Link
+                key={inv.id}
+                href={`/investigaciones/${inv.id}`}
+                className="flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-left transition-colors hover:bg-surface-hover"
+              >
+                {ESTADOS_EN_CURSO.has(inv.estado) && (
+                  <span
+                    aria-hidden
+                    className="h-4 w-4 flex-none rounded-full border-2 border-border"
+                    style={{ borderTopColor: "var(--text)", animation: "insp-spin .8s linear infinite" }}
+                  />
+                )}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="max-w-[200px] truncate text-[13.5px] text-text">{inv.titulo ?? inv.mensaje ?? "Investigación"}</span>
+                  <span className="text-[11.5px] text-text-subtle">{ESTADO_LABEL[inv.estado]}</span>
+                </span>
+              </Link>
+            ))
           )}
-        >
-          {collapsed ? "+" : "Nueva investigación"}
-        </Link>
-      </div>
 
-      <nav className="flex-1 space-y-0.5 px-2" aria-label="Secciones">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex h-9 items-center gap-2.5 rounded-[var(--radius-input)] px-2.5 text-sm transition-colors",
-                active ? "bg-surface-muted font-medium text-text" : "text-text-muted hover:bg-surface-hover hover:text-text",
-                collapsed && "justify-center px-0",
-              )}
-              title={collapsed ? label : undefined}
-            >
-              <Icon size={17} aria-hidden />
-              {!collapsed && <span className="truncate">{label}</span>}
-            </Link>
-          );
-        })}
+          <span className="mt-3 px-2 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-text-subtle">Secciones</span>
+          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-left text-[13.5px] transition-colors",
+                  active ? "bg-surface-muted font-medium text-text" : "text-text hover:bg-surface-hover",
+                )}
+              >
+                <Icon size={15} aria-hidden className="flex-none text-text-subtle" />
+                <span className="flex-1 truncate">{label}</span>
+                {href === "/notificaciones" && notificacionesNoLeidas > 0 && (
+                  <span className="flex-none rounded-full bg-error px-1.5 text-[10px] font-medium leading-4 text-white">
+                    {notificacionesNoLeidas > 9 ? "9+" : notificacionesNoLeidas}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col gap-1 border-t border-border p-3">
+          <Link href="/perfil" className="flex items-center gap-2.5 rounded-[var(--radius-control)] px-2.5 py-2 text-[13.5px] text-text transition-colors hover:bg-surface-hover">
+            <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary text-[10px] font-medium text-white">
+              {iniciales || <User size={13} />}
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              <span className="block truncate">{perfilNombre}</span>
+              {perfilOrganizacion && <span className="block truncate text-[11px] text-text-subtle">{perfilOrganizacion}</span>}
+            </span>
+          </Link>
+          <button
+            type="button"
+            onClick={salir}
+            disabled={cerrandoSesion}
+            className="flex h-[38px] items-center justify-center gap-2 rounded-[var(--radius-control)] border border-border text-[13px] font-medium text-text-muted transition-colors hover:bg-surface-hover disabled:opacity-50"
+          >
+            <LogOut size={15} aria-hidden />
+            {cerrandoSesion ? "Saliendo…" : "Cerrar sesión"}
+          </button>
+        </div>
       </nav>
 
-      <div className="mt-auto space-y-0.5 border-t border-border p-2">
-        <Link
-          href="/perfil"
-          className={cn("flex h-9 items-center gap-2.5 rounded-[var(--radius-input)] px-2.5 text-sm text-text-muted hover:bg-surface-hover", collapsed && "justify-center px-0")}
-        >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-white">{iniciales}</span>
-          {!collapsed && (
-            <span className="min-w-0 truncate">
-              <span className="block truncate text-text">{perfilNombre}</span>
-              {perfilOrganizacion && <span className="block truncate text-xs text-text-subtle">{perfilOrganizacion}</span>}
-            </span>
-          )}
-        </Link>
-        <Popover.Root>
-          <Popover.Trigger asChild>
-            <button
-              type="button"
-              className={cn("flex h-9 w-full items-center gap-2.5 rounded-[var(--radius-input)] px-2.5 text-sm text-text-muted hover:bg-surface-hover", collapsed && "justify-center px-0")}
-            >
-              <HelpCircle size={17} aria-hidden />
-              {!collapsed && "Ayuda y atajos"}
-            </button>
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Content side="right" sideOffset={8} className="z-50 w-64 rounded-[var(--radius-card)] border border-border bg-surface p-3 text-xs text-text shadow-lg">
-              <p className="mb-2 font-medium">Atajos de teclado</p>
-              <ul className="space-y-1 text-text-muted">
-                <li>
-                  <kbd className="rounded border border-border px-1">⌘/Ctrl K</kbd> Búsqueda global
-                </li>
-                <li>
-                  <kbd className="rounded border border-border px-1">Esc</kbd> Cerrar diálogos/paneles
-                </li>
-                <li>
-                  <kbd className="rounded border border-border px-1">Tab</kbd> Navegar por foco
-                </li>
-              </ul>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
-        <button
-          type="button"
-          onClick={onSalir}
-          disabled={cerrandoSesion}
-          className={cn("flex h-9 w-full items-center gap-2.5 rounded-[var(--radius-input)] px-2.5 text-sm text-text-muted hover:bg-surface-hover disabled:opacity-50", collapsed && "justify-center px-0")}
-        >
-          <LogOut size={17} aria-hidden />
-          {!collapsed && (cerrandoSesion ? "Saliendo…" : "Cerrar sesión")}
-        </button>
-      </div>
-    </>
+      <main className="min-h-screen w-full px-4 pb-10 pt-16 sm:px-6 sm:pt-[76px] lg:px-10" style={{ fontFamily: "var(--font-inter)" }}>
+        <div className="mx-auto w-full max-w-[1440px]">{children}</div>
+      </main>
+    </div>
   );
 }

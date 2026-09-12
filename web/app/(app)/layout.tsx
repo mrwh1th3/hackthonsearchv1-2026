@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/shared/app-shell";
 import { FalloDatos } from "@/components/shared/fallo-datos";
-import { obtenerNotificacionesPrivadas, obtenerPerfilPrivado } from "@/lib/data/privado";
+import { obtenerHistorialPrivado, obtenerNotificacionesPrivadas, obtenerPerfilPrivado } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -34,10 +34,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // sobre una instalación real a medias.
   let perfil: Awaited<ReturnType<typeof obtenerPerfilPrivado>>;
   let notificaciones: Awaited<ReturnType<typeof obtenerNotificacionesPrivadas>>;
+  let investigaciones: Awaited<ReturnType<typeof obtenerHistorialPrivado>>;
   try {
-    [perfil, notificaciones] = await Promise.all([
+    [perfil, notificaciones, investigaciones] = await Promise.all([
       obtenerPerfilPrivado(session.perfil_id),
       obtenerNotificacionesPrivadas(session.perfil_id),
+      // El panel izquierdo del shell Inspector (docs/22) lista investigaciones
+      // reales del perfil de la sesión — privadas (regla 3), nunca
+      // `DataSource.listInvestigaciones()` público, que no filtra por perfil.
+      obtenerHistorialPrivado(session.perfil_id),
     ]);
   } catch (e) {
     console.error("[forense-webapp] layout: la fuente privada no respondió:", e);
@@ -46,7 +51,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const noLeidas = notificaciones.filter((n) => !n.leida_at).length;
 
   return (
-    <AppShell perfilNombre={perfil.nombre} perfilOrganizacion={perfil.organizacion} notificacionesNoLeidas={noLeidas}>
+    <AppShell
+      perfilNombre={perfil.nombre}
+      perfilOrganizacion={perfil.organizacion}
+      notificacionesNoLeidas={noLeidas}
+      investigaciones={investigaciones}
+    >
       {children}
     </AppShell>
   );
