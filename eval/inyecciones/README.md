@@ -114,6 +114,24 @@ Si el dictamen sale `presuncion` o `presuncion_alta`, es un **falso positivo** y
 cuenta como tal en la FPR sobre trampas de `docs/10`. Este paquete es la prueba
 en vivo de "por qué esta no".
 
+**Dónde se mide (corregido en la oleada 5).** `db/tests/assertions_012_gen.sql`
+llegó a exigir que la trampa quedara FUERA del selector de dos familias. Eso
+contradecía a este mismo paquete —está hecho para cruzarlo— y medía otra cosa:
+el falso positivo se mide sobre el **dictamen** (`eval/metricas.py`), no sobre el
+selector. Lo que las aserciones de base de datos afirman hoy es lo que sí
+depende del paquete y de la corrida:
+
+1. cada RFC inyectado termina en un cluster (el juez sube el paquete y espera
+   respuesta; el conteo de RFC que cruzan el selector se registra en el detalle,
+   sin exigir un valor),
+2. el paquete trae con qué explicar la anomalía y por lo tanto **no** da por sí
+   solo evidencia validable de dos familias sin explicación: ≥3 CFDI de compra a
+   proveedores reales de la base, ≥3 salidas de dinero a personas morales
+   identificadas y cero salidas a un titular que no sea moral, y cero facturación
+   entre los tres RFC inyectados,
+3. garantizar el cluster no cambia el selector (mismo conteo antes y después):
+   se garantiza investigación, no se baja el umbral.
+
 ## Qué medir en cada ensayo
 
 Registrar en `reports/handoff/ESTADO.md` (21 §3.4):

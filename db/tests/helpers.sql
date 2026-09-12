@@ -9,10 +9,21 @@ create table if not exists pruebas.resultado (
   ts      timestamptz default now()
 );
 
+-- Una comprobación que no se pudo ejecutar NO es una comprobación que
+-- pasó. `omitida` la separa en el resumen: no suma a las fallidas (no
+-- rompe el exit code) pero tampoco se cuenta como PASA.
+alter table pruebas.resultado add column if not exists omitida boolean not null default false;
+
 create or replace function pruebas.assert(p_nombre text, p_ok boolean, p_detalle text default '')
 returns void language sql as $$
   insert into pruebas.resultado (nombre, ok, detalle)
   values (p_nombre, coalesce(p_ok, false), p_detalle)
+$$;
+
+create or replace function pruebas.omitir(p_nombre text, p_motivo text default '')
+returns void language sql as $$
+  insert into pruebas.resultado (nombre, ok, detalle, omitida)
+  values (p_nombre, true, 'OMITIDA: ' || coalesce(p_motivo, ''), true)
 $$;
 
 create or replace function pruebas.conteos()
