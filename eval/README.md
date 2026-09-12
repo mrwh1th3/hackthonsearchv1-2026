@@ -20,15 +20,40 @@ python3 eval/comparar_corridas.py --base gen-v1 --nueva gen-v1-inyectada --db fo
 
 Ambos hablan con Postgres por `psql` (sin dependencias) y solo leen.
 
-### Números medidos sobre gen-v1 (100 RFC, 17 fraudes, 15 trampas legítimas)
+### Números medidos (100 RFC, 17 fraudes, 15 trampas legítimas)
 
-| Regla | TP | FP | FN | TN | Precisión | Recall | FPR sobre trampas |
-|---|---|---|---|---|---|---|---|
-| baseline dos pistas | 16 | 7 | 1 | 76 | 69.6% | 94.1% | **4/15 = 26.7%** |
-| selector dos familias | 16 | 3 | 1 | 80 | 84.2% | 94.1% | **0/15 = 0.0%** |
+**Estos números son del SELECTOR, no del dictamen.** El selector decide a
+quién se investiga; el dictamen decide a quién se marca. `docs/10` §FPR lo
+define sobre lo segundo: "trampas legítimas **marcadas como positivas** /
+total de trampas legítimas", con cobertura completa. Y añade que "las
+[trampas] excluidas por el selector no demuestran una defensa". Así que la
+meta de ≤0.15 **no se compara contra esta tabla**.
 
-Exigir dos FAMILIAS en vez de dos pistas conserva el recall y elimina las
-cuatro trampas que el baseline marcaba. Es la comparación que pide docs/10
-§Baseline y el argumento del demo: la reducción de falsos positivos empieza
-antes de que hable un agente. Las métricas de dictamen quedan en `null`
-mientras gen-v1 no tenga casos investigados: cero casos no es 0% de recall.
+| Snapshot | Regla | TP | FP | FN | TN | Precisión | Recall | Trampas en la cola |
+|---|---|---|---|---|---|---|---|---|
+| gen-v1 | baseline dos pistas | 16 | 7 | 1 | 76 | 69.6% | 94.1% | 4/15 |
+| gen-v1 | selector dos familias | 16 | 3 | 1 | 80 | 84.2% | 94.1% | 0/15 |
+| gen-v2 | baseline dos pistas | 17 | 8 | 0 | 75 | 68.0% | 100% | 4/15 |
+| gen-v2 | selector dos familias | 17 | 8 | 0 | 75 | **68.0%** | **100%** | **4/15** |
+
+**Lo que cambió al volver T2 evaluable (gen-v2 + db/019), sin adornos:** el
+recall sube a 17/17 y `capas` pasa de 4/5 a 5/5, pero el selector de dos
+familias y el baseline de dos pistas quedan **idénticos** (17/8/0/75). O sea:
+en gen-v2 la regla de dos familias **no aporta discriminación**. La causa no
+es un error de siembra: la trampa del grupo corporativo comparte domicilio y
+representante (familia R) **y** timbra en lote (familia T), y las dos cosas
+son ciertas de un grupo corporativo real. Con T2 evaluable, exigir dos
+familias no separa a ese grupo legítimo de un fraude.
+
+No se quita esa co-ocurrencia para recuperar el número: la trampa existe
+justamente para medir falsos positivos, y borrarla sería medir un dataset más
+fácil. Es un hallazgo sobre el selector, no un problema de etiquetado.
+
+**Lo que ninguna de estas filas dice:** cuántas trampas quedan **marcadas**
+al final. Eso exige el pipeline completo con Defensor, y es el gate H8–10
+(ver `reports/handoff/ESTADO.md`). Hasta que ese número exista, la FPR del
+sistema está **sin medir**, y el 0/15 de gen-v1 no la sustituye: con cero
+trampas investigadas, la capa de descarte no llegó a ejercerse.
+
+Las métricas de dictamen quedan en `null` mientras el snapshot no tenga casos
+investigados: cero casos no es 0% de recall.

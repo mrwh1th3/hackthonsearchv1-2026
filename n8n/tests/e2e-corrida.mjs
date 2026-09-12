@@ -288,6 +288,29 @@ function completarCaso(casoId) {
   if (guardado.nivel !== dictamen.nivel) {
     throw new Error(`guardar_dictamen persistió ${guardado.nivel} y el dictaminador dijo ${dictamen.nivel}`);
   }
+  // `resultado_por_rfc` tiene que llegar PERSISTIDA. Nadie la emitía, así que
+  // `guardar_dictamen` guardaba `[]` en todos los casos: 13 §2:00-2:45 ("cada
+  // RFC lleva el suyo") no se cumplía y el panel Contraste (db/018) no tenía
+  // niveles de vecinos que comparar. Se comprueba contra la BASE, no contra
+  // el objeto que acabamos de construir en memoria.
+  const rxr = pasoJson('resultado_por_rfc persistida',
+    `select coalesce(resultado_por_rfc, '[]'::jsonb)::text from forense.casos
+      where id = ${lit(casoId)}::uuid`);
+  if (!Array.isArray(rxr) || rxr.length === 0) {
+    throw new Error(`resultado_por_rfc quedó vacía en la base: ${JSON.stringify(rxr)}`);
+  }
+  if (rxr.length !== dictamen.resultado_por_rfc.length) {
+    throw new Error(`resultado_por_rfc persistió ${rxr.length} RFC y el dictaminador emitió ${dictamen.resultado_por_rfc.length}`);
+  }
+  const sinNivel = rxr.filter((r) => !NIVELES.includes(r.nivel));
+  if (sinNivel.length > 0) {
+    throw new Error(`resultado_por_rfc con nivel fuera del catálogo: ${JSON.stringify(sinNivel.slice(0, 3))}`);
+  }
+  if (!SALIDA_JSON) {
+    const reparto = rxr.reduce((a, r) => ({ ...a, [r.nivel]: (a[r.nivel] ?? 0) + 1 }), {});
+    console.log(`  → resultado_por_rfc: ${rxr.length} RFC ${JSON.stringify(reparto)}`);
+  }
+
   const cierre = pasoJson('nodo Cerrar caso',
     `select to_jsonb(t)::text from (${sqlDeNodo('Cerrar caso', [casoId, 'dictaminado'], 'FORENSE_investigar_cluster')}) t`);
   return { nivel: dictamen.nivel, estado: cierre.estado ?? cierre.estado_final ?? null };

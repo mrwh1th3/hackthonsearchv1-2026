@@ -46,13 +46,22 @@ export function dictaminar(x) {
   const e1def = ev.some(e => e.pista_codigo === 'E1' && e.familia === 'E'
     && e.hecho_validado?.estatus === 'definitivo'
     && e.hecho_validado?.saltos === 0);
-  let nivel;
-  if (!completo) nivel = 'no_concluyente';
-  else if (todasDescartadas) nivel = 'anomalia_explicada';
-  else if (ev.length === 0 && pistas.length === 0) nivel = 'sin_hallazgos';
-  else if (familias.size >= 3 || (familias.size >= 2 && e1def)) nivel = 'presuncion_alta';
-  else if (familias.size >= 2) nivel = 'presuncion';
-  else nivel = 'no_concluyente';
+  // La decisión de nivel se aísla aquí porque se aplica DOS veces con la
+  // misma regla: una al caso y una por cada RFC del cluster con sus
+  // evidencias y limitaciones filtradas (07 §135: "El mismo criterio se
+  // aplica por RFC con sus evidencias/limitaciones filtradas"). Duplicar la
+  // regla a mano sería la forma más fácil de que el nivel del caso y el del
+  // RFC dejen de concordar sin que ninguna prueba lo note.
+  const decidirNivel = (hayCobertura, todasDesc, nEv, nPistas, nFamilias, hayE1) => {
+    if (!hayCobertura) return 'no_concluyente';
+    if (todasDesc) return 'anomalia_explicada';
+    if (nEv === 0 && nPistas === 0) return 'sin_hallazgos';
+    if (nFamilias >= 3 || (nFamilias >= 2 && hayE1)) return 'presuncion_alta';
+    if (nFamilias >= 2) return 'presuncion';
+    return 'no_concluyente';
+  };
+  const nivel = decidirNivel(completo, todasDescartadas, ev.length, pistas.length,
+    familias.size, e1def);
 
   // monto_centavos: entero decimal resuelto desde NUMERIC de DB, no del modelo.
   // El mismo CFDI citado por varias familias cuenta una vez.
@@ -70,6 +79,49 @@ export function dictaminar(x) {
   }
   const monto = [...porFactura.values()].reduce((s, v) => s + v, 0n);
   const ordenadas = [...familias].sort();
+
+  // resultado_por_rfc: el nivel POR RFC del cluster. Nadie lo emitía, así que
+  // `guardar_dictamen` (db/010) persistía `[]` en todos los casos y la
+  // columna parecía muerta por diseño cuando en realidad estaba huérfana.
+  // Hace falta para dos cosas normativas: 13 §2:00-2:45 prohíbe atribuir el
+  // resultado del caso a todos los integrantes del cluster ("cada RFC lleva
+  // el suyo en resultado_por_rfc"), y el panel Contraste (21 §2, db/018)
+  // necesita niveles de vecinos para responder "por qué esta sí y aquella no".
+  const rfcsCluster = (Array.isArray(x.caso.rfcs_cluster) && x.caso.rfcs_cluster.length > 0)
+    ? x.caso.rfcs_cluster
+    : [x.caso.rfc_principal, ...(x.caso.rfcs_satelite ?? [])];
+  const resultado_por_rfc = [...new Set(rfcsCluster.filter(Boolean))].sort().map(rfc => {
+    const evRfc = ev.filter(e => (e.rfcs_afectados ?? []).includes(rfc));
+    const pistasRfc = pistas.filter(p => p.rfc === rfc);
+    const famRfc = new Set(evRfc.map(e => e.familia).filter(f => permitidas.has(f)));
+    // Una limitación afecta a este RFC si lo nombra; si no nombra a ninguno,
+    // es del caso entero y afecta a todos. Conservador a propósito: una
+    // limitación sin objetivo no se descarta por RFC.
+    const limRfc = pendientes.filter(p => {
+      const rfcs = p.objetivo?.rfcs;
+      return !Array.isArray(rfcs) || rfcs.length === 0 || rfcs.includes(rfc);
+    });
+    const evaluablesRfc = pistasRfc.filter(p => p.estado !== 'no_evaluable');
+    const todasDescRfc = evaluablesRfc.length > 0
+      && evaluablesRfc.every(p => p.evaluacion_caso?.resultado === 'descartada');
+    const e1defRfc = evRfc.some(e => e.pista_codigo === 'E1' && e.familia === 'E'
+      && e.hecho_validado?.estatus === 'definitivo'
+      && e.hecho_validado?.saltos === 0);
+    const coberturaRfc = x.cobertura_completa === true && limRfc.length === 0;
+    const nivelRfc = decidirNivel(coberturaRfc, todasDescRfc, evRfc.length,
+      pistasRfc.length, famRfc.size, e1defRfc);
+    return {
+      rfc,
+      nivel: nivelRfc,
+      // La tipología del caso NO se hereda a un RFC que no llegó a
+      // presunción: eso sería exactamente la atribución en bloque que 13
+      // prohíbe.
+      tipologia: (nivelRfc === 'presuncion' || nivelRfc === 'presuncion_alta')
+        ? (x.caso.tipologia ?? null) : null,
+      evidencia_ids: evRfc.map(e => e.evidencia_id).filter(v => v !== undefined && v !== null),
+      cobertura_completa: coberturaRfc,
+    };
+  });
   const salida = {
     // Identidad del caso: el dictamen y el reintento la necesitan y no deben
     // volver a resolverla (misma convención de cableado que el worker).
@@ -83,6 +135,7 @@ export function dictaminar(x) {
     monto_en_riesgo_centavos: monto.toString(),
     regla: `${ordenadas.length} familia(s) sustentadas: ${ordenadas.join(', ')} → ${nivel}`,
     limitaciones: pendientes.map(p => p.motivo),
+    resultado_por_rfc,
   };
   // <<<CODE_NODE_FIN
   return salida;

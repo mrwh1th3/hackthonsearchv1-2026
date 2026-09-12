@@ -205,6 +205,80 @@ test('la evidencia refutada o sin validar no suma familia', () => {
   assert.equal(r.nivel, 'no_concluyente');
 });
 
+// resultado_por_rfc: nadie lo emitía y `guardar_dictamen` persistía [] siempre,
+// así que 13 §2:00-2:45 ("cada RFC lleva el suyo") no se cumplía y el panel
+// Contraste (db/018) no tenía niveles de vecinos que comparar.
+const conCluster = (overrides = {}) => entrada({
+  caso: { id: UUID.caso, n_reintentos: 0, rfc_principal: 'AAA', rfcs_satelite: ['BBB'],
+          rfcs_cluster: ['AAA', 'BBB', 'CCC'], tipologia: 'carrusel' },
+  ...overrides,
+});
+
+test('resultado_por_rfc no atribuye el resultado del caso a todo el cluster', () => {
+  const r = dictaminar(conCluster({
+    pistas: [{ id: '1', rfc: 'AAA', estado: 'disparada' }, { id: '2', rfc: 'BBB', estado: 'disparada' }],
+    evidencia: [ev('F', { rfcs_afectados: ['AAA'] }), ev('R', { rfcs_afectados: ['AAA', 'BBB'] })],
+  }));
+  assert.equal(r.nivel, 'presuncion');
+  const porRfc = Object.fromEntries(r.resultado_por_rfc.map(x => [x.rfc, x.nivel]));
+  // AAA tiene dos familias; BBB sólo R; CCC no tiene nada.
+  assert.deepEqual(porRfc, { AAA: 'presuncion', BBB: 'no_concluyente', CCC: 'sin_hallazgos' });
+});
+
+test('la tipología del caso no se hereda a un RFC que no llegó a presunción', () => {
+  const r = dictaminar(conCluster({
+    pistas: [{ id: '1', rfc: 'AAA', estado: 'disparada' }],
+    evidencia: [ev('F', { rfcs_afectados: ['AAA'] }), ev('R', { rfcs_afectados: ['AAA'] })],
+  }));
+  const porRfc = Object.fromEntries(r.resultado_por_rfc.map(x => [x.rfc, x.tipologia]));
+  assert.equal(porRfc.AAA, 'carrusel');
+  assert.equal(porRfc.BBB, null);
+  assert.equal(porRfc.CCC, null);
+});
+
+test('resultado_por_rfc cae a principal + satélites cuando el paquete no trae rfcs_cluster', () => {
+  const r = dictaminar(entrada({
+    caso: { id: UUID.caso, n_reintentos: 0, rfc_principal: 'AAA', rfcs_satelite: ['BBB'] },
+  }));
+  assert.deepEqual(r.resultado_por_rfc.map(x => x.rfc), ['AAA', 'BBB']);
+});
+
+test('una limitación que nombra un RFC sólo le quita la cobertura a ese RFC', () => {
+  const r = dictaminar(conCluster({
+    pistas: [{ id: '1', rfc: 'AAA', estado: 'disparada' }, { id: '2', rfc: 'BBB', estado: 'disparada' }],
+    evidencia: [ev('F', { rfcs_afectados: ['BBB'] }), ev('R', { rfcs_afectados: ['BBB'] })],
+    pendientes: [{ motivo: 'cadena_incompleta', reparable: false, objetivo: { rfcs: ['AAA'] } }],
+  }));
+  const porRfc = Object.fromEntries(r.resultado_por_rfc.map(x => [x.rfc, x.cobertura_completa]));
+  assert.equal(porRfc.AAA, false);
+  assert.equal(porRfc.BBB, true);
+  // Y BBB sí puede presumir aunque el CASO quede no_concluyente por esa
+  // limitación abierta: es el escenario que el panel Contraste compara.
+  assert.equal(r.nivel, 'no_concluyente');
+  assert.equal(r.resultado_por_rfc.find(x => x.rfc === 'BBB').nivel, 'presuncion');
+});
+
+test('una limitación sin RFC nombrado afecta a todos los del cluster', () => {
+  const r = dictaminar(conCluster({
+    evidencia: [ev('F', { rfcs_afectados: ['AAA'] }), ev('R', { rfcs_afectados: ['AAA'] })],
+    pendientes: [{ motivo: 'evidencia_insuficiente', reparable: false }],
+  }));
+  assert.ok(r.resultado_por_rfc.every(x => x.cobertura_completa === false));
+  assert.ok(r.resultado_por_rfc.every(x => x.nivel === 'no_concluyente'));
+});
+
+test('el nivel por RFC usa la MISMA regla que el del caso (sin duplicarla)', () => {
+  // Cluster de un solo RFC con toda la evidencia: caso y RFC deben coincidir.
+  for (const familias of [['F'], ['F', 'R'], ['F', 'R', 'T']]) {
+    const r = dictaminar(entrada({
+      caso: { id: UUID.caso, n_reintentos: 0, rfc_principal: 'AAA', rfcs_cluster: ['AAA'] },
+      pistas: [{ id: '1', rfc: 'AAA', estado: 'disparada' }],
+      evidencia: familias.map(f => ev(f, { rfcs_afectados: ['AAA'] })),
+    }));
+    assert.equal(r.resultado_por_rfc[0].nivel, r.nivel, `familias=${familias.join('')}`);
+  }
+});
+
 test('ningún camino devuelve "definitivo" como nivel', () => {
   const casos = [
     entrada(),
