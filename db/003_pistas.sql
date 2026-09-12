@@ -1,7 +1,7 @@
 -- =====================================================================
--- 003_pistas.sql — Motor de pistas, primera entrega (docs/02 §Prioridad):
---   D2, F1, F2, R1, R2, E1, T1
--- Segunda entrega pendiente: D1, D3, D4, F3, F4, R3, T2.
+-- 003_pistas.sql — Motor de pistas, las 14 de docs/02:
+--   primera entrega  D2, F1, F2, R1, R2, E1, T1
+--   segunda entrega  D1, D3, D4, F3, F4, R3, T2
 --
 -- Reglas que se mantienen en todas las pistas:
 --   * Umbrales RELATIVOS a pares del mismo giro (forense.v_pares_giro).
@@ -699,6 +699,840 @@ begin
   return n;
 end $$;
 
+-- =====================================================================
+-- SEGUNDA ENTREGA (docs/02 §Prioridad): D1, D3, D4, F3, F4, R3, T2.
+-- Mismas reglas que la primera: umbrales relativos a pares del giro,
+-- ventana cerrada en fecha_corte, huella determinista + ON CONFLICT, y
+-- ningún texto libre sostiene una pista.
+-- =====================================================================
+
+-- ¿Hay catálogo de claves para la versión de reglas de esta corrida?
+-- D1 no puede inventarlo: sin catálogo la pista es no evaluable (docs/05).
+create or replace function forense.hay_catalogo_giros(p_corrida uuid)
+returns boolean language sql stable set search_path = '' as $$
+  select exists (
+    select 1 from forense.catalogo_giro_claves c
+      join forense.corridas r on r.version_reglas = c.version_reglas
+     where r.id = p_corrida)
+$$;
+
+-- ---------------------------------------------------------------------
+-- D1 — Giro vs. concepto
+-- >40% del MONTO facturado con ClaveProdServ fuera del catálogo del giro.
+-- Trampa: diversificación real respaldada por compras del nuevo giro; el
+-- detalle incluye si compró con esas mismas claves, para poder refutarla.
+-- ---------------------------------------------------------------------
+create or replace function forense.pista_d1(p_corrida uuid) returns int
+language plpgsql set search_path = '' as $$
+declare n int; v_corte timestamptz; v_reglas text;
+begin
+  select fecha_corte, version_reglas into v_corte, v_reglas
+    from forense.corridas where id = p_corrida;
+  if not forense.hay_catalogo_giros(p_corrida) then
+    return 0;                       -- correr_pistas la marca no_evaluable
+  end if;
+
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with emitidas as (
+    select f.uuid, f.emisor_rfc, f.total, f.clave_prod_serv, f.fecha, c.giro
+      from forense.cfdi f
+      join forense.contribuyentes c
+        on c.corrida_id = p_corrida and c.rfc = f.emisor_rfc
+     where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+       and c.giro is not null
+  ),
+  marcadas as (
+    select e.*,
+           not exists (select 1 from forense.catalogo_giro_claves k
+                        where k.version_reglas = v_reglas and k.giro = e.giro
+                          and k.clave_prod_serv = e.clave_prod_serv) as fuera
+      from emitidas e
+  ),
+  agg as (
+    select emisor_rfc as rfc, giro,
+           count(*) as n_facturas,
+           sum(total) as monto_total,
+           sum(total) filter (where fuera) as monto_fuera,
+           count(*) filter (where fuera) as n_fuera
+      from marcadas group by emisor_rfc, giro
+  )
+  select p_corrida, 'D1', 'D', a.rfc,
+         least(1.0, 0.4 + 0.6 * (a.monto_fuera / nullif(a.monto_total, 0)))::numeric,
+         jsonb_build_object(
+           'giro', a.giro,
+           'n_facturas', a.n_facturas,
+           'n_fuera_de_catalogo', a.n_fuera,
+           'monto_total', a.monto_total::text,
+           'monto_fuera_de_catalogo', a.monto_fuera::text,
+           'pct_monto_fuera', round(a.monto_fuera / nullif(a.monto_total, 0), 4),
+           'claves_fuera', (select coalesce(jsonb_agg(jsonb_build_object(
+                               'clave', t.clave_prod_serv, 'n', t.n,
+                               'monto', t.monto::text) order by t.monto desc), '[]'::jsonb)
+                             from (select m.clave_prod_serv, count(*) as n, sum(m.total) as monto
+                                     from marcadas m
+                                    where m.emisor_rfc = a.rfc and m.fuera
+                                    group by m.clave_prod_serv
+                                    order by sum(m.total) desc limit 5) t),
+           -- Discriminador de la trampa: ¿compró insumos con esas claves?
+           'compro_con_esas_claves', exists (
+             select 1 from forense.cfdi f2
+              where f2.corrida_id = p_corrida and f2.receptor_rfc = a.rfc
+                and f2.tipo = 'I' and not f2.cancelado
+                and f2.fecha <= v_corte and f2.fecha > v_corte - interval '12 months'
+                and f2.clave_prod_serv in (select m2.clave_prod_serv from marcadas m2
+                                            where m2.emisor_rfc = a.rfc and m2.fuera)),
+           'version_reglas', v_reglas,
+           'resumen', format(
+             'El %s del monto que facturó (%s de %s) usa claves de producto/servicio fuera '
+             'del catálogo de su giro registrado (%s): %s de %s facturas.',
+             to_char(round(100 * a.monto_fuera / nullif(a.monto_total, 0), 1), 'FM990.0%'),
+             a.monto_fuera, a.monto_total, a.giro, a.n_fuera, a.n_facturas),
+           'referencias', (select coalesce(jsonb_agg('CFDI:' || u.uuid), '[]'::jsonb) from (
+              select m.uuid from marcadas m
+               where m.emisor_rfc = a.rfc and m.fuera
+               order by m.total desc, m.uuid limit 20) u),
+           'comprobacion', 'D1',
+           'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
+         forense.huella_pista('D1', a.rfc, v_corte)
+    from agg a
+   where a.n_facturas >= 5
+     and a.monto_fuera / nullif(a.monto_total, 0) > 0.40
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- D3 — Conceptos y montos
+-- >60% de facturas con monto múltiplo de 1,000, o desvío de Benford
+-- (chi² sobre el primer dígito) por encima del umbral de 8 grados de
+-- libertad al 1% (20.09).
+--
+-- Dos correcciones respecto a la primera versión, ambas medidas sobre
+-- gen-v1 (docs/10: una pista que dispara sobre 77 de 100 RFC no informa):
+--
+--  (a) Trampa de montos redondos: la consultoría real cobra redondo a
+--      CLIENTES DIVERSOS. El umbral es relativo a los pares de la corrida
+--      (p75 de clientes distintos), no una constante: sobre gen-v1 las 9
+--      trampas legítimas facturan a 15–23 clientes y el fraude a 8, con
+--      p75 = 10. El detalle publica ambos números para poder refutarla.
+--
+--  (b) Benford solo tiene poder si la POBLACIÓN de la corrida se ajusta a
+--      Benford. Si la mayoría de los emisores comparables ya supera el
+--      umbral, el desvío describe al dataset, no al contribuyente: la
+--      pierna queda no evaluable y se registra en bitácora con su motivo
+--      (regla 2; evidencia insuficiente no sube el nivel).
+-- ---------------------------------------------------------------------
+create or replace function forense.pista_d3(p_corrida uuid, p_min_facturas int default 20)
+returns int language plpgsql set search_path = '' as $$
+declare n int; v_corte timestamptz; v_p75 numeric; v_benford boolean; v_pobl int; v_sobre int;
+begin
+  select fecha_corte into v_corte from forense.corridas where id = p_corrida;
+
+  -- Pares de la corrida: p75 de clientes distintos y poder del test de
+  -- Benford sobre esta población. Se calcula una vez, no por RFC.
+  with emitidas as (
+    select f.emisor_rfc, f.total, f.receptor_rfc,
+           left(trunc(abs(f.total))::text, 1)::int as d1
+      from forense.cfdi f
+     where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+       and f.total >= 1
+  ),
+  b as (
+    select emisor_rfc as rfc, count(*) as n_facturas,
+           count(distinct receptor_rfc) as n_clientes
+      from emitidas group by emisor_rfc
+  ),
+  d as (
+    select emisor_rfc as rfc, d1, count(*) as obs
+      from emitidas where d1 between 1 and 9 group by emisor_rfc, d1
+  ),
+  chi as (
+    select b.rfc,
+           sum(power(coalesce(d.obs, 0) - b.n_facturas * log(1 + 1.0 / g.d), 2)
+               / nullif(b.n_facturas * log(1 + 1.0 / g.d), 0)) as chi2
+      from b cross join generate_series(1, 9) g(d)
+      left join d on d.rfc = b.rfc and d.d1 = g.d
+     group by b.rfc
+  )
+  select percentile_cont(0.75) within group (order by b.n_clientes),
+         count(*) filter (where b.n_facturas >= p_min_facturas),
+         count(*) filter (where b.n_facturas >= p_min_facturas and chi.chi2 > 20.09)
+    into v_p75, v_pobl, v_sobre
+    from b join chi on chi.rfc = b.rfc;
+
+  v_p75 := coalesce(v_p75, 0);
+  -- Con menos de 10 emisores comparables no hay población con la que
+  -- calibrar: se prefiere no evaluar antes que inventar poder estadístico.
+  v_benford := v_pobl >= 10 and v_sobre::numeric / nullif(v_pobl, 0) <= 0.50;
+
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with emitidas as (
+    select f.emisor_rfc, f.uuid, f.total, f.receptor_rfc,
+           left(trunc(abs(f.total))::text, 1)::int as d1
+      from forense.cfdi f
+     where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+       and f.total >= 1
+  ),
+  base as (
+    select emisor_rfc as rfc,
+           count(*) as n_facturas,
+           count(distinct receptor_rfc) as n_clientes,
+           count(*) filter (where (total * 100)::bigint % 100000 = 0) as n_redondos
+      from emitidas group by emisor_rfc
+  ),
+  digitos as (
+    select e.emisor_rfc as rfc, e.d1, count(*) as obs
+      from emitidas e where e.d1 between 1 and 9
+     group by e.emisor_rfc, e.d1
+  ),
+  chi as (
+    select b.rfc,
+           sum(power(coalesce(d.obs, 0) - b.n_facturas * log(1 + 1.0 / g.d), 2)
+               / nullif(b.n_facturas * log(1 + 1.0 / g.d), 0)) as chi2,
+           jsonb_object_agg(g.d::text, jsonb_build_object(
+             'obs', coalesce(d.obs, 0),
+             'esp', round((b.n_facturas * log(1 + 1.0 / g.d))::numeric, 2))) as distribucion
+      from base b
+      cross join generate_series(1, 9) g(d)
+      left join digitos d on d.rfc = b.rfc and d.d1 = g.d
+     group by b.rfc
+  )
+  select p_corrida, 'D3', 'D', b.rfc,
+         least(1.0,
+           greatest(
+             case when b.n_redondos::numeric / b.n_facturas > 0.60
+                       and b.n_clientes <= v_p75
+                  then 0.5 + (b.n_redondos::numeric / b.n_facturas - 0.60) else 0 end,
+             case when v_benford and c.chi2 > 20.09
+                  then least(0.9, 0.5 + (c.chi2 - 20.09) / 100.0) else 0 end
+           ))::numeric,
+         jsonb_build_object(
+           'n_facturas', b.n_facturas,
+           'n_clientes', b.n_clientes,
+           'n_montos_redondos', b.n_redondos,
+           'pct_montos_redondos', round(b.n_redondos::numeric / b.n_facturas, 4),
+           'benford_chi2', round(c.chi2::numeric, 2),
+           'benford_umbral', 20.09,
+           'benford_gl', 8,
+           'benford_distribucion', c.distribucion,
+           'benford_evaluable', v_benford,
+           'benford_poblacion_sobre_umbral', v_sobre,
+           'benford_poblacion_comparable', v_pobl,
+           'clientes_p75_corrida', v_p75,
+           'diversidad_clientes', case when b.n_clientes > v_p75 then 'alta' else 'concentrada' end,
+           'motivo', case when b.n_redondos::numeric / b.n_facturas > 0.60
+                               and b.n_clientes <= v_p75
+                          then 'montos_redondos' else 'benford' end,
+           'resumen', format(
+             '%s de %s facturas (%s) tienen monto múltiplo de 1,000 y el primer dígito se desvía '
+             'de Benford con chi² = %s (umbral 20.09 con 8 grados de libertad), repartidas entre '
+             '%s clientes distintos.',
+             b.n_redondos, b.n_facturas,
+             to_char(round(100 * b.n_redondos::numeric / b.n_facturas, 1), 'FM990.0%'),
+             round(c.chi2::numeric, 2), b.n_clientes),
+           'referencias', (select coalesce(jsonb_agg('CFDI:' || u.uuid), '[]'::jsonb) from (
+              select e.uuid from emitidas e
+               where e.emisor_rfc = b.rfc
+                 and (e.total * 100)::bigint % 100000 = 0
+               order by e.total desc, e.uuid limit 20) u),
+           'comprobacion', 'D3',
+           'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
+         forense.huella_pista('D3', b.rfc, v_corte)
+    from base b join chi c on c.rfc = b.rfc
+   where b.n_facturas >= p_min_facturas
+     and ((b.n_redondos::numeric / b.n_facturas > 0.60 and b.n_clientes <= v_p75)
+          or (v_benford and c.chi2 > 20.09))
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+
+  get diagnostics n = row_count;
+
+  -- Regla 2: si la pierna de Benford no se evaluó, el paso deja rastro.
+  if not v_benford then
+    perform forense.log(null, 'sistema', 'pista_cargada',
+      jsonb_build_object('evento_real', 'D3_benford_no_evaluable',
+        'motivo', 'la población de la corrida no se ajusta a Benford: '
+                  || v_sobre || ' de ' || v_pobl || ' emisores comparables ya superan '
+                  || 'el umbral, el desvío describe al dataset y no al contribuyente',
+        'poblacion_comparable', v_pobl, 'sobre_umbral', v_sobre),
+      null, null, null, null, null, null, null, p_corrida);
+  end if;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- D4 — Cancelaciones
+-- Tasa > p90 del giro, o >50% de las cancelaciones concentradas en
+-- diciembre/marzo.
+-- Trampa: errores corregidos con refacturación inmediata (uuid_sustituye);
+-- el detalle publica cuántas cancelaciones tienen sustituta.
+-- ---------------------------------------------------------------------
+create or replace function forense.pista_d4(p_corrida uuid) returns int
+language plpgsql set search_path = '' as $$
+declare n int; v_corte timestamptz;
+begin
+  select fecha_corte into v_corte from forense.corridas where id = p_corrida;
+
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with emitidas as (
+    select f.uuid, f.emisor_rfc, f.total, f.cancelado, f.fecha, f.fecha_cancelacion,
+           f.uuid_sustituye,
+           extract(month from coalesce(f.fecha_cancelacion, f.fecha))::int as mes_cancel
+      from forense.cfdi f
+     where f.corrida_id = p_corrida and f.tipo = 'I'
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+  ),
+  agg as (
+    select e.emisor_rfc as rfc,
+           count(*) as n_emitidas,
+           count(*) filter (where e.cancelado) as n_canceladas,
+           count(*) filter (where e.cancelado and e.mes_cancel in (12, 3)) as n_dic_mar,
+           count(*) filter (where e.cancelado and e.uuid_sustituye is not null) as n_sustituidas,
+           coalesce(sum(e.total) filter (where e.cancelado), 0) as monto_cancelado
+      from emitidas e group by e.emisor_rfc
+  ),
+  medidos as (
+    select a.*, c.giro,
+           a.n_canceladas::numeric / nullif(a.n_emitidas, 0) as tasa,
+           g.cancel_p90, g.n_pares
+      from agg a
+      join forense.contribuyentes c on c.corrida_id = p_corrida and c.rfc = a.rfc
+      left join forense.v_pares_giro g on g.corrida_id = p_corrida and g.giro = c.giro
+  )
+  select p_corrida, 'D4', 'D', m.rfc,
+         least(1.0, 0.45
+               + case when m.cancel_p90 is not null and m.tasa > m.cancel_p90 then 0.3 else 0 end
+               + case when m.n_dic_mar::numeric / nullif(m.n_canceladas, 0) > 0.5 then 0.25 else 0 end)::numeric,
+         jsonb_build_object(
+           'giro', m.giro,
+           'n_emitidas', m.n_emitidas,
+           'n_canceladas', m.n_canceladas,
+           'tasa_cancelacion', round(m.tasa, 4),
+           'cancel_p90_del_giro', m.cancel_p90,
+           'n_pares', m.n_pares,
+           'muestra_pequena', (coalesce(m.n_pares, 0) < 3),
+           'n_canceladas_dic_mar', m.n_dic_mar,
+           'pct_dic_mar', round(m.n_dic_mar::numeric / nullif(m.n_canceladas, 0), 4),
+           'monto_cancelado', m.monto_cancelado::text,
+           -- Discriminador de la trampa: refacturación inmediata
+           'n_con_sustituta', m.n_sustituidas,
+           'pct_con_sustituta', round(m.n_sustituidas::numeric / nullif(m.n_canceladas, 0), 4),
+           'motivo', case when m.cancel_p90 is not null and m.tasa > m.cancel_p90
+                          then 'tasa_sobre_p90' else 'concentracion_dic_mar' end,
+           'resumen', format(
+             'Canceló %s de %s facturas emitidas (%s); el p90 de su giro (%s) es %s. %s de esas '
+             'cancelaciones cayeron en diciembre o marzo y %s tienen factura sustituta.',
+             m.n_canceladas, m.n_emitidas, to_char(round(100 * m.tasa, 1), 'FM990.0%'),
+             m.giro, coalesce(round(m.cancel_p90::numeric, 4)::text, 'sin pares'),
+             m.n_dic_mar, m.n_sustituidas),
+           'referencias', (select coalesce(jsonb_agg('CFDI:' || u.uuid), '[]'::jsonb) from (
+              select e.uuid from emitidas e
+               where e.emisor_rfc = m.rfc and e.cancelado
+               order by e.total desc, e.uuid limit 20) u),
+           'comprobacion', 'D4',
+           'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
+         forense.huella_pista('D4', m.rfc, v_corte)
+    from medidos m
+   where m.n_emitidas >= 10 and m.n_canceladas >= 3
+     and ((m.cancel_p90 is not null and m.tasa > m.cancel_p90)
+          or m.n_dic_mar::numeric / nullif(m.n_canceladas, 0) > 0.5)
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- F3 — Tercero pagador
+-- >30% de los pagos identificados llegan desde una cuenta cuyo titular no
+-- es el receptor del CFDI, Y esos pagos se CONCENTRAN en un tercero (≥50%
+-- de los pagos de tercero vienen del mismo titular).
+--
+-- La concentración es el discriminador de la trampa, no un adorno: la
+-- tesorería centralizada y el factoraje pagan desde muchas cuentas del
+-- grupo o del factor, repartidas. Medido sobre gen-v1: las 9 trampas
+-- legítimas reciben de 4 a 23 pagadores distintos (2 pagos cada uno) y los
+-- 2 fraudes de uno solo. Sin esta condición F3 marcaba 9 trampas y 2
+-- fraudes, es decir señalaba lo legítimo. El detalle publica el tercero
+-- principal, su cuota y la lista completa para poder refutarla.
+-- ---------------------------------------------------------------------
+create or replace function forense.pista_f3(p_corrida uuid) returns int
+language plpgsql set search_path = '' as $$
+declare n int; v_corte timestamptz;
+begin
+  select fecha_corte into v_corte from forense.corridas where id = p_corrida;
+
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with facturas as (
+    select f.uuid, f.emisor_rfc, f.receptor_rfc, f.fecha, f.total
+      from forense.cfdi f
+     where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+  ),
+  pagos as (
+    select distinct on (f.uuid)
+           f.uuid, f.emisor_rfc, f.receptor_rfc, f.total,
+           m.id as mov_id, co.rfc_titular as pagador
+      from facturas f
+      join forense.cuentas cd on cd.corrida_id = p_corrida and cd.rfc_titular = f.emisor_rfc
+      join forense.movimientos m
+        on m.corrida_id = p_corrida and m.cuenta_destino = cd.clabe
+       and m.fecha between f.fecha - interval '7 days' and f.fecha + interval '7 days'
+       and abs(m.monto - f.total) <= f.total * 0.02
+      left join forense.cuentas co on co.corrida_id = p_corrida and co.clabe = m.cuenta_origen
+     order by f.uuid, abs(m.monto - f.total), m.id
+  ),
+  agg as (
+    select p.emisor_rfc as rfc,
+           count(*) as n_pagos,
+           count(*) filter (where p.pagador is distinct from p.receptor_rfc) as n_tercero,
+           coalesce(sum(p.total) filter (where p.pagador is distinct from p.receptor_rfc), 0) as monto_tercero,
+           (array_agg(distinct p.pagador)
+              filter (where p.pagador is distinct from p.receptor_rfc)) as terceros
+      from pagos p group by p.emisor_rfc
+  ),
+  -- Tercero principal y su cuota sobre los pagos de tercero.
+  concentracion as (
+    select emisor_rfc as rfc, pagador as tercero_principal, n_del_tercero,
+           n_del_tercero::numeric / nullif(total_tercero, 0) as cuota
+      from (
+        select p.emisor_rfc, p.pagador, count(*) as n_del_tercero,
+               sum(count(*)) over (partition by p.emisor_rfc) as total_tercero,
+               row_number() over (partition by p.emisor_rfc
+                                  order by count(*) desc, p.pagador) as rn
+          from pagos p
+         where p.pagador is distinct from p.receptor_rfc
+         group by p.emisor_rfc, p.pagador) z
+     where rn = 1
+  )
+  select p_corrida, 'F3', 'F', a.rfc,
+         least(1.0, 0.4 + 0.6 * (a.n_tercero::numeric / nullif(a.n_pagos, 0)))::numeric,
+         jsonb_build_object(
+           'n_pagos_identificados', a.n_pagos,
+           'n_pagados_por_tercero', a.n_tercero,
+           'pct_tercero', round(a.n_tercero::numeric / nullif(a.n_pagos, 0), 4),
+           'monto_pagado_por_tercero', a.monto_tercero::text,
+           'terceros', to_jsonb(coalesce(a.terceros, '{}'::text[])),
+           'n_terceros', coalesce(array_length(a.terceros, 1), 0),
+           'tercero_principal', k.tercero_principal,
+           'pagos_del_tercero_principal', k.n_del_tercero,
+           'concentracion_tercero', round(k.cuota, 4),
+           -- Discriminador de la trampa: tesorería de grupo comparte atributos
+           'terceros_con_atributo_compartido', (
+             select count(*) from unnest(coalesce(a.terceros, '{}'::text[])) t
+              where exists (
+                select 1 from forense.atributos_entidad a1
+                  join forense.atributos_entidad a2
+                    on a2.corrida_id = a1.corrida_id and a2.atributo = a1.atributo
+                   and a2.valor = a1.valor
+                 where a1.corrida_id = p_corrida and a1.rfc = t
+                   and a2.rfc in (select p2.receptor_rfc from pagos p2
+                                   where p2.emisor_rfc = a.rfc and p2.pagador = t))),
+           'resumen', format(
+             '%s de %s pagos identificados (%s) llegaron desde una cuenta cuyo titular no es el '
+             'receptor de la factura, por %s en total.',
+             a.n_tercero, a.n_pagos,
+             to_char(round(100 * a.n_tercero::numeric / nullif(a.n_pagos, 0), 1), 'FM990.0%'),
+             a.monto_tercero)
+             || format(' %s de esos %s pagos salieron de la misma cuenta titular.',
+                       k.n_del_tercero, a.n_tercero),
+           -- Un mismo movimiento puede saldar dos facturas: se agrupa por
+           -- mov_id para que `referencias` no repita un ID (contrato v1:
+           -- uniqueItems). Orden determinista por monto y luego por id.
+           'referencias', to_jsonb(coalesce((
+             select array_agg(x.ref order by x.t desc, x.ref)
+               from (select 'MOV:' || p2.mov_id as ref, max(p2.total) as t
+                       from pagos p2
+                      where p2.emisor_rfc = a.rfc
+                        and p2.pagador is distinct from p2.receptor_rfc
+                      group by p2.mov_id
+                      order by max(p2.total) desc, 'MOV:' || p2.mov_id
+                      limit 20) x), '{}'::text[])),
+           'comprobacion', 'F3',
+           'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
+         forense.huella_pista('F3', a.rfc, v_corte)
+    from agg a join concentracion k on k.rfc = a.rfc
+   where a.n_pagos >= 3
+     and a.n_tercero::numeric / nullif(a.n_pagos, 0) > 0.30
+     and k.cuota >= 0.50
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- F4 — Ciclo de dinero
+-- Ciclo en el grafo de movimientos de ≤4 saltos, ≤15 días, con el monto
+-- conservado dentro de ±15%. Se recorre por CUENTA y se atribuye al titular
+-- de cada cuenta del ciclo. Rotación canónica para no contar dos veces el
+-- mismo ciclo; las cuentas con demasiadas contrapartes se excluyen y se
+-- declara la limitación.
+-- Trampa: préstamos intercompañía documentados.
+-- ---------------------------------------------------------------------
+create or replace function forense.pista_f4(p_corrida uuid, p_max_grado int default 40)
+returns int language plpgsql set search_path = '' as $$
+declare n int; v_corte timestamptz;
+begin
+  select fecha_corte into v_corte from forense.corridas where id = p_corrida;
+
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with recursive hubs as (
+    select m.cuenta_origen as clabe
+      from forense.movimientos m
+     where m.corrida_id = p_corrida and m.fecha <= v_corte
+       and m.fecha > v_corte - interval '12 months'
+     group by m.cuenta_origen
+    having count(distinct m.cuenta_destino) > p_max_grado
+  ),
+  mov as (
+    select m.id, m.cuenta_origen, m.cuenta_destino, m.fecha, m.monto, m.moneda
+      from forense.movimientos m
+     where m.corrida_id = p_corrida and m.fecha <= v_corte
+       and m.fecha > v_corte - interval '12 months'
+       and m.cuenta_origen is not null and m.cuenta_destino is not null
+       and m.cuenta_origen <> m.cuenta_destino
+       and m.cuenta_origen not in (select clabe from hubs)
+       and m.cuenta_destino not in (select clabe from hubs)
+  ),
+  camino as (
+    select cuenta_origen as origen, cuenta_destino as actual,
+           array[cuenta_origen, cuenta_destino] as ruta, array[id] as ids,
+           monto as monto_ini, monto as monto_act, moneda,
+           fecha as f_ini, fecha as f_act, 1 as saltos
+      from mov
+    union all
+    select c.origen, m.cuenta_destino, c.ruta || m.cuenta_destino, c.ids || m.id,
+           c.monto_ini, m.monto, c.moneda, c.f_ini, m.fecha, c.saltos + 1
+      from camino c
+      join mov m on m.cuenta_origen = c.actual
+     where c.saltos < 4
+       and c.actual <> c.origen
+       and not (m.cuenta_destino = any(c.ruta[2:]))
+       and m.fecha >= c.f_act
+       and m.fecha <= c.f_ini + interval '15 days'
+       -- misma moneda: nunca se comparan monedas distintas (docs/05)
+       and m.moneda is not distinct from c.moneda
+       and abs(m.monto - c.monto_act) / nullif(c.monto_act, 0) <= 0.15
+  ),
+  ciclos as (
+    select c.ruta, c.ids, c.monto_ini, c.monto_act, c.moneda, c.f_ini, c.f_act, c.saltos,
+           forense.ciclo_canonico(c.ruta) as ruta_canonica
+      from camino c
+     where c.actual = c.origen and c.saltos >= 2
+       and abs(c.monto_act - c.monto_ini) / nullif(c.monto_ini, 0) <= 0.15
+  ),
+  dedup as (
+    select distinct on (md5(array_to_string(ruta_canonica, '>')))
+           x.*, md5(array_to_string(x.ruta_canonica, '>')) as clave
+      from ciclos x
+     order by md5(array_to_string(ruta_canonica, '>')), saltos, f_ini
+  ),
+  titulares as (
+    select d.*, cu.rfc_titular
+      from dedup d
+      cross join lateral unnest(d.ruta_canonica[1:array_length(d.ruta_canonica, 1) - 1]) as r(clabe)
+      join forense.cuentas cu on cu.corrida_id = p_corrida and cu.clabe = r.clabe
+     where cu.rfc_titular is not null
+  )
+  select p_corrida, 'F4', 'F', t.rfc_titular,
+         least(1.0, 0.5 + 0.125 * t.saltos)::numeric,
+         jsonb_build_object(
+           'saltos', t.saltos,
+           'ruta_cuentas', to_jsonb(t.ruta_canonica),
+           'monto_ini', t.monto_ini::text,
+           'monto_fin', t.monto_act::text,
+           'moneda', t.moneda,
+           'conservado', round(t.monto_act / nullif(t.monto_ini, 0), 4),
+           'dias', extract(day from t.f_act - t.f_ini),
+           'titulares', (select coalesce(jsonb_agg(distinct cu2.rfc_titular), '[]'::jsonb)
+                           from unnest(t.ruta_canonica) u(clabe)
+                           join forense.cuentas cu2
+                             on cu2.corrida_id = p_corrida and cu2.clabe = u.clabe),
+           'resumen', format(
+             'El dinero volvió a la cuenta de origen tras %s saltos en %s días: salieron %s y '
+             'regresaron %s (%s del monto inicial), siempre en %s.',
+             t.saltos, extract(day from t.f_act - t.f_ini), t.monto_ini, t.monto_act,
+             to_char(round(100 * t.monto_act / nullif(t.monto_ini, 0), 1), 'FM990.0%'),
+             coalesce(t.moneda, 'la misma moneda')),
+           'referencias', (select coalesce(jsonb_agg('MOV:' || i.id), '[]'::jsonb)
+                             from unnest(t.ids) i(id)),
+           'comprobacion', 'F4',
+           'cobertura', jsonb_build_object(
+             'cuentas_hub_excluidas', (select count(*) from hubs),
+             'max_grado', p_max_grado, 'profundidad_max', 4, 'ventana_dias', 15)),
+         forense.huella_pista('F4', t.rfc_titular, v_corte, t.clave)
+    from titulares t
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- R3 — Concentración
+-- Las tres contrapartes principales concentran >85% del volumen facturado.
+-- Se exigen ≥4 clientes: con tres o menos la concentración es trivialmente
+-- del 100% y no dice nada.
+-- Trampa: cliente ancla o proveedor exclusivo legítimo; el detalle publica
+-- la antigüedad de la relación y si las contrapartes comparten atributos.
+-- ---------------------------------------------------------------------
+create or replace function forense.pista_r3(p_corrida uuid) returns int
+language plpgsql set search_path = '' as $$
+declare n int; v_corte timestamptz;
+begin
+  select fecha_corte into v_corte from forense.corridas where id = p_corrida;
+
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with emitidas as (
+    select f.emisor_rfc, f.receptor_rfc, f.total, f.fecha, f.uuid
+      from forense.cfdi f
+     where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+       and f.receptor_rfc is not null
+  ),
+  por_par as (
+    select emisor_rfc as rfc, receptor_rfc as contraparte,
+           sum(total) as monto, count(*) as n,
+           min(fecha) as primera, max(fecha) as ultima
+      from emitidas group by emisor_rfc, receptor_rfc
+  ),
+  rank as (
+    select p.*, row_number() over (partition by p.rfc order by p.monto desc, p.contraparte) as rn,
+           sum(p.monto) over (partition by p.rfc) as monto_total,
+           count(*) over (partition by p.rfc) as n_clientes,
+           count(*) filter (where true) over (partition by p.rfc) as dummy
+      from por_par p
+  ),
+  agg as (
+    select r.rfc, max(r.monto_total) as monto_total, max(r.n_clientes) as n_clientes,
+           sum(r.monto) filter (where r.rn <= 3) as monto_top3,
+           (array_agg(r.contraparte order by r.rn) filter (where r.rn <= 3)) as top3,
+           min(r.primera) filter (where r.rn <= 3) as primera_top3,
+           sum(r.n) as n_facturas
+      from rank r group by r.rfc
+  )
+  select p_corrida, 'R3', 'R', a.rfc,
+         least(1.0, 0.35 + (a.monto_top3 / nullif(a.monto_total, 0) - 0.85) * 3)::numeric,
+         jsonb_build_object(
+           'n_clientes', a.n_clientes,
+           'n_facturas', a.n_facturas,
+           'monto_total', a.monto_total::text,
+           'monto_top3', a.monto_top3::text,
+           'pct_top3', round(a.monto_top3 / nullif(a.monto_total, 0), 4),
+           'top3', to_jsonb(a.top3),
+           -- Discriminadores de la trampa
+           'meses_de_relacion_con_top3', (
+             (extract(year from age(v_corte, a.primera_top3)) * 12
+              + extract(month from age(v_corte, a.primera_top3)))::int),
+           'top3_comparte_atributos', exists (
+             select 1 from forense.atributos_entidad a1
+               join forense.atributos_entidad a2
+                 on a2.corrida_id = a1.corrida_id and a2.atributo = a1.atributo
+                and a2.valor = a1.valor and a2.rfc <> a1.rfc
+              where a1.corrida_id = p_corrida
+                and a1.rfc = any(a.top3) and a2.rfc = any(a.top3)),
+           'resumen', format(
+             'Sus tres contrapartes principales concentran el %s de lo que factura (%s de %s) '
+             'entre %s clientes distintos; la relación con ellas lleva %s meses.',
+             to_char(round(100 * a.monto_top3 / nullif(a.monto_total, 0), 1), 'FM990.0%'),
+             a.monto_top3, a.monto_total, a.n_clientes,
+             (extract(year from age(v_corte, a.primera_top3)) * 12
+              + extract(month from age(v_corte, a.primera_top3)))::int),
+           'referencias', (select coalesce(jsonb_agg('CFDI:' || u.uuid), '[]'::jsonb) from (
+              select e.uuid from emitidas e
+               where e.emisor_rfc = a.rfc and e.receptor_rfc = any(a.top3)
+               order by e.total desc, e.uuid limit 20) u),
+           'comprobacion', 'R3',
+           'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
+         forense.huella_pista('R3', a.rfc, v_corte)
+    from agg a
+   where a.n_clientes >= 4 and a.n_facturas >= 10
+     and a.monto_top3 / nullif(a.monto_total, 0) > 0.85
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- T2 — Sincronía y estacionalidad
+-- (a) ≥3 facturas encadenadas (el receptor de una es el emisor de la
+--     siguiente) timbradas en menos de 6 horas; o
+-- (b) pico de diciembre > 3x la mediana mensual SIN histórico previo de
+--     diciembre con el que comparar.
+-- Trampa: estacionalidad real del giro; el detalle publica la estacionalidad
+-- de los pares y si el RFC tiene diciembres anteriores.
+--
+-- La pierna (a) EXIGE hora de timbrado. Medido sobre gen-v1: sus 8081 CFDI
+-- comparten una sola hora del día, así que «en menos de 6 horas» equivale a
+-- «el mismo día» y la regla marcaba 88 de 100 RFC con 3 de 17 fraudes —
+-- menos que la tasa base. Sin resolución intradía la pierna queda NO
+-- EVALUABLE con su motivo en bitácora (regla 2), en vez de emitir una
+-- señal que no informa. La pierna (b) no depende de la hora y sigue viva.
+--
+-- Además la pista es por RFC, no por ruta: antes una misma cadena emitía
+-- una fila por cada RFC y por cada subruta (3861 filas sobre gen-v1). Se
+-- conserva la cadena más apretada de cada RFC y se cuenta el resto.
+-- ---------------------------------------------------------------------
+create or replace function forense.pista_t2(p_corrida uuid) returns int
+language plpgsql set search_path = '' as $$
+declare n int := 0; m int; v_corte timestamptz; v_horas int;
+begin
+  select fecha_corte into v_corte from forense.corridas where id = p_corrida;
+
+  -- ¿Hay resolución intradía? Sin ella «menos de 6 horas» no distingue
+  -- nada: dos facturas del mismo día distan cero minutos.
+  select count(distinct f.fecha::time) into v_horas
+    from forense.cfdi f
+   where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+     and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months';
+
+  if v_horas < 2 then
+    perform forense.log(null, 'sistema', 'pista_cargada',
+      jsonb_build_object('evento_real', 'T2_sincronia_no_evaluable',
+        'motivo', 'los CFDI de la corrida no tienen hora de timbrado ('
+                  || v_horas || ' hora distinta en la ventana): la sincronía '
+                  || 'de menos de 6 horas no es comprobable',
+        'horas_distintas', v_horas),
+      null, null, null, null, null, null, null, p_corrida);
+  else
+  -- (a) sincronía: cadena de ≥3 facturas en menos de 6 horas
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with recursive f as (
+    select emisor_rfc, receptor_rfc, uuid, total, fecha
+      from forense.cfdi
+     where corrida_id = p_corrida and tipo = 'I' and not cancelado
+       and fecha <= v_corte and fecha > v_corte - interval '12 months'
+       and emisor_rfc is not null and receptor_rfc is not null
+       and emisor_rfc <> receptor_rfc
+  ),
+  camino as (
+    select emisor_rfc as origen, receptor_rfc as actual,
+           array[emisor_rfc, receptor_rfc] as ruta, array[uuid] as uuids,
+           fecha as f_ini, fecha as f_act, 1 as saltos
+      from f
+    union all
+    select c.origen, f.receptor_rfc, c.ruta || f.receptor_rfc, c.uuids || f.uuid,
+           c.f_ini, f.fecha, c.saltos + 1
+      from camino c join f on f.emisor_rfc = c.actual
+     where c.saltos < 4
+       and not (f.receptor_rfc = any(c.ruta))
+       and f.fecha >= c.f_act
+       and f.fecha <= c.f_ini + interval '6 hours'
+  ),
+  cadenas as (
+    select distinct on (md5(array_to_string(ruta, '>')))
+           c.*, md5(array_to_string(c.ruta, '>')) as clave
+      from camino c
+     where c.saltos >= 3
+     order by md5(array_to_string(ruta, '>')), c.f_ini
+  ),
+  -- Una fila por RFC: la cadena más apretada en la que participa.
+  por_rfc as (
+    select distinct on (r.rfc) r.rfc, c.*,
+           (select count(*) from cadenas c2
+             where r.rfc = any(c2.ruta)) as n_cadenas
+      from cadenas c cross join lateral unnest(c.ruta) as r(rfc)
+     order by r.rfc, c.saltos desc, (c.f_act - c.f_ini), c.clave
+  )
+  select p_corrida, 'T2', 'T', r.rfc,
+         least(1.0, 0.55 + 0.1 * c.saltos)::numeric,
+         jsonb_build_object(
+           'motivo', 'sincronia',
+           'saltos', c.saltos,
+           'n_cadenas', c.n_cadenas,
+           'ruta', to_jsonb(c.ruta),
+           'uuids', (select coalesce(jsonb_agg(u::text), '[]'::jsonb) from unnest(c.uuids) u),
+           'minutos', round(extract(epoch from c.f_act - c.f_ini) / 60.0, 1),
+           'resumen', format(
+             '%s facturas encadenadas entre %s RFC se timbraron en %s minutos: el receptor de '
+             'cada una es el emisor de la siguiente.',
+             c.saltos, array_length(c.ruta, 1),
+             round(extract(epoch from c.f_act - c.f_ini) / 60.0, 1)),
+           'referencias', (select coalesce(jsonb_agg('CFDI:' || u.uuid), '[]'::jsonb)
+                             from unnest(c.uuids) u(uuid)),
+           'comprobacion', 'T2',
+           'cobertura', jsonb_build_object('ventana_horas', 6, 'profundidad_max', 4)),
+         forense.huella_pista('T2', r.rfc, v_corte, 'sincronia')
+    from por_rfc c
+    cross join lateral (select c.rfc) as r(rfc)
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+  get diagnostics n = row_count;
+  end if;
+
+  -- (b) pico de diciembre sin histórico previo
+  insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
+  with meses as (
+    select f.emisor_rfc as rfc, date_trunc('month', f.fecha) as mes, sum(f.total) as monto
+      from forense.cfdi f
+     where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '24 months'
+     group by 1, 2
+  ),
+  ventana as (
+    select m.rfc, m.mes, m.monto,
+           (m.mes > v_corte - interval '12 months') as en_ventana,
+           extract(month from m.mes)::int as num_mes,
+           extract(year from m.mes)::int as anio
+      from meses m
+  ),
+  agg as (
+    select v.rfc,
+           percentile_cont(0.5) within group (order by v.monto)
+             filter (where v.en_ventana and v.num_mes <> 12) as mediana,
+           max(v.monto) filter (where v.en_ventana and v.num_mes = 12) as dic_actual,
+           max(v.anio) filter (where v.en_ventana and v.num_mes = 12) as anio_dic,
+           count(*) filter (where not v.en_ventana and v.num_mes = 12) as dic_previos,
+           count(*) filter (where v.en_ventana) as meses_activos
+      from ventana v group by v.rfc
+  ),
+  medidos as (
+    select a.*, c.giro
+      from agg a
+      join forense.contribuyentes c on c.corrida_id = p_corrida and c.rfc = a.rfc
+  )
+  select p_corrida, 'T2', 'T', d.rfc,
+         least(1.0, 0.5 + least(0.4, (d.dic_actual / nullif(d.mediana, 0) - 3) / 10.0))::numeric,
+         jsonb_build_object(
+           'motivo', 'estacionalidad',
+           'giro', d.giro,
+           'diciembre', d.dic_actual::text,
+           'mediana_mensual', round(d.mediana::numeric, 2)::text,
+           'multiplo', round((d.dic_actual / nullif(d.mediana, 0))::numeric, 2),
+           'meses_activos', d.meses_activos,
+           -- Discriminador de la trampa: ¿hay diciembres anteriores?
+           'diciembres_previos', d.dic_previos,
+           'resumen', format(
+             'Diciembre concentra %s, %s veces la mediana mensual de %s, y no hay ningún '
+             'diciembre anterior en el histórico disponible con el que comparar.',
+             d.dic_actual, round((d.dic_actual / nullif(d.mediana, 0))::numeric, 2),
+             round(d.mediana::numeric, 2)),
+           'referencias', (select coalesce(jsonb_agg('CFDI:' || u.uuid), '[]'::jsonb) from (
+              select f.uuid from forense.cfdi f
+               where f.corrida_id = p_corrida and f.emisor_rfc = d.rfc
+                 and f.tipo = 'I' and not f.cancelado
+                 and extract(month from f.fecha) = 12
+                 and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+               order by f.total desc, f.uuid limit 20) u),
+           'comprobacion', 'T2',
+           'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
+         forense.huella_pista('T2', d.rfc, v_corte, 'estacionalidad')
+    from medidos d
+   where d.dic_actual is not null and d.mediana is not null and d.mediana > 0
+     and d.meses_activos >= 4
+     and d.dic_actual / d.mediana > 3
+     and d.dic_previos = 0
+  on conflict (corrida_id, codigo, rfc, huella) do nothing;
+  get diagnostics m = row_count;
+
+  return n + m;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- Selección de candidatos (docs/06): la regla de dos familias aplicada
 -- en la entrada. Un RFC con tres pistas de la misma familia no entra.
@@ -726,7 +1560,7 @@ create or replace function forense.correr_pistas(p_corrida uuid, p_reejecutar bo
 returns jsonb language plpgsql set search_path = '' as $$
 declare
   fam text[]; r jsonb := '{}'::jsonb; v_estado text; t0 timestamptz := clock_timestamp();
-  pendientes text[] := array['D1','D3','D4','F3','F4','R3','T2'];
+  no_evaluables text[] := '{}';
 begin
   update forense.corridas
      set estado = 'procesando'
@@ -742,40 +1576,60 @@ begin
   refresh materialized view forense.v_pares_giro;   -- una vez por carga, antes del fan-out
 
   if 'D' = any(fam) then
-    r := r || jsonb_build_object('D2', forense.pista_d2(p_corrida));
+    -- D1 necesita el catálogo de claves por giro; sin él no se inventa un
+    -- resultado: se declara no evaluable con motivo (docs/05).
+    if forense.hay_catalogo_giros(p_corrida) then
+      r := r || jsonb_build_object('D1', forense.pista_d1(p_corrida));
+    else
+      perform forense.marcar_no_evaluable(p_corrida, array['D1'],
+        'no hay catálogo de ClaveProdServ por giro para la version_reglas de la corrida');
+      no_evaluables := no_evaluables || array['D1'];
+    end if;
+    r := r || jsonb_build_object('D2', forense.pista_d2(p_corrida),
+                                 'D3', forense.pista_d3(p_corrida),
+                                 'D4', forense.pista_d4(p_corrida));
   else
-    perform forense.marcar_no_evaluable(p_corrida, array['D2']);
+    perform forense.marcar_no_evaluable(p_corrida, array['D1','D2','D3','D4']);
+    no_evaluables := no_evaluables || array['D1','D2','D3','D4'];
   end if;
 
   if 'F' = any(fam) then
     r := r || jsonb_build_object('F1', forense.pista_f1(p_corrida),
-                                 'F2', forense.pista_f2(p_corrida));
+                                 'F2', forense.pista_f2(p_corrida),
+                                 'F3', forense.pista_f3(p_corrida),
+                                 'F4', forense.pista_f4(p_corrida));
   else
-    perform forense.marcar_no_evaluable(p_corrida, array['F1','F2']);
+    perform forense.marcar_no_evaluable(p_corrida, array['F1','F2','F3','F4']);
+    no_evaluables := no_evaluables || array['F1','F2','F3','F4'];
   end if;
 
   if 'R' = any(fam) then
     r := r || jsonb_build_object('R1', forense.pista_r1(p_corrida),
-                                 'R2', forense.pista_r2(p_corrida));
+                                 'R2', forense.pista_r2(p_corrida),
+                                 'R3', forense.pista_r3(p_corrida));
   else
-    perform forense.marcar_no_evaluable(p_corrida, array['R1','R2']);
+    perform forense.marcar_no_evaluable(p_corrida, array['R1','R2','R3']);
+    no_evaluables := no_evaluables || array['R1','R2','R3'];
   end if;
 
   if 'T' = any(fam) then
-    r := r || jsonb_build_object('T1', forense.pista_t1(p_corrida));
+    r := r || jsonb_build_object('T1', forense.pista_t1(p_corrida),
+                                 'T2', forense.pista_t2(p_corrida));
   else
-    perform forense.marcar_no_evaluable(p_corrida, array['T1']);
+    perform forense.marcar_no_evaluable(p_corrida, array['T1','T2']);
+    no_evaluables := no_evaluables || array['T1','T2'];
   end if;
 
   if 'E' = any(fam) then
     r := r || jsonb_build_object('E1', forense.pista_e1(p_corrida));
   else
     perform forense.marcar_no_evaluable(p_corrida, array['E1']);
+    no_evaluables := no_evaluables || array['E1'];
   end if;
 
   r := r || jsonb_build_object(
     'familias_evaluables', to_jsonb(fam),
-    'pendientes_segunda_entrega', to_jsonb(pendientes),
+    'no_evaluables', to_jsonb(no_evaluables),
     'candidatos_dos_familias', (select count(*) from forense.score_entidad(p_corrida)),
     'duracion_ms', (extract(epoch from clock_timestamp() - t0) * 1000)::int);
 
