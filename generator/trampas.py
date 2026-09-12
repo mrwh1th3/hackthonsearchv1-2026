@@ -9,7 +9,7 @@ debe terminar descartándola:
 
 | trampa                    | pistas       | familias | separación medible                     |
 |---------------------------|--------------|----------|-----------------------------------------|
-| grupo_corporativo         | R1 + R2      | R        | nómina, compras y pagos reales          |
+| grupo_corporativo         | R1+R2, T2(a) | R, T     | nómina, compras y pagos reales          |
 | comercializadora_margen   | (ninguna)    | —        | el dinero sale a personas morales       |
 | startup_pico              | T1           | T        | la nómina crece mes a mes               |
 | consultoria_redondos      | (D3, futura) | —        | clientes diversificados, todo conciliado|
@@ -18,10 +18,18 @@ debe terminar descartándola:
 | factoraje_real            | F1           | F        | contrato y pago de un tercero financiero|
 | estacionalidad_diciembre  | (T2, futura) | —        | el pico existe también el año anterior  |
 
-Ninguna llega a dos familias distintas, así que el selector automático de
-`score_entidad` no las convierte en caso. La del despacho, que es la que más
-se parece a un cluster, se investiga a propósito por `/investigar` manual para
-enseñar la defensa; entrar así es ingreso manual, no selección automática.
+Con `--horario plano` (gen-v1) ninguna llega a dos familias distintas, así que
+el selector automático de `score_entidad` no las convierte en caso. La del
+despacho, que es la que más se parece a un cluster, se investiga a propósito
+por `/investigar` manual para enseñar la defensa; entrar así es ingreso
+manual, no selección automática.
+
+Con `--horario intradia` (gen-v2) el grupo corporativo gana T2(a) —su cierre
+intercompañía se timbra en una sola corrida del ERP— y con ella una segunda
+familia. Es un cambio buscado, no un descuido: T2 necesita un falso positivo
+que la capa de descarte tenga que refutar, y la refutación está en los datos
+(nómina de plantilla, compras al giro, depósito por factura). Queda declarado
+en `ground_truth.csv` y en las notas del manifiesto.
 
 Las trampas operan exclusivamente con la zona 'trampa' y 'libre' del universo:
 nunca con las contrapartes de un EFOS. Así ninguna queda a ≤2 saltos de un RFC
@@ -102,14 +110,31 @@ def sembrar(m, fondo, cfg) -> Dict:
             base = 3_100_000.0
             for k in range(4):
                 a, b = grupo[k], grupo[(k + 1) % 4]
-                row = m.factura(a, b, m.dia_de(i, 11 + k * 4), base * (1 - 0.04 * k),
+                if m.intradia:
+                    # TRAMPA DE T2(a): el ERP del grupo timbra TODO el cierre
+                    # intercompañía en una sola corrida nocturna, así que
+                    # A→B→C→D son 3 facturas encadenadas en 90 minutos. T2
+                    # dispara y tiene razón en disparar: lo que la separa del
+                    # carrusel no es la hora, es que hay nómina de plantilla,
+                    # compras al giro y depósito por factura. Sin este falso
+                    # positivo T2 no tendría nada que descartar.
+                    f = m.dia_de(i, 11)
+                    hora, minuto = m.rafaga(k, 4, hora_inicio=20, minuto_inicio=15,
+                                            minutos_totales=90)
+                else:
+                    f, hora, minuto = m.dia_de(i, 11 + k * 4), None, None
+                row = m.factura(a, b, f, base * (1 - 0.04 * k),
                                 GIROS["manufactura"].claves[2], "PUE",
-                                descripcion="Servicios intercompañía de maquila")
+                                descripcion="Servicios intercompañía de maquila",
+                                hora=hora, minuto=minuto)
                 m.pagar(row, 1)
     for rfc in grupo:
         m.gt(rfc, False, None, True,
              "grupo corporativo con tesorería centralizada: comparte domicilio y representante y "
-             "opera en ciclo intercompañía, pero tiene nómina, compras y pagos verificables")
+             "opera en ciclo intercompañía, pero tiene nómina, compras y pagos verificables"
+             + (". El cierre intercompañía se timbra en una sola corrida del ERP (4 facturas "
+                "encadenadas en 90 minutos): es la trampa de T2(a), ráfaga legítima"
+                if m.intradia else ""))
     rfcs.extend(grupo)
     trampas.append("grupo_corporativo")
 
@@ -318,6 +343,14 @@ def sembrar(m, fondo, cfg) -> Dict:
                    "sigue siendo de %d meses cerrada en fecha_corte." % m.meses)
     m.notas.append("El despacho contable dispara sólo R1: no entra por el selector de dos "
                    "familias y se investiga con /investigar explícito (ingreso manual).")
+    if m.intradia:
+        m.notas.append("TRAMPA DE T2(a) declarada (--horario intradia): el grupo corporativo "
+                       "timbra su cierre intercompañía en una sola corrida del ERP, 4 facturas "
+                       "encadenadas en 90 minutos. Es una ráfaga LEGÍTIMA y así consta en "
+                       "ground_truth.csv (es_trampa_legitima=true). Con ella el grupo llega a "
+                       "dos familias (R y T), así que el selector automático SÍ lo puede "
+                       "seleccionar: es el falso positivo que la capa de descarte tiene que "
+                       "refutar con nómina, compras al giro y depósito por factura.")
 
     return {"trampas": sorted(set(trampas)), "rfcs": rfcs}
 

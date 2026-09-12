@@ -157,13 +157,27 @@ def sembrar(m, fondo, cfg) -> Dict:
         montos = [monto, monto * 0.95, monto * 0.92]
         for k in range(3):
             a, b = carrusel[k], carrusel[(k + 1) % 3]
-            row = m.factura(a, b, m.dia_de(i, 2 + k * 4), montos[k], GIROS["tecnologia"].claves[0],
-                            "PUE", descripcion="Licenciamiento de plataforma")
+            if m.intradia:
+                # docs/04 §Tipologías: el carrusel timbra «en horas». Las tres
+                # facturas del ciclo salen el mismo día en 70 minutos. Ojo: el
+                # ciclo tiene 3 nodos, así que el camino sin repetir RFC llega
+                # a 2 saltos y NO alcanza los 3 que exige T2(a). Es deliberado:
+                # queda como ráfaga medible que esa pierna no captura.
+                f = m.dia_de(i, 2)
+                hora, minuto = m.rafaga(k, 3, hora_inicio=11, minuto_inicio=10,
+                                        minutos_totales=70)
+            else:
+                f, hora, minuto = m.dia_de(i, 2 + k * 4), None, None
+            row = m.factura(a, b, f, montos[k], GIROS["tecnologia"].claves[0],
+                            "PUE", descripcion="Licenciamiento de plataforma",
+                            hora=hora, minuto=minuto)
             m.pagar(row, 1)
         monto *= 0.97
     for rfc in carrusel:
         m.gt(rfc, True, "carrusel", False,
-             "ciclo A→B→C→A con montos ±8% y timbrado en días; comparten domicilio y representante")
+             ("ciclo A→B→C→A con montos ±8% timbrado en 70 minutos el mismo día; comparten "
+              "domicilio y representante" if m.intradia else
+              "ciclo A→B→C→A con montos ±8% y timbrado en días; comparten domicilio y representante"))
     sembrados.extend(carrusel)
     tipologias.append("carrusel")
 
@@ -181,14 +195,27 @@ def sembrar(m, fondo, cfg) -> Dict:
     monto = 2_400_000.0
     dias = [3, 7, 12, 17, 22]
     for k in range(4):
-        row = m.factura(capas[k], capas[k + 1], m.dia_de(7, dias[k]), monto,
+        if m.intradia:
+            # docs/02 T2: «≥3 facturas de una misma cadena timbradas en <6 h».
+            # Las cuatro salen el MISMO día (día 3 del mes 7, el mismo mes que
+            # en gen-v1: el perfil mensual no se mueve) en 105 minutos y en
+            # orden creciente, que es lo que exige el encadenado de T2(a).
+            f = m.dia_de(7, dias[0])
+            hora, minuto = m.rafaga(k, 4, hora_inicio=9, minuto_inicio=5,
+                                    minutos_totales=105)
+        else:
+            f, hora, minuto = m.dia_de(7, dias[k]), None, None
+        row = m.factura(capas[k], capas[k + 1], f, monto,
                         GIROS["construccion"].claves[k % 3], "PUE",
-                        descripcion="Subcontrato de obra civil, estimación %d" % (k + 1))
+                        descripcion="Subcontrato de obra civil, estimación %d" % (k + 1),
+                        hora=hora, minuto=minuto)
         m.pagar(row, 1)
         monto *= 0.94
     for rfc in capas:
         m.gt(rfc, True, "capas", False,
-             "cadena de 4 saltos en 20 días con 6% de decremento por salto y fechas sincronizadas")
+             ("cadena de 4 saltos timbrada en 105 minutos del mismo día con 6% de decremento "
+              "por salto" if m.intradia else
+              "cadena de 4 saltos en 20 días con 6% de decremento por salto y fechas sincronizadas"))
     sembrados.extend(capas)
     tipologias.append("capas")
 
