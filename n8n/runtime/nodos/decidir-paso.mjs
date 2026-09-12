@@ -14,6 +14,18 @@ export const ACCIONES = Object.freeze(['solicitar_modelo', 'ejecutar_herramienta
 export function decidirPaso(x) {
   // <<<CODE_NODE_INICIO
   const TERMINALES = ['terminado', 'error', 'timeout'];
+  // Destino de cada evento de cierre. Es la mitad de TRANSICIONES
+  // (checkpoint.mjs) que este nodo necesita; un Code node de n8n no puede
+  // importar el módulo, así que se inlinea y un test compara ambas tablas.
+  // Sin esto el nodo devolvía el estado de ORIGEN y el IF «¿Estado terminal?»
+  // del worker —que se evalúa DESPUÉS del checkpoint— redespachaba en bucle.
+  const DESTINO_CIERRE = {
+    valida: 'terminado',
+    deadline: 'timeout',
+    sin_reparacion: 'error',
+    error_fatal: 'error',
+  };
+  const ESTADO_TAREA = { terminado: 'completada', error: 'error', timeout: 'timeout' };
   const cp = x.checkpoint ?? {};
   const estado = cp.estado_interno ?? 'preparar_contexto';
   const maxReparaciones = Number(x.max_reparaciones ?? 1);
@@ -22,13 +34,40 @@ export function decidirPaso(x) {
   const ahora = Number(x.ahora_ms ?? Date.parse(x.ahora ?? new Date().toISOString()));
   const limite = cp.deadline_at ? Date.parse(cp.deadline_at) : Number.POSITIVE_INFINITY;
 
-  const cerrar = (evento, razon) => ({
-    accion: 'cerrar', evento, razon, motivo_request: null,
-    estado_interno: estado, reparaciones_json: reparaciones,
-  });
-  const pedirModelo = (motivo, razon) => ({
+  // Identidad del claim: viaja por la cadena de nodos para que el checkpoint,
+  // el ledger y la barrera no la vuelvan a inventar (17 §4).
+  const identidad = {
+    execution_id: x.execution_id ?? null,
+    owner: x.owner ?? null,
+    fencing_token: x.fencing_token ?? null,
+    revision: x.revision ?? null,
+    caso_id: x.caso_id ?? null,
+    corrida_id: x.corrida_id ?? null,
+    tarea_id: x.tarea_id ?? null,
+    rol: x.rol ?? null,
+    paso: x.paso ?? null,
+    paso_pipeline: x.paso_pipeline ?? null,
+    request_id: x.request_id ?? null,
+  };
+
+  const cerrar = (evento, razon) => {
+    const destino = evento === null ? estado : (DESTINO_CIERRE[evento] ?? 'error');
+    return Object.assign({}, identidad, {
+      accion: 'cerrar', evento, razon, motivo_request: null,
+      estado_interno: destino,
+      estado_tarea: ESTADO_TAREA[destino] ?? 'error',
+      reparaciones_json: reparaciones,
+      pending_tool_use_ids: [],
+      // La rama `cerrar` va directo a «Guardar checkpoint»: lleva su propio
+      // patch, como las otras dos ramas.
+      checkpoint: { estado_interno: destino, ultimo_evento: evento, razon, pending_tool_use_ids: [] },
+    });
+  };
+  const pedirModelo = (motivo, razon) => Object.assign({}, identidad, {
     accion: 'solicitar_modelo', evento: null, razon, motivo_request: motivo,
-    estado_interno: estado, reparaciones_json: reparaciones,
+    estado_interno: estado, estado_tarea: null, reparaciones_json: reparaciones,
+    pending_tool_use_ids: [],
+    checkpoint: null,
   });
 
   let salida;
@@ -48,12 +87,15 @@ export function decidirPaso(x) {
       : cerrar('sin_reparacion', 'sin presupuesto de reparación: error visible');
   } else if (estado === 'ejecutar_herramienta') {
     salida = pendientes.length > 0
-      ? {
+      ? Object.assign({}, identidad, {
         accion: 'ejecutar_herramienta', evento: null, motivo_request: null,
         razon: `${pendientes.length} tool_use pendiente(s)`,
-        estado_interno: estado, reparaciones_json: reparaciones,
+        estado_interno: estado, estado_tarea: null, reparaciones_json: reparaciones,
+        // TODOS los tool_use de la respuesta, no solo el primero (17 §5.5):
+        // el grafo expande esta cola a un ítem por herramienta.
         pending_tool_use_ids: pendientes,
-      }
+        checkpoint: null,
+      })
       : cerrar('error_fatal', 'estado ejecutar_herramienta sin tool_use pendientes');
   } else if (estado === 'validar_salida') {
     if (cp.salida_valida) salida = cerrar('valida', 'salida válida: el paso cierra');

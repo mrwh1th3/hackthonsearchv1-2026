@@ -158,8 +158,22 @@ function alcanza(wf, desde, hasta) {
 
 test('worker: la reserva del request precede al HTTP del proveedor (17 §5.3)', () => {
   const wf = cargar('FORENSE_ejecutar_agente.json');
+  // El HTTP tiene UNA sola entrada, y viene de la reserva: no hay forma de
+  // enviar un request sin haberlo reservado antes, ni siquiera en el reintento.
   assert.equal(alcanza(wf, 'Reservar request', 'POST /v1/messages'), true, 'reservar → HTTP');
-  assert.equal(alcanza(wf, 'POST /v1/messages', 'Reservar request'), false, 'el HTTP no puede reabrir la reserva');
+  const entradasHttp = Object.entries(wf.connections)
+    .filter(([, s]) => s.main.flat().some((d) => d.node === 'POST /v1/messages'))
+    .map(([origen]) => origen).sort();
+  assert.deepEqual(entradasHttp, ['Construir cuerpo Messages']);
+  // El único camino de vuelta desde el HTTP a la reserva es el backoff, y
+  // reservar otra vez con el MISMO request_id es lo que pide 17 §4 («cada HTTP
+  // nuevo es un intento registrado, aunque sea retry»): incrementa
+  // intento_transporte sin consumir cuota. Lo prohibido sería enviar sin
+  // reservar, no re-reservar antes de reenviar.
+  const entradasReserva = Object.entries(wf.connections)
+    .filter(([, s]) => s.main.flat().some((d) => d.node === 'Reservar request'))
+    .map(([origen]) => origen).sort();
+  assert.deepEqual(entradasReserva, ['Backoff', 'Ruta del paso']);
 });
 
 test('worker: las cuatro rutas de transporte son excluyentes y llevan a un solo destino', () => {

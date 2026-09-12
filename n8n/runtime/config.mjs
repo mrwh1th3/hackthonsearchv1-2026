@@ -1,10 +1,10 @@
 // n8n/runtime/config.mjs — configuración del runtime (17 §5, §6, §7; 03 presupuestos).
 // Dueño: forense-runtime. Sin red, sin secretos, sin IDs de n8n.
 //
-// NOTA DE VERIFICACIÓN: `ANTHROPIC_VERSION` y los IDs de modelo NO están
-// comprobados contra la cuenta (21 §5 deja la credencial sin verificar).
-// Son configuración por defecto que el smoke autorizado debe confirmar o
-// corregir; ningún test de este repo prueba que existan.
+// NOTA DE VERIFICACIÓN: `anthropic_version` sigue SIN comprobar. Los IDs de
+// modelo sí lo están, pero por el smoke del coordinador en n8n (ver
+// IDS_MODELO_EVIDENCIA), no por este worktree: aquí no hay red y ningún test
+// de este repo prueba que la cuenta los acepte.
 
 export const PROVEEDOR = 'messages_api';
 
@@ -35,13 +35,23 @@ export const MODELOS_POR_ROL = Object.freeze({
   editor: 'sonnet',
 });
 
-// Alias → ID de API. Sin verificar contra la cuenta (17 §10): el smoke debe
-// resolver los IDs realmente soportados antes de ejecutar.
+// Alias → ID de API. VERIFICADOS por el coordinador, no por este worktree:
+// smoke `FORENSE_smoke_anthropic` del 2026-09-12 con la credencial
+// `Anthropic account`, ejecuciones n8n 283972 (claude-sonnet-5, stop_reason
+// tool_use, usage 645/45, 1089 ms) y 283975 (claude-opus-5). Aquí no hay red:
+// ningún test de este repo comprueba que existan. Saldo y rate limits siguen
+// sin medir (21 §5).
 export const IDS_MODELO = Object.freeze({
-  sonnet: 'claude-sonnet-4-5',
-  opus: 'claude-opus-4-1',
+  sonnet: 'claude-sonnet-5',
+  opus: 'claude-opus-5',
 });
-export const IDS_MODELO_VERIFICADOS = false;
+export const IDS_MODELO_VERIFICADOS = true;
+export const IDS_MODELO_EVIDENCIA = Object.freeze({
+  fecha: '2026-09-12',
+  fuente: 'smoke del coordinador en n8n (FORENSE_smoke_anthropic)',
+  ejecuciones: Object.freeze(['283972', '283975']),
+  verificado_por: 'coordinador',
+});
 
 // 17 §7: techos de TOKENS de entrada por rol (medidos con contador del modelo).
 export const TECHO_TOKENS_ENTRADA = Object.freeze({

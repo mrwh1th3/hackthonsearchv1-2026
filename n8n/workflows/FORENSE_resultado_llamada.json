@@ -1,0 +1,157 @@
+{
+  "name": "FORENSE_resultado_llamada",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "forense/elevenlabs-resultado",
+        "options": {
+          "rawBody": true
+        },
+        "responseMode": "responseNode"
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook resultado"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 16 §3: firma sobre el cuerpo CRUDO + ventana temporal. Firma inválida →\n// 401 sin escribir nada.\n//\n// STUB MARCADO: el adaptador real es de forense-voice\n// (integrations/elevenlabs), que todavía no existe. Este nodo declara la\n// INTERFAZ que consumirá: {crudo, firma, tolerancia_s} → {valido, evento}.\n// Mientras el adaptador no exista, VERIFICACION_DISPONIBLE=false y el nodo\n// RECHAZA: nunca acepta un callback sin verificar.\nconst VERIFICACION_DISPONIBLE = false;\nconst TOLERANCIA_S = 300;\nconst x = $input.first().json;\nconst firma = (x.headers ?? {})['elevenlabs-signature'] ?? null;\nif (!firma) throw new Error('callback sin cabecera de firma: 401');\nif (!VERIFICACION_DISPONIBLE) {\n  throw new Error('verificador HMAC no instalado (integrations/elevenlabs, forense-voice): el callback se rechaza en vez de aceptarse sin verificar');\n}\nconst salida = { valido: false, tolerancia_s: TOLERANCIA_S, evento: null };\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Verificar HMAC"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Deduplica por evento/identidad del proveedor y correlaciona por conversation_id/callSid. Un callback que llega ANTES de guardar el POST se conserva para conciliación posterior (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.registrar_callback_llamada($1::text, $2::text, $3::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.evento.conversation_id }}, ={{ $json.evento.call_sid }}, ={{ JSON.stringify($json.evento) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Deduplicar callback",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Mapea SOLO hechos recibidos: sin callback de timbrado no se muestra «Sonando». `aviso_entregado` solo si el análisis lo respalda. El fallo de voz no revierte la investigación ni borra el reporte (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.actualizar_llamada($1::uuid, $2::text, $3::boolean)",
+        "options": {
+          "queryReplacement": "={{ $json.llamada_id }}, ={{ $json.estado_llamada }}, ={{ $json.aviso_entregado }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Actualizar llamada",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ recibido: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        880,
+        0
+      ],
+      "name": "Responder acuse"
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_resultado_llamada (16 §3).\n\nrawBody + HMAC sobre el cuerpo crudo. El acuse no lleva datos\ndel caso. Sin verificador instalado, el nodo RECHAZA.",
+        "height": 200,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        280
+      ],
+      "name": "Nota callback"
+    }
+  ],
+  "connections": {
+    "Webhook resultado": {
+      "main": [
+        [
+          {
+            "node": "Verificar HMAC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar HMAC": {
+      "main": [
+        [
+          {
+            "node": "Deduplicar callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicar callback": {
+      "main": [
+        [
+          {
+            "node": "Actualizar llamada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Actualizar llamada": {
+      "main": [
+        [
+          {
+            "node": "Responder acuse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
