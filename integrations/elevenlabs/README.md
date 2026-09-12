@@ -16,7 +16,7 @@ Dueño: **forense-voice**. Adaptador de aviso telefónico ElevenLabs: payload, v
 | `RUTA_CALLBACK`, `TOLERANCIA_FIRMA_S` | `hmac.mjs` | Idéntico valor (300 s) |
 | `VARIABLES_PERMITIDAS` | `payload.mjs` | Idéntico valor (las mismas 4 claves) |
 | `estadoDesdeCallback(evento)` | `callback.mjs` | Misma firma y forma `{estado, aviso_entregado}`. **Diferencia deliberada:** `aviso_entregado` ausente es `null` (desconocido), no `false` — el stub usaba `false` implícito; `product.llamada.aviso_entregado` en contracts es `boolean\|null`, y 16 línea 88 exige tratar la ausencia de evidencia como desconocida, nunca como negada. |
-| `verificarFirma(...)` | `hmac.mjs` | El stub usa forma objeto `{crudo, firma, ahora_ms, tolerancia_s}` y siempre devuelve `valido:false` (placeholder). Aquí la firma canónica es **posicional** `(rawBody, headers, secreto, ahora, opciones?)` con una implementación real; la forma objeto del stub también funciona (ver tests) para que un import literal no rompa, pero el runtime debe migrar a la forma posicional al conectar de verdad. |
+| `verificarFirma(...)` | `hmac.mjs` | El stub usa forma objeto `{crudo, firma, ahora_ms, tolerancia_s}` y siempre devuelve `valido:false` (placeholder). Aquí la firma canónica es **posicional** `(rawBody, headers, secreto, ahora, opciones?)` con una implementación real; la forma objeto también funciona (ver tests) para que un import literal no rompa, pero recibe el secreto **por nombre** (`{crudo, firma, secreto, ahora_ms, tolerancia_s}`) — no como argumento posicional aparte — y el runtime debe migrar a la forma posicional al conectar de verdad. |
 | `construirLlamada(...)` | `payload.mjs` → `construirPayload(evento, perfil, config)` | No es la misma firma a propósito: el stub recibe primitivos ya resueltos (`to_number`, `variables`); `construirPayload` resuelve esos primitivos DESDE `perfil`/`evento`/`config`, que es lo que el runtime realmente tiene disponible tras leer DB. Es la función que el workflow debe llamar. |
 
 Import recomendado para el runtime: `import { ... } from '../../integrations/elevenlabs/index.mjs'` (re-exporta todo lo de la tabla).
@@ -38,13 +38,15 @@ Devuelve, en orden de validación determinista (teléfono → preferencia → co
 { omitida: true, motivo: 'sin_telefono'|'llamadas_desactivadas'|'sin_consentimiento'|'telefono_invalido'|'configuracion_incompleta', cuerpo: null, llamada: {/* product.llamada, estado:'omitida' */} }
 ```
 
-`llamada` valida contra `contracts` `product.llamada` en ambos casos (`validateContract('product.llamada', resultado.llamada).ok === true`) y es la fila que el backend inserta en `forense.llamadas_notificacion`. Lanza `ErrorVoz` (no devuelve `{omitida}`) si una variable dinámica contiene forma de RFC o de monto: eso es un bug de datos aguas arriba, no un motivo de omisión normal.
+`llamada` valida contra `contracts` `product.llamada` en ambos casos (`validateContract('product.llamada', resultado.llamada).ok === true`) y es la fila que el backend inserta en `forense.llamadas_notificacion`. Lanza `ErrorVoz` (no devuelve `{omitida}`) si una variable dinámica contiene forma de RFC o de monto: eso es un bug de datos aguas arriba, no un motivo de omisión normal. `PATRON_RFC` **no** corre sobre un valor con forma de UUID ni sobre el campo `completion_event_id`: un identificador opaco de sistema (p. ej. `event_id`) puede, por pura coincidencia hexadecimal, tener la forma exacta de un RFC (3-4 letras + 6 dígitos + 3 alfanuméricos) sin serlo — ver `PATRON_UUID` y `quitarUUIDs` en `payload.mjs`.
 
 ### `verificarFirma(rawBody, headers, secreto, ahora, opciones?)` — `hmac.mjs`
 
 HMAC-SHA256 sobre el **cuerpo crudo** (nunca el objeto reserializado). Devuelve `{valido, motivo}`; motivos: `cuerpo_no_crudo`, `secreto_no_configurado`, `sin_firma`, `firma_malformada`, `fuera_de_ventana`, `firma_invalida`.
 
-**Supuesto explícito (sin cuenta real verificada):** esquema de firma tipo Svix/Stripe, header `elevenlabs-signature: t=<epoch_s>,v0=<hex hmac-sha256 de "<t>.<crudo>">`. Es el único convenio con evidencia en el repo (el propio stub ya espera `t=`). Parametrizado vía `opciones = {header, prefijoTimestamp, prefijoFirma, separador, construirMensaje, ventanaS}` para que confirmar el formato real de ElevenLabs sea un cambio de configuración, no una reescritura. **Acción pendiente del integrador:** confirmar el header/formato real contra la documentación de la cuenta cuando exista número, y ajustar `OPCIONES_POR_DEFECTO`.
+**Formato confirmado** contra la documentación pública de ElevenLabs ([Webhooks post-llamada y autenticación](https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks), enlazada también en `16-notificaciones-elevenlabs.md` línea 61): header `ElevenLabs-Signature` (lectura case-insensitive) con formato `t=<epoch_s>,v0=<hex hmac-sha256 de "<t>.<crudo>">`. Es el default de `OPCIONES_POR_DEFECTO` y coincide con lo que ya asumía `n8n/runtime/voz-adaptador.mjs` (único otro punto de evidencia del repo, que parsea `t=(\d+)`). El esquema completo sigue sin estar cableado — se recibe por `opciones = {header, prefijoTimestamp, prefijoFirma, separador, construirMensaje, ventanaS}` — como **alternativa configurable** para una cuenta/entorno que use un header o formato propio; ambos casos (default y alternativo) están probados en `tests/voice/hmac.test.mjs`.
+
+También acepta forma objeto: `verificarFirma({crudo, firma, secreto, ahora_ms, tolerancia_s})`, con el secreto **por nombre dentro del objeto** (no como segundo argumento aparte) — ver tabla de compatibilidad arriba.
 
 ### Dedupe — `dedupe.mjs`
 
@@ -52,7 +54,7 @@ Puro, en memoria (`crearAlmacenDedupe()`). **No sustituye** la barrera durable r
 
 - `reservarSolicitud(almacen, {event_id})` → `{reservado, motivo}`. Cinco entregas del mismo webhook de outbox reservan una sola vez.
 - `liberarParaReintentoManual(almacen, {event_id})` → libera la reserva; llamar SOLO desde el flujo de reintento manual auditado (16 línea 29), nunca automáticamente.
-- `registrarCallback(almacen, {event_id, conversation_id, call_sid})` → `{nuevo, motivo, clave}`. Correlaciona por `conversation_id` o `call_sid`; si el proveedor no manda ninguno, cae a `event_id`.
+- `registrarCallback(almacen, {event_id, conversation_id, call_sid, tipo_evento})` → `{nuevo, motivo, clave}`. Correlaciona por `conversation_id` o `call_sid`; si el proveedor no manda ninguno, cae a `event_id`. La clave real es `(identidad, tipo_evento)`, no solo la identidad: una misma llamada manda varios callbacks legítimos y distintos con la MISMA identidad de proveedor (`initiated` → `ringing` → `completed`, o `post_call_transcription` + `post_call_audio` de la misma conversación) — deduplicar solo por identidad descartaría esa secuencia entera tras el primer evento. `tipo_evento` es opcional; si se omite, el comportamiento es el previo (una entrada por identidad).
 
 ### Máquina de estados — `estados.mjs`
 
@@ -64,9 +66,21 @@ Puro, en memoria (`crearAlmacenDedupe()`). **No sustituye** la barrera durable r
 
 ### Callback — `callback.mjs`
 
-- `resultadoDesdeCallback(cuerpoYaParseado)` → `{estado, aviso_entregado, solicita_no_llamar, numero_equivocado, conversation_id, call_sid}`. Mapea `type`/`status` del proveedor a `ESTADOS_LLAMADA`; un tipo no reconocido es `resultado_desconocido`, nunca se inventa un estado intermedio sin evidencia (16 línea 27). Los tres campos de evaluación son `null` (desconocido) salvo que `analysis.<campo>` sea explícitamente `true`/`false`; `aviso_entregado:true` además exige `estado === 'finalizada'`.
+Este módulo acepta **dos formatos de cuerpo** de callback, detectados automáticamente por `adaptarCuerpoProveedor(cuerpoCrudo)`:
+
+| | Formato **plano** (heredado) | Formato **post_call** (documentado públicamente por ElevenLabs) |
+|---|---|---|
+| Forma | `{type\|status, conversation_id, call_sid, analysis}` | `{type:'post_call_transcription'\|'post_call_audio', data:{conversation_id, agent_id, status, analysis, metadata, ...}}` |
+| Quién lo asume | `n8n/runtime/voz-adaptador.mjs`; los tests originales de este paquete | [Webhooks post-llamada y autenticación](https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks) (enlazado en 16 línea 61) |
+| Campos leídos desde | nivel superior del cuerpo | `data.*` (nunca del nivel superior, salvo `type` para detectar la envoltura) |
+| Tabla de estado | `MAPA_TIPO_A_ESTADO` (`initiated→aceptada`, `ringing/in_progress→en_curso`, `completed→finalizada`, `failed→fallida`, `no_answer/busy→sin_respuesta`) | `MAPA_STATUS_POST_CALL` sobre `data.status` (`done/completed/success→finalizada`, `failed/error→fallida`, `no_answer/busy→sin_respuesta`) |
+| Valor no reconocido | `resultado_desconocido` | `resultado_desconocido` — **igual que el plano**, nunca se traduce a `finalizada` por default aunque el evento sea de "post-llamada": eso sería inventar evidencia de éxito para un vocabulario de proveedor que cambió (regla 4 / 16 línea 27) |
+
+`adaptarCuerpoProveedor` devuelve `{formato, tipo_evento, estado, status_crudo, analysis, conversation_id, call_sid, event_id}` y está exportada por si el runtime/BFF quiere loggear de qué formato vino un callback sin reimplementar la detección.
+
+- `resultadoDesdeCallback(cuerpoYaParseado)` → `{estado, aviso_entregado, solicita_no_llamar, numero_equivocado, conversation_id, call_sid}`, en cualquiera de los dos formatos de arriba. Los tres campos de evaluación son `null` (desconocido) salvo que `analysis.<campo>` sea explícitamente `true`/`false`; `aviso_entregado:true` además exige `estado === 'finalizada'`.
 - `estadoDesdeCallback(evento)` → alias reducido `{estado, aviso_entregado}`, ver tabla de compatibilidad arriba.
-- `procesarCallback({rawBody, headers, secreto, ahora, opcionesFirma, estadoActual, almacenDedupe})` → pipeline completo (firma → JSON → dedupe → transición). Nunca lanza; siempre `{aceptado, motivo?}` para que el workflow decida el código HTTP.
+- `procesarCallback({rawBody, headers, secreto, ahora, opcionesFirma, estadoActual, almacenDedupe})` → pipeline completo (firma → JSON → `adaptarCuerpoProveedor` una sola vez → dedupe → transición). Dedupe y decisión de estado comparten la MISMA normalización a propósito, para que nunca diverjan entre sí. Nunca lanza; siempre `{aceptado, motivo?}` para que el workflow decida el código HTTP.
 
 ## Columnas que este paquete espera de `forense.llamadas_notificacion` (007)
 
@@ -106,10 +120,11 @@ npm ci --prefix contracts --ignore-scripts   # una vez, para poder validar contr
 node --test "tests/voice/*.test.mjs"
 ```
 
-48 tests, cero red, cero credenciales. Los tests importan `validateContract` de `contracts/index.mjs` en modo lectura (no se toca `contracts/`).
+67 tests, cero red, cero credenciales. Los tests importan `validateContract` de `contracts/index.mjs` en modo lectura (no se toca `contracts/`).
 
 ## Pendiente para el integrador (no bloquea esta entrega)
 
-1. Confirmar el formato real de la firma del webhook de ElevenLabs contra la cuenta cuando exista número, y ajustar `OPCIONES_POR_DEFECTO` en `hmac.mjs` (hoy es un supuesto documentado, no una verificación).
-2. **El runtime debe migrar a la forma posicional de `verificarFirma`, no es una opción.** La forma objeto (`{crudo, firma, ahora_ms, tolerancia_s}`) solo existe para que un import literal del stub no rompa en tiempo de conexión; internamente asume el mismo esquema `t=`/`v0=` sin verificar, así que si el header real de ElevenLabs difiere, esa ruta falla de forma indistinguible de un `firma_invalida` legítimo. No usarla como camino permanente.
+1. ~~Confirmar el formato real de la firma del webhook~~ — hecho (hallazgo QA #5): `t=<ts>,v0=<hex>` sobre `"<ts>.<crudo>"` está confirmado contra la documentación pública de ElevenLabs, ver sección `verificarFirma` arriba. Si la cuenta real difiere en algún detalle (nombre exacto del header, por ejemplo), es un ajuste de `OPCIONES_POR_DEFECTO`, no una reescritura.
+2. **El runtime debe migrar a la forma posicional de `verificarFirma`, no es una opción.** La forma objeto (`{crudo, firma, secreto, ahora_ms, tolerancia_s}`) solo existe para que un import literal del stub no rompa en tiempo de conexión. No usarla como camino permanente.
 3. El backend, no este paquete, es responsable de: enmascarar `destino_enmascarado` antes de exponerlo por BFF, elegir qué guardar en `provider_payload`, y emitir `llamada_solicitada`/`llamada_resultado` en `actividad_producto`/`bitacora`.
+4. Confirmar contra la cuenta real los valores exactos de `data.status` en el callback `post_call_transcription`/`post_call_audio` (aquí se asume `done`/`failed` según la documentación pública) y ajustar `MAPA_STATUS_POST_CALL` en `callback.mjs` si difieren — un valor no cubierto ya cae de forma segura a `resultado_desconocido`, nunca a `finalizada`, así que esto es un ajuste de cobertura, no un bloqueante.
