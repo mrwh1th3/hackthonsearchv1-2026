@@ -3,14 +3,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
+import { fuentePrivadaActual, obtenerInvestigacionPrivada } from "@/lib/data/privado";
 
 export const metadata = { title: "Forense · Investigación" };
 export const dynamic = "force-dynamic";
 
+/** La investigación es privada (CLAUDE.md regla 3, `lib/data/privado.ts`); caso/bitácora siguen en el DataSource público — el caso en sí no es privado. */
 export default async function InvestigacionDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ds = getDataSource();
-  const inv = await ds.getInvestigacion(id);
+  const inv = await obtenerInvestigacionPrivada(id);
   if (!inv) notFound();
 
   const casoId = inv.caso_ids[0];
@@ -25,7 +27,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
           <h1 className="text-2xl font-semibold text-text">{inv.titulo ?? "Investigación"}</h1>
           <p className="text-sm text-text-subtle">{inv.mensaje}</p>
         </div>
-        <FixtureBadge />
+        {fuentePrivadaActual() === "fixture" && <FixtureBadge />}
       </div>
 
       <div className="flex flex-wrap gap-2 text-xs text-text-subtle">

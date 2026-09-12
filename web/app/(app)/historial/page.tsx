@@ -1,7 +1,7 @@
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import type { ExecutionHistoryRow } from "@/components/shared/execution-history";
 import { getDataSource } from "@/lib/data";
-import { obtenerHistorialPrivado, obtenerPerfilPrivado } from "@/lib/data/privado";
+import { fuentePrivadaActual, obtenerHistorialPrivado, obtenerPerfilPrivado } from "@/lib/data/privado";
 import { HistorialTabs } from "./historial-tabs";
 
 export const metadata = { title: "Forense · Historial" };
@@ -31,7 +31,7 @@ export default async function HistorialPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-text">Historial</h1>
-        <FixtureBadge />
+        {fuentePrivadaActual() === "fixture" && <FixtureBadge />}
       </div>
       <p className="text-sm text-text-subtle">Solicitudes, ejecuciones y llamadas de tu workspace. El estado de entrega no implica el nivel de riesgo.</p>
       <HistorialTabs rows={rows} />

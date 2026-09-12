@@ -1,6 +1,6 @@
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { NotificacionesEnVivo } from "@/components/shared/notificaciones-en-vivo";
-import { obtenerNotificacionesPrivadas } from "@/lib/data/privado";
+import { fuentePrivadaActual, obtenerNotificacionesPrivadas } from "@/lib/data/privado";
 
 export const metadata = { title: "Forense · Notificaciones" };
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export default async function NotificacionesPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-text">Notificaciones</h1>
-        <FixtureBadge />
+        {fuentePrivadaActual() === "fixture" && <FixtureBadge />}
       </div>
       <NotificacionesEnVivo iniciales={notificaciones} />
     </div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { NivelBadge } from "@/components/shared/badges";
-import { getDataSource } from "@/lib/data";
+import { fuentePrivadaActual, obtenerInyeccionPrivada } from "@/lib/data/privado";
 
 export const metadata = { title: "Forense · Inyección" };
 export const dynamic = "force-dynamic";
@@ -35,8 +35,7 @@ const PASO_LABEL: Record<string, string> = {
  */
 export default async function InyeccionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ds = getDataSource();
-  const inyeccion = await ds.getInyeccion(id);
+  const inyeccion = await obtenerInyeccionPrivada(id);
   if (!inyeccion) notFound();
 
   const pasosPorNombre = new Map(inyeccion.timeline.map((p) => [p.paso, p.ts]));
@@ -64,7 +63,7 @@ export default async function InyeccionPage({ params }: { params: Promise<{ id: 
         </div>
         <div className="flex items-center gap-2">
           <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-xs text-text-muted">{inyeccion.origen}</span>
-          <FixtureBadge />
+          {fuentePrivadaActual() === "fixture" && <FixtureBadge />}
         </div>
       </div>
 
