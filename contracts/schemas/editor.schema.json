@@ -538,6 +538,314 @@
         "content_hash"
       ],
       "additionalProperties": false
+    },
+    "descartar": {
+      "description": "07 §4: descartar registra estado y NO crea versión. El documento queda como estaba.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caso_id",
+        "propuesta_id",
+        "idempotency_key"
+      ],
+      "properties": {
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "propuesta_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "idempotency_key": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        }
+      }
+    },
+    "descartado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origen",
+        "propuesta_id",
+        "estado",
+        "version_actual"
+      ],
+      "properties": {
+        "origen": {
+          "enum": [
+            "supabase",
+            "fixture",
+            "n8n"
+          ],
+          "type": "string"
+        },
+        "propuesta_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "estado": {
+          "enum": [
+            "propuesta",
+            "aplicada",
+            "descartada",
+            "conflicto"
+          ],
+          "type": "string"
+        },
+        "version_actual": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "revertir": {
+      "description": "07 §4: copia la versión elegida a una NUEVA tras comprobar el estado actual; sin LLM y sin borrado (09 §8: el historial nunca se destruye).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caso_id",
+        "accion",
+        "version_objetivo",
+        "version_base",
+        "idempotency_key"
+      ],
+      "properties": {
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "accion": {
+          "const": "revertir",
+          "type": "string"
+        },
+        "version_objetivo": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "version_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "idempotency_key": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        }
+      }
+    },
+    "borrador": {
+      "description": "15 §10: el autoguardado NO crea versión. Si version_base ya no es la vigente, el servidor responde 409 y el cliente CONSERVA su borrador.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caso_id",
+        "version_base",
+        "documento"
+      ],
+      "properties": {
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "version_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "documento": {
+          "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/documento"
+        }
+      }
+    },
+    "borrador_guardado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origen",
+        "guardado",
+        "version_base",
+        "content_hash",
+        "revisar_citas",
+        "citas_invalidas"
+      ],
+      "properties": {
+        "origen": {
+          "enum": [
+            "supabase",
+            "fixture",
+            "n8n"
+          ],
+          "type": "string"
+        },
+        "guardado": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "version_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "content_hash": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+        },
+        "revisar_citas": {
+          "type": "boolean"
+        },
+        "citas_invalidas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200
+        }
+      }
+    },
+    "exportar": {
+      "description": "15 §11. El PDF no se pide aquí: se imprime la hoja A4 con CSS de impresión desde el navegador.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caso_id",
+        "formato"
+      ],
+      "properties": {
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "formato": {
+          "enum": [
+            "md",
+            "json"
+          ],
+          "type": "string"
+        }
+      }
+    },
+    "exportado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formato",
+        "nombre",
+        "mime",
+        "contenido",
+        "manifiesto",
+        "citas"
+      ],
+      "properties": {
+        "formato": {
+          "enum": [
+            "md",
+            "json"
+          ],
+          "type": "string"
+        },
+        "nombre": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "mime": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "contenido": {
+          "type": "string",
+          "maxLength": 2000000
+        },
+        "citas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2000
+        },
+        "manifiesto": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "caso_id",
+            "rfc_principal",
+            "version",
+            "estado_revision",
+            "autor",
+            "creado",
+            "generado",
+            "origen",
+            "contratos",
+            "content_hash",
+            "citas_totales",
+            "citas_sin_evidencia",
+            "nota"
+          ],
+          "properties": {
+            "caso_id": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            "rfc_principal": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "estado_revision": {
+              "enum": [
+                "borrador",
+                "validado"
+              ],
+              "type": "string"
+            },
+            "autor": {
+              "enum": [
+                "agente",
+                "humano"
+              ],
+              "type": "string"
+            },
+            "creado": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            "generado": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            "origen": {
+              "enum": [
+                "supabase",
+                "fixture",
+                "n8n"
+              ],
+              "type": "string"
+            },
+            "contratos": {
+              "type": "string",
+              "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+            },
+            "content_hash": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            },
+            "citas_totales": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "citas_sin_evidencia": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200
+            },
+            "nota": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
+        }
+      }
     }
   }
 }

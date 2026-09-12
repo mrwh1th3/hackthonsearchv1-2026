@@ -1,0 +1,7 @@
+{
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "accion": "borrar",
+  "version_objetivo": 1,
+  "version_base": 1,
+  "idempotency_key": "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f"
+}

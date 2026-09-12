@@ -1,5 +1,5 @@
 {
-  "version": "1.2.1",
+  "version": "1.3.0",
   "purpose": "synthetic_contract_fixtures_not_evaluation",
   "contains_real_personal_data": false,
   "external_calls_allowed": false,
@@ -240,6 +240,34 @@
     {
       "file": "valid/contexto-redactor-trayectoria.json",
       "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/editor-descartar.json",
+      "schema": "editor.descartar"
+    },
+    {
+      "file": "valid/editor-descartado.json",
+      "schema": "editor.descartado"
+    },
+    {
+      "file": "valid/editor-revertir.json",
+      "schema": "editor.revertir"
+    },
+    {
+      "file": "valid/editor-borrador.json",
+      "schema": "editor.borrador"
+    },
+    {
+      "file": "valid/editor-borrador_guardado.json",
+      "schema": "editor.borrador_guardado"
+    },
+    {
+      "file": "valid/editor-exportar.json",
+      "schema": "editor.exportar"
+    },
+    {
+      "file": "valid/editor-exportado.json",
+      "schema": "editor.exportado"
     }
   ],
   "invalid": [
@@ -370,6 +398,18 @@
     {
       "file": "invalid/trayectoria-importe-numero.json",
       "schema": "runtime.contexto"
+    },
+    {
+      "file": "invalid/descartar-sin-idempotencia.json",
+      "schema": "editor.descartar"
+    },
+    {
+      "file": "invalid/revertir-accion-invalida.json",
+      "schema": "editor.revertir"
+    },
+    {
+      "file": "invalid/exportado-formato-desconocido.json",
+      "schema": "editor.exportado"
     }
   ]
 }

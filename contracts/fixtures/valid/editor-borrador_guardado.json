@@ -1,0 +1,10 @@
+{
+  "origen": "supabase",
+  "guardado": "2026-09-12T05:30:00Z",
+  "version_base": 1,
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "revisar_citas": false,
+  "citas_invalidas": [
+    "CFDI:0f2c1d4a-6b7e-4c8d-9e0f-1a2b3c4d5e6f"
+  ]
+}

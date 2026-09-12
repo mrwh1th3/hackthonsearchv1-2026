@@ -1,0 +1,26 @@
+{
+  "formato": "md",
+  "nombre": "expediente-DEMO-ENTIDAD-0-v1.md",
+  "mime": "text/markdown;charset=utf-8",
+  "contenido": "# Expediente\n\nContenido de ejemplo [CFDI:0f2c1d4a-6b7e-4c8d-9e0f-1a2b3c4d5e6f].",
+  "citas": [
+    "CFDI:0f2c1d4a-6b7e-4c8d-9e0f-1a2b3c4d5e6f"
+  ],
+  "manifiesto": {
+    "caso_id": "00000000-0000-4000-8000-000000000100",
+    "rfc_principal": "DEMO:ENTIDAD-0",
+    "version": 1,
+    "estado_revision": "borrador",
+    "autor": "agente",
+    "creado": "2026-09-12T05:30:00Z",
+    "generado": "2026-09-12T05:30:00Z",
+    "origen": "supabase",
+    "contratos": "v1.3.0",
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "citas_totales": 1,
+    "citas_sin_evidencia": [
+      "CFDI:0f2c1d4a-6b7e-4c8d-9e0f-1a2b3c4d5e6f"
+    ],
+    "nota": "Fixture sintético de contrato; no es un expediente real."
+  }
+}
