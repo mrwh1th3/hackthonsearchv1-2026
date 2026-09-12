@@ -238,20 +238,35 @@ describe("isPrivadoSupabaseConfigured", () => {
 // leer* con cliente falso encadenable (sin red)
 // ---------------------------------------------------------------------------
 
+/**
+ * `construirDiff` hace la MISMA consulta a 'casos'/'pistas' dos veces (una
+ * por corrida_id) — un cliente falso que solo mirara la tabla respondería
+ * igual a ambas, y un diff con la dirección invertida (base<->nueva) pasaría
+ * las pruebas igual de bien que uno correcto. Por eso `eq(col, val)` aquí
+ * SÍ importa: si hay una respuesta registrada como `"<tabla>:<val>"` (p.ej.
+ * "casos:corrida-nueva-1"), esa gana sobre la respuesta genérica de la
+ * tabla — así una prueba puede darle una fila distinta a la corrida base y
+ * a la nueva y pillar una dirección invertida.
+ */
 function clienteFalso(respuestas: Record<string, { data: unknown; error: { message: string } | null }>) {
   const builder = (tabla: string) => {
-    const resultado = respuestas[tabla] ?? { data: null, error: null };
+    let clave = tabla;
+    const resolver = () => respuestas[clave] ?? respuestas[tabla] ?? { data: null, error: null };
     const chain = {
       select: () => chain,
       order: () => chain,
-      eq: () => chain,
+      eq: (_col: string, val: unknown) => {
+        const especifica = `${tabla}:${String(val)}`;
+        if (respuestas[especifica]) clave = especifica;
+        return chain;
+      },
       in: () => chain,
       limit: () => chain,
       upsert: () => chain,
       delete: () => chain,
-      maybeSingle: async () => resultado,
-      single: async () => resultado,
-      then: (resolve: (v: unknown) => unknown) => resolve(resultado),
+      maybeSingle: async () => resolver(),
+      single: async () => resolver(),
+      then: (resolve: (v: unknown) => unknown) => resolve(resolver()),
     };
     return chain;
   };
@@ -316,7 +331,7 @@ describe("leerInyeccionPrivada", () => {
     expect(await leerInyeccionPrivada("no-existe")).toBeNull();
   });
 
-  it("arma diagnostico/timeline/diff desde la RPC + casos/pistas de ambas corridas", async () => {
+  it("arma diagnostico/timeline desde la RPC estado_inyeccion", async () => {
     _inyectarClienteParaTests(
       clienteFalso({
         __rpc__: {
@@ -334,20 +349,57 @@ describe("leerInyeccionPrivada", () => {
           },
           error: null,
         },
-        casos: { data: [{ id: "caso-nueva-1", rfc_principal: "DEMO:A", rfcs_satelite: [], nivel: "presuncion_alta" }], error: null },
-        pistas: { data: [{ rfc: "DEMO:A", codigo: "F1" }], error: null },
+        // 'casos'/'pistas' sin clave específica de corrida: ambas corridas
+        // resuelven igual (vacío) — esta prueba no ejercita la dirección del
+        // diff, ver la siguiente para eso.
+        casos: { data: [], error: null },
+        pistas: { data: [], error: null },
       }),
     );
     const iny = await leerInyeccionPrivada("iny-1");
     expect(iny).not.toBeNull();
     expect(iny?.timeline).toEqual([{ paso: "recibida", ts: "2026-02-01T00:00:00Z" }]);
     expect(iny?.diagnostico).toEqual({ mensaje: "1 fila(s) aceptada(s), 0 rechazada(s)" });
-    // Mismo cliente falso responde igual para 'casos'/'pistas' de base y nueva:
-    // nivel_anterior y nivel_nuevo coinciden, pero lo relevante es que no lanza
-    // y arma la forma correcta (rfc/caso_id/pistas_nuevas).
-    expect(iny?.diff).toEqual([
-      { rfc: "DEMO:A", nivel_anterior: "presuncion_alta", nivel_nuevo: "presuncion_alta", pistas_nuevas: [], caso_id: "caso-nueva-1" },
-    ]);
+    expect(iny?.diff).toEqual([{ rfc: "DEMO:A", nivel_anterior: null, nivel_nuevo: null, pistas_nuevas: [], caso_id: null }]);
+  });
+
+  it("diff: nivel_anterior/nivel_nuevo/pistas_nuevas/caso_id salen de la corrida correcta, nunca invertidos", async () => {
+    _inyectarClienteParaTests(
+      clienteFalso({
+        __rpc__: {
+          data: {
+            id: "iny-1",
+            corrida_base_id: "corrida-base-1",
+            corrida_nueva_id: "corrida-nueva-1",
+            origen: "ui",
+            estado: "completada",
+            rfcs_afectados: ["DEMO:A"],
+            creado: "2026-02-01T00:00:00Z",
+            terminado: "2026-02-01T00:10:00Z",
+            diagnostico: null,
+            timeline: [],
+          },
+          error: null,
+        },
+        // Base: DEMO:A no tiene caso todavía, solo la pista D1 (era EFOS
+        // limpio antes de la inyección). Claves por corrida_id, no por tabla
+        // sola, para que un `Promise.all` con el orden invertido reviente
+        // esta prueba en vez de pasarla en silencio.
+        "casos:corrida-base-1": { data: [], error: null },
+        "pistas:corrida-base-1": { data: [{ rfc: "DEMO:A", codigo: "D1" }], error: null },
+        // Nueva: ahora hay caso con nivel alto y una pista nueva (F1) además de D1.
+        "casos:corrida-nueva-1": { data: [{ id: "caso-nueva-1", rfc_principal: "DEMO:A", rfcs_satelite: [], nivel: "presuncion_alta" }], error: null },
+        "pistas:corrida-nueva-1": {
+          data: [
+            { rfc: "DEMO:A", codigo: "D1" },
+            { rfc: "DEMO:A", codigo: "F1" },
+          ],
+          error: null,
+        },
+      }),
+    );
+    const iny = await leerInyeccionPrivada("iny-1");
+    expect(iny?.diff).toEqual([{ rfc: "DEMO:A", nivel_anterior: null, nivel_nuevo: "presuncion_alta", pistas_nuevas: ["F1"], caso_id: "caso-nueva-1" }]);
   });
 });
 
