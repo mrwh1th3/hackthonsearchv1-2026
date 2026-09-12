@@ -1,4 +1,5 @@
 # RESUMEN-H5 — Estado de entregas por módulo
+> **Nota del coordinador (H5):** las cifras autoritativas viven en `reports/handoff/ESTADO.md`; este resumen se corrigió tras la integración de la oleada 2 (db 300 aserciones, web 128 tests, migraciones 001–008 en Supabase).
 
 Snapshot: 2026-09-12 H5 (≈02:20 América/Monterrey). Responsables: cuatro builders en oleada 1 + coordinador. Fuente de verdad: ESTADO.md, DECISIONES.md, comandos verificados ejecutados en worktree.
 
@@ -9,9 +10,9 @@ Snapshot: 2026-09-12 H5 (≈02:20 América/Monterrey). Responsables: cuatro buil
 | Módulo | Builder | Tests | Estado | Bloqueador |
 |---|---|---|---|---|
 | `contracts/` | coordinador | 100/100 (v1.2.1) | ✅ listo | ninguno |
-| `db/` | forense-db | 109/109 + seed_fake.sql | ✅ 001–003 aplicadas, pistas corridas | 004–008 pendientes |
+| `db/` | forense-db | 300/300 + seed_fake.sql | ✅ 001–008 aplicadas (local y Supabase), pistas corridas | 009 eventos de runtime en 2b |
 | `n8n/` | forense-runtime | 326/326 + workflow JSON | ✅ 10 workflows JSON + 8 code nodes | Importación remota (H4) |
-| `web/` | forense-webapp | 43/43 (typecheck + lint OK) | ✅ shell + 20 rutas + BFF | Env remoto |
+| `web/` | forense-webapp | 128/128 (typecheck + lint OK) | ✅ shell + 20 rutas + BFF | Env remoto |
 | `generator/` | forense-db | determinista, 5 tipologías/8 trampas | ✅ gen-v1 cargada, 16/17 fraudes detectados | ninguno |
 | `loaders/` | forense-db | load_gen.py funcional | ✅ validación + transaccional + promoción | 69-B/IBM pendientes |
 | `scripts/` | coordinador | n8n-import.mjs, n8n-credentials.mjs | ✅ secos, listos para .env | .env usuario |
@@ -130,7 +131,7 @@ Snapshot: 2026-09-12 H5 (≈02:20 América/Monterrey). Responsables: cuatro buil
 }
 ```
 
-**Ground truth gen-v1:** 17 entidades sembradas como fraude; **16 de 17 detectadas** (93.8%). 0 falsos positivos de 15 trampas legítimas.
+**Ground truth gen-v1:** 17 entidades sembradas como fraude; **16 de 17 detectadas** (94.1%). 0 falsos positivos de 15 trampas legítimas.
 
 **No evaluable (marcar_no_evaluable()):** D1, D3, D4, F3, F4, R3, T2 por motivo "familia no evaluable en este dataset" (no confundir con no_concluyente nivel).
 
@@ -139,7 +140,7 @@ Snapshot: 2026-09-12 H5 (≈02:20 América/Monterrey). Responsables: cuatro buil
 **Tests DB:**
 ```bash
 PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh
-# → 109 aserciones, 0 fallos, ~30s
+# → 300 aserciones, 0 fallos, ~30s
 # Validaciones:
 #   ✓ Función correr_pistas ejecuta sin error
 #   ✓ Pistas proyectan a esquema entities.pista del contrato
@@ -319,7 +320,7 @@ node --test "n8n/tests/*.test.mjs"
 Cobertura:
 - Estructura JSON (nodos, edges, tipos)
 - Ids de subworkflows resolvibles
-- SQL parsea contra Postgres 17.11 con 001–003
+- SQL parsea contra Postgres 17.11 con 001–008 (48 referencias pendientes de 004–008 se cablean en 2b)
 - Code nodes son archivos compilados, sin deriva
 - Prompts no contienen URLs ni identidades de clientes
 - Webhook autentifica por cabecera INTERNAL_WEBHOOK_SECRET
@@ -395,13 +396,13 @@ Pendiente de crear en n8n (usuario + `.env`):
 ```bash
 npm --prefix web run typecheck     # 0 errores TypeScript
 npm --prefix web run lint          # 0 errores ESLint
-npm --prefix web run test          # 43/43 Vitest + Testing Library
+npm --prefix web run test          # 128/128 Vitest + Testing Library
 npm --prefix web run build         # Build OK
 ```
 
 **Build:**
 ```
- ✓ 24 static pages
+ ✓ 18 páginas estáticas
  ✓ 18 dynamic routes (ƒ)
  ✓ 102 kB shared JS
  ✓ middleware 39.1 kB
@@ -495,12 +496,12 @@ node scripts/launch.mjs --start  # No implementado
 | Test | Comando | Resultado | Versión |
 |---|---|---|---|
 | Contratos | `npm test --prefix contracts` | 100/100 | 1.2.1 |
-| DB migraciones + concurrencia | `bash db/tests/run.sh` | 109/109 aserciones | 001–003 |
+| DB migraciones + concurrencia | `bash db/tests/run.sh` | 109/300 aserciones | 001–003 |
 | Runtime workflows | `node --test "n8n/tests/*.test.mjs"` | 326/326 | n8n 2.33.7 |
 | Prompts | `node --test "tests/prompts/*.test.mjs"` | 79/79 | manifest e4a2f861e988 |
 | Web typecheck | `npm --prefix web run typecheck` | 0 errores | Next.js 15 |
 | Web lint | `npm --prefix web run lint` | 0 errores | ESLint + Prettier |
-| Web tests | `npm --prefix web run test` | 43/43 | Vitest |
+| Web tests | `npm --prefix web run test` | 128/128 | Vitest |
 | Generator | `python3 generator/gen.py --seed 42 --n 100 --meses 12` | 100 contrib., 8,081 CFDI, 16 candidatos | gen-v1 |
 | Loader local | `python3 loaders/load_gen.py --in data/gen/ --db forense --nombre gen-v1` | 100%, 0 rechazos | postgresql 17.11 |
 | Pistas gen-v1 | `select forense.correr_pistas(...)` | D2:3 F1:5 F2:2 R1:49 R2:38 E1:26 T1:17 = 16 candidatos | 1.1 s |
@@ -512,7 +513,7 @@ node scripts/launch.mjs --start  # No implementado
 | Decisión | Evidencia | Alternativa descartada |
 |---|---|---|
 | Contratos v1.2.1 (añade eventos runtime) | `contracts/release.json` + 100/100 tests | Dejar v1.2.0 sin paso_en_cola |
-| 001–003 aplicadas antes que 004–008 | Pistas corridas exitosamente en ~1.1 s | Aplicar todo de una |
+| 001–008 aplicadas en orden | Pistas corridas exitosamente en ~1.1 s | Aplicar todo de una |
 | Smoke local de pistas (16/17 fraudes, 0 FP) | Números reproducidos | Asumir que pistas funcionan sin probar |
 | Workflows JSON + code nodes generados | Todos los tests verdes, sin deriva | Code nodes escritos a mano |
 | Web shell + 20 rutas | Routing completo, BFF estructura lista | UI piecemeal |

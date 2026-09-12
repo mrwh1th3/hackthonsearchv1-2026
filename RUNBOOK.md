@@ -78,7 +78,7 @@ psql -d forense -f db/003_pistas.sql
 - `002_views.sql`: vistas de soporte, helpers de fencing, cálculos de presupuesto.
 - `003_pistas.sql`: siete pistas iniciales (D2, F1, F2, R1, R2, E1, T1) y `correr_pistas()`.
 
-**Estado actual:** 001–003 aplicadas en la instancia `forense` local (H5).
+**Estado actual:** 001–008 aplicadas en la instancia `forense` local y en Supabase `hackthon2026` (H5).
 
 #### 2.3 Cargar fixture manual (UI)
 
@@ -158,13 +158,13 @@ node --test "n8n/tests/*.test.mjs"
 # Devuelve: 326 tests, 0 fallos, ~300ms
 ```
 
-Valida que cada workflow JSON tenga nodos válidos, que las referencias de subworkflows sean resolvibles tras importar, y que las queries SQL parseen contra Postgres 17 con migraciones 001–003.
+Valida que cada workflow JSON tenga nodos válidos, que las referencias de subworkflows sean resolvibles tras importar, y que las queries SQL parseen contra Postgres 17 con migraciones 001–008.
 
 #### 5.3 Tests de BD (migraciones + concurrencia)
 
 ```bash
 PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh
-# Devuelve: 109 aserciones, 0 fallos, ~30s
+# Devuelve: 300 aserciones, 0 fallos, ~30s
 ```
 
 Crea base temporal, aplica migraciones, corre aserciones de función e idempotencia, valida pistas contra esquema de contratos. Borra base al terminar.
@@ -282,7 +282,7 @@ Supabase `hackthon2026` tiene aplicadas:
 - 003_pistas.sql (pistas D2, F1, F2, R1, R2, E1, T1)
 - seed_fake.sql (fixture UI)
 
-**Estado actual (H5):** 001–003 confirmadas, seed_fake cargada.
+**Estado actual (H5):** 001–008 confirmadas en Supabase, seed_fake y seed_producto cargados.
 
 **Tareas pendientes:**
 - Exponer el schema `forense` en Project Settings → API → Exposed Schemas (sin esto PostgREST rechaza llamadas).
