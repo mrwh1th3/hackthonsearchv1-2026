@@ -29,7 +29,6 @@ export function getSessionSecret(): string | null {
   if (configured && configured.length > 0) return configured;
   if (isProduction()) return null;
   if (!warnedSecret) {
-    // eslint-disable-next-line no-console
     console.warn(
       "[forense-webapp] SESSION_SECRET no configurado; usando secreto de desarrollo. " +
         "No usar en producción.",
@@ -44,7 +43,6 @@ export function getDemoPassword(): string | null {
   if (configured && configured.length > 0) return configured;
   if (isProduction()) return null;
   if (!warnedPassword) {
-    // eslint-disable-next-line no-console
     console.warn(
       "[forense-webapp] DEMO_PASSWORD no configurado; usando contraseña de desarrollo 1234. " +
         "No usar en producción.",

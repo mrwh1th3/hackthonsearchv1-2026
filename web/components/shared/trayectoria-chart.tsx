@@ -21,7 +21,7 @@ export function TrayectoriaChart({ puntos }: { puntos: TrayectoriaPunto[] }) {
     ...p,
     monto_emitido: Number(p.monto_emitido),
     monto_recibido: Number(p.monto_recibido),
-    etiquetaEvento: p.evento ? EVENTO_LABEL[p.evento] ?? p.evento : undefined,
+    etiquetaEvento: p.eventos.length > 0 ? p.eventos.map((e) => EVENTO_LABEL[e] ?? e).join(" + ") : undefined,
   }));
 
   return (

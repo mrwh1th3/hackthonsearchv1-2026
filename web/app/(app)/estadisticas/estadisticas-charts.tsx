@@ -4,17 +4,11 @@ import { ChartPanel } from "@/components/shared/chart-panel";
 import type { EmbudoEtapa } from "@/lib/data";
 import { EmbudoChart } from "./embudo-chart";
 
-interface PorTipologia {
-  tipologia: string;
-  cantidad: number;
-  monto_en_riesgo: string;
-}
-
-export function EmbudoPanel({ etapas }: { etapas: EmbudoEtapa[] }) {
+export function CoberturaPanel({ etapas }: { etapas: EmbudoEtapa[] }) {
   return (
     <ChartPanel
-      title="Embudo"
-      alcance="pistas → RFC candidatos → clusters → casos ≥2 familias → presunción alta"
+      title="Cobertura de la corrida"
+      alcance="ground truth → investigados con conclusión → trampas legítimas investigadas"
       columns={[
         { key: "etapa", header: "Etapa" },
         { key: "cantidad", header: "Cantidad", align: "right" },
@@ -22,25 +16,33 @@ export function EmbudoPanel({ etapas }: { etapas: EmbudoEtapa[] }) {
       ]}
       rows={etapas}
       getRowKey={(e) => e.etapa}
-      csvFilename="embudo"
+      csvFilename="cobertura"
     >
       <EmbudoChart etapas={etapas} />
     </ChartPanel>
   );
 }
 
-export function PorTipologiaPanel({ filas }: { filas: PorTipologia[] }) {
+interface FilaRecallTipologia {
+  tipologia: string;
+  tp: number;
+  total: number;
+  recall: number | null;
+}
+
+export function RecallPorTipologiaPanel({ filas }: { filas: FilaRecallTipologia[] }) {
   return (
     <ChartPanel
-      title="Casos por tipología"
+      title="Recall por tipología (contra ground truth)"
       columns={[
         { key: "tipologia", header: "Tipología" },
-        { key: "cantidad", header: "Cantidad", align: "right" },
-        { key: "monto_en_riesgo", header: "Monto en riesgo", align: "right" },
+        { key: "tp", header: "Detectados (TP)", align: "right" },
+        { key: "total", header: "Total en ground truth", align: "right" },
+        { key: "recall", header: "Recall", align: "right", render: (f) => (f.recall === null ? "—" : `${Math.round(f.recall * 100)}%`) },
       ]}
       rows={filas}
       getRowKey={(t) => t.tipologia}
-      csvFilename="por-tipologia"
+      csvFilename="recall-por-tipologia"
     />
   );
 }

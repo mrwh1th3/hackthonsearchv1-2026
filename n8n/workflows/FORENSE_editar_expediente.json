@@ -1,0 +1,367 @@
+{
+  "name": "FORENSE_editar_expediente",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "forense/editar",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook editar",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Forense Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Contrato editor.solicitud (contracts v1). El TEXTO del documento es dato,\n// nunca system prompt (17 §7): viaja marcado y no se obedece.\nconst x = $input.first().json;\nconst c = x.body ?? x;\nconst PROHIBIDOS = ['system', 'system_prompt', 'modelo', 'model', 'nivel', 'dictamen', 'telefono'];\nconst presentes = PROHIBIDOS.filter((k) => c[k] !== undefined);\nif (presentes.length > 0) throw new Error(`campos no aceptados: ${presentes.join(', ')}`);\nif (!c.caso_id) throw new Error('caso_id obligatorio');\nif (!c.idempotency_key) throw new Error('idempotency_key obligatoria');\nconst modo = c.modo ?? 'propuesta';\nif (!['pregunta', 'propuesta'].includes(modo)) throw new Error(`modo no soportado: ${modo}`);\nif (c.version_base === undefined || c.version_base === null) {\n  throw new Error('version_base obligatoria: sin ella no se detecta el conflicto de documento');\n}\nconst salida = {\n  caso_id: c.caso_id,\n  modo,\n  version_base: Number(c.version_base),\n  idempotency_key: c.idempotency_key,\n  instruccion_untrusted: c.instruccion ?? null,\n  seleccion: c.seleccion ?? null,\n  directriz_id: c.directriz_id ?? null,\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Validar solicitud"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Versión base, evidencia y argumentos verificados y dictamen; persiste el mensaje del usuario. DEPENDE de forense-db (006).\nSELECT * FROM forense.cargar_version_expediente($1::uuid, $2::int)",
+        "options": {
+          "queryReplacement": "={{ $('Validar solicitud').first().json.caso_id }}, ={{ $('Validar solicitud').first().json.version_base }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Cargar versión base",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- XOR de 001: una operación del editor NO lleva tarea_id y tiene presupuesto propio (3 requests, deadline 90 s de 17 §6).\nINSERT INTO forense.ejecuciones_agente\n       (corrida_id, caso_id, editor_operacion_id, rol, estado_interno, context_hash,\n        prompt_hash, model_id, deadline_at)\nSELECT c.corrida_id, NULL, gen_random_uuid(), $2::text, $3::text, $4::text,\n       $5::text, $6::text, now() + interval '90 seconds'\n  FROM forense.casos c WHERE c.id = $1::uuid\nRETURNING id AS execution_id, editor_operacion_id, rol, deadline_at, corrida_id",
+        "options": {
+          "queryReplacement": "={{ $('Validar solicitud').first().json.caso_id }}, ={{ 'editor' }}, ={{ 'preparar_contexto' }}, ={{ $json.context_hash }}, ={{ $json.prompt_hash }}, ={{ $json.modelo }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Abrir operación editor",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "execution_id": "={{ $json.execution_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        880,
+        0
+      ],
+      "name": "Ejecutar editor"
+    },
+    {
+      "parameters": {
+        "jsCode": "// La propuesta no puede introducir IDs ajenos, montos distintos ni cambiar\n// el nivel: el dictamen es determinista y el editor no lo toca (regla 4).\nconst x = $input.first().json;\nconst base = $('Cargar versión base').first().json;\nconst solicitud = $('Validar solicitud').first().json;\nconst salida_modelo = x.salida ?? {};\nconst permitidas = new Set((base.citas_permitidas ?? []).map(String));\nconst citas = (salida_modelo.citas ?? []).map(String);\nconst ajenas = citas.filter((id) => !permitidas.has(id));\nif (ajenas.length > 0) throw new Error(`citas fuera del paquete del documento: ${ajenas.join(', ')}`);\nif (salida_modelo.nivel !== undefined && salida_modelo.nivel !== base.nivel) {\n  throw new Error('una edición no puede cambiar el nivel del dictamen');\n}\n// Documento cambiado bajo los pies: se conserva el borrador y se avisa.\nconst conflicto = Number(base.version_actual) !== Number(solicitud.version_base);\nconst salida = {\n  caso_id: solicitud.caso_id,\n  modo: solicitud.modo,\n  modo_salida: solicitud.modo === 'pregunta' ? 'respuesta' : (solicitud.seleccion ? 'fragmento' : 'documento'),\n  conflicto,\n  version_base: solicitud.version_base,\n  mensaje: salida_modelo.mensaje ?? null,\n  patch: salida_modelo.patch ?? null,\n  diff: salida_modelo.diff ?? null,\n  citas,\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Validar propuesta"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_respuesta",
+                    "leftValue": "={{ $json.modo_salida }}",
+                    "rightValue": "respuesta",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "respuesta"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_fragmento",
+                    "leftValue": "={{ $json.modo_salida }}",
+                    "rightValue": "fragmento",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "fragmento"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_documento",
+                    "leftValue": "={{ $json.modo_salida }}",
+                    "rightValue": "documento",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "documento"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Ruta por modo"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).\nSELECT * FROM forense.guardar_propuesta_edicion($1::uuid, $2::int, $3::jsonb, $4::jsonb, $5::text[])",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ `{${($json.citas ?? []).join(\",\")}}` }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1540,
+        140
+      ],
+      "name": "Guardar propuesta",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ modo: $('Validar propuesta').first().json.modo_salida, mensaje: $('Validar propuesta').first().json.mensaje, propuesta_id: $json.propuesta_id ?? null, conflicto: $('Validar propuesta').first().json.conflicto }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1760,
+        0
+      ],
+      "name": "Responder edición"
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_editar_expediente (15, 16, 17 §6).\n\nChat PROPONE; «Aplicar» versiona y es del BFF, no de aquí.\nUna edición no reactiva el aviso de fin ya emitido (16 §1).\nEl texto del documento es dato, no instrucción.",
+        "height": 220,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ],
+      "name": "Nota editor"
+    }
+  ],
+  "connections": {
+    "Webhook editar": {
+      "main": [
+        [
+          {
+            "node": "Validar solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar solicitud": {
+      "main": [
+        [
+          {
+            "node": "Cargar versión base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cargar versión base": {
+      "main": [
+        [
+          {
+            "node": "Abrir operación editor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Abrir operación editor": {
+      "main": [
+        [
+          {
+            "node": "Ejecutar editor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar editor": {
+      "main": [
+        [
+          {
+            "node": "Validar propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar propuesta": {
+      "main": [
+        [
+          {
+            "node": "Ruta por modo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ruta por modo": {
+      "main": [
+        [
+          {
+            "node": "Responder edición",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar propuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder edición",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

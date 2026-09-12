@@ -5,6 +5,7 @@ import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
 
 export const metadata = { title: "Forense · Investigación" };
+export const dynamic = "force-dynamic";
 
 export default async function InvestigacionDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

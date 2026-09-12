@@ -1,24 +1,51 @@
 {
   "00000000-0000-4000-8000-000000000001": {
-    "embudo": [
-      { "etapa": "pistas_disparadas", "cantidad": 40, "denominador": 40 },
-      { "etapa": "rfc_candidatos", "cantidad": 18, "denominador": 40 },
-      { "etapa": "clusters", "cantidad": 3, "denominador": 40 },
-      { "etapa": "casos_2_familias", "cantidad": 1, "denominador": 40 },
-      { "etapa": "presuncion_alta", "cantidad": 0, "denominador": 40 }
+    "corrida_id": "00000000-0000-4000-8000-000000000001",
+    "dataset": "fixture-contract-v1",
+    "dataset_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fecha_corte": "2026-01-31T12:00:00Z",
+    "modo": "fixture",
+    "estado_corrida": "completada",
+    "version_reglas": "pistas-1",
+    "version_prompts": null,
+    "corrida_origen_id": null,
+    "parcial": true,
+    "terminal": false,
+    "no_implementado": [
+      "negativos_del_selector (requiere barrido de pistas de 003)",
+      "acierto_de_cache (requiere instrumentacion de 005)",
+      "tasa_de_ronda_2 y fronteras (requiere 004/runtime)",
+      "costo_usd (requiere version de precios y usage real)",
+      "baseline_dos_pistas (requiere 003)"
     ],
-    "confusion": [
-      { "real": "positivo", "predicho": "positivo", "cantidad": 1 },
-      { "real": "positivo", "predicho": "negativo", "cantidad": 0 },
-      { "real": "negativo", "predicho": "positivo", "cantidad": 0 },
-      { "real": "negativo", "predicho": "negativo", "cantidad": 2 }
-    ],
-    "fpr_trampas": { "numerador": 0, "denominador": 8 },
-    "por_tipologia": [
-      { "tipologia": "retorno", "cantidad": 1, "monto_en_riesgo": "1000.00" },
-      { "tipologia": "no_concluyente", "cantidad": 2, "monto_en_riesgo": "0.00" }
-    ],
-    "costo": { "tokens_totales": 42000, "duracion_ms_total": 185000, "llamadas_totales": 27, "tasa_acierto_cache": 0.18 },
-    "rondas": { "pct_ronda_2": 0.33, "pct_frontera_expandida": 0.33, "pct_reintento": 0.33 }
+    "acierto_tipologia": null,
+    "cohorte": { "total_ground_truth": 3, "total_fraude": 1, "total_trampas": 2, "sin_conclusion": 0 },
+    "cobertura": { "ratio": 1, "concluyentes": 3, "trampas_investigadas": 2 },
+    "operacion": {
+      "casos": 3,
+      "reintentos": 0,
+      "tool_calls": 27,
+      "tokens_total": 42000,
+      "casos_por_nivel": { "presuncion": 1, "no_concluyente": 2 },
+      "duracion_ms_p50": 61000,
+      "duracion_ms_p95": 92000,
+      "presupuesto_agotado": 0
+    },
+    "selectivas": { "tp": 1, "fp": 0, "tn": 2, "fn_selectivo": 0, "precision": 1, "recall": 1, "f1": 1 },
+    "fpr_trampas": {
+      "n": 2,
+      "fp": 0,
+      "texto": "0/2",
+      "rango_min": 0,
+      "rango_max": 1,
+      "concluyentes": 2,
+      "sin_conclusion": 0,
+      "fpr_concluyentes": 0
+    },
+    "extremo_a_extremo": { "fn_conservador": 0, "recall_conservador": 1 },
+    "recall_por_tipologia": {
+      "retorno": { "tp": 1, "total": 1, "recall": 1 },
+      "no_concluyente": { "tp": 0, "total": 2, "recall": 0 }
+    }
   }
 }

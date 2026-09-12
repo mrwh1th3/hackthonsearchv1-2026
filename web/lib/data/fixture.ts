@@ -70,6 +70,7 @@ const entidadesPorRfc = entidadesLocal as unknown as Record<string, EntidadPerfi
  */
 export class FixtureDataSource implements DataSource {
   readonly label = "fixture" as const;
+  readonly noDisponibles: ReadonlySet<string> = new Set();
 
   async listCorridas(): Promise<Corrida[]> {
     return [corrida];
@@ -136,11 +137,13 @@ export class FixtureDataSource implements DataSource {
     return eventos.filter((e) => e.caso_id === casoId);
   }
 
-  async getEntidad(rfc: string): Promise<EntidadPerfil | null> {
+  async getEntidad(rfc: string, _corridaId?: string): Promise<EntidadPerfil | null> {
+    void _corridaId; // fixture: una sola corrida
     return entidadesPorRfc[rfc] ?? null;
   }
 
-  async getTrayectoria(rfc: string): Promise<TrayectoriaPunto[]> {
+  async getTrayectoria(rfc: string, _corridaId?: string): Promise<TrayectoriaPunto[]> {
+    void _corridaId;
     return trayectoriaPorRfc[rfc] ?? [];
   }
 
@@ -148,7 +151,8 @@ export class FixtureDataSource implements DataSource {
     return contrastePorCaso[casoId] ?? null;
   }
 
-  async getPares(rfc: string): Promise<ParComparacion[]> {
+  async getPares(rfc: string, _corridaId?: string): Promise<ParComparacion[]> {
+    void _corridaId;
     return paresPorRfc[rfc] ?? [];
   }
 

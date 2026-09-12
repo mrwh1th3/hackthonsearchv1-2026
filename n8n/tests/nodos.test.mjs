@@ -16,10 +16,13 @@ import { construirCuerpoNodo } from '../runtime/nodos/construir-cuerpo.mjs';
 import { clasificarTransporteNodo } from '../runtime/nodos/clasificar-transporte.mjs';
 import { interpretarRespuestaNodo } from '../runtime/nodos/interpretar-respuesta.mjs';
 import { armarToolResultsNodo } from '../runtime/nodos/armar-tool-results.mjs';
+import { expandirColaToolsNodo } from '../runtime/nodos/expandir-cola-tools.mjs';
 import { evaluarFronteraNodo } from '../runtime/nodos/evaluar-frontera.mjs';
 import { normalizarInvestigacionNodo } from '../runtime/nodos/normalizar-investigacion.mjs';
+import { toolsPorRol } from '../prompts/ensamblar.mjs';
 
 import { clasificar } from '../runtime/transporte.mjs';
+import { ESTADOS_TERMINALES, siguiente } from '../runtime/checkpoint.mjs';
 import { parsearRespuesta } from '../runtime/provider/messages.mjs';
 import { calcularDespertados, conjuntoRonda2, evaluarFrontera } from '../runtime/despertar.mjs';
 import { AHORA, DEADLINE, UUID, mensajeTexto, mensajeToolUse, respuestaOK, salidaEspecialistaValida } from './_ayudas.mjs';
@@ -63,6 +66,74 @@ test('[SIMULADO] decidir: un estado terminal no reabre el paso', () => {
   for (const estado of ['terminado', 'error', 'timeout']) {
     const r = decidirPaso({ checkpoint: cp({ estado_interno: estado }), ahora_ms: AHORA });
     assert.equal(r.accion, 'cerrar');
+  }
+});
+
+// Regresión (hallazgo alto del verificador H3): la rama `cerrar` devolvía el
+// estado interno de ORIGEN. El grafo del worker evalúa «¿Estado terminal?»
+// DESPUÉS de guardar el checkpoint, leyendo ese mismo campo: con el estado de
+// origen, un paso que cierra por `valida` o por `deadline` se guardaba como
+// `validar_salida` / `solicitar_modelo`, el IF decía «no terminal» y el worker
+// se redespachaba a sí mismo en bucle en vez de finalizar la tarea.
+test('[SIMULADO] decidir: al cerrar devuelve el estado interno DESTINO, no el de origen', () => {
+  const valida = decidirPaso({ checkpoint: cp({ estado_interno: 'validar_salida', salida_valida: true }), ahora_ms: AHORA });
+  assert.equal(valida.accion, 'cerrar');
+  assert.equal(valida.evento, 'valida');
+  assert.equal(valida.estado_interno, 'terminado', 'salida válida cierra en terminado, no en validar_salida');
+
+  const vencido = decidirPaso({ checkpoint: cp({ estado_interno: 'solicitar_modelo' }), ahora_ms: Date.parse(DEADLINE) + 1 });
+  assert.equal(vencido.evento, 'deadline');
+  assert.equal(vencido.estado_interno, 'timeout');
+
+  const sinReparacion = decidirPaso({ checkpoint: cp({ estado_interno: 'validar_salida', salida_valida: false, reparaciones_json: 1 }), ahora_ms: AHORA });
+  assert.equal(sinReparacion.evento, 'sin_reparacion');
+  assert.equal(sinReparacion.estado_interno, 'error');
+
+  const sinCola = decidirPaso({ checkpoint: cp({ estado_interno: 'ejecutar_herramienta', pending_tool_use_ids: [] }), ahora_ms: AHORA });
+  assert.equal(sinCola.evento, 'error_fatal');
+  assert.equal(sinCola.estado_interno, 'error');
+
+  const desconocido = decidirPaso({ checkpoint: cp({ estado_interno: 'estado_que_no_existe' }), ahora_ms: AHORA });
+  assert.equal(desconocido.evento, 'error_fatal');
+  assert.equal(desconocido.estado_interno, 'error');
+});
+
+test('[SIMULADO] decidir: todo cierre cae en un estado terminal y arrastra estado_tarea', () => {
+  const casos = [
+    [cp({ estado_interno: 'validar_salida', salida_valida: true }), AHORA, 'completada'],
+    [cp({ estado_interno: 'solicitar_modelo' }), Date.parse(DEADLINE) + 1, 'timeout'],
+    [cp({ estado_interno: 'reparar_json', reparaciones_json: 1 }), AHORA, 'error'],
+    [cp({ estado_interno: 'terminado' }), AHORA, 'completada'],
+    [cp({ estado_interno: 'timeout' }), AHORA, 'timeout'],
+    [cp({ estado_interno: 'error' }), AHORA, 'error'],
+  ];
+  for (const [checkpoint, ahora_ms, estadoTarea] of casos) {
+    const r = decidirPaso({ checkpoint, ahora_ms });
+    assert.equal(r.accion, 'cerrar');
+    assert.ok(ESTADOS_TERMINALES.includes(r.estado_interno), `${checkpoint.estado_interno} cerró en ${r.estado_interno}`);
+    assert.equal(r.estado_tarea, estadoTarea);
+  }
+});
+
+// El Code node inlinea el destino porque no puede importar checkpoint.mjs. Este
+// test compara ambas implementaciones para que no se separen en silencio (mismo
+// patrón que clasificar-transporte contra transporte.mjs).
+test('[SIMULADO] decidir: el destino inlineado coincide con TRANSICIONES de checkpoint.mjs', () => {
+  const pares = [
+    ['validar_salida', 'valida', cp({ estado_interno: 'validar_salida', salida_valida: true }), AHORA],
+    ['validar_salida', 'sin_reparacion', cp({ estado_interno: 'validar_salida', salida_valida: false, reparaciones_json: 1 }), AHORA],
+    ['reparar_json', 'sin_presupuesto', cp({ estado_interno: 'reparar_json', reparaciones_json: 1 }), AHORA],
+    ['solicitar_modelo', 'deadline', cp({ estado_interno: 'solicitar_modelo' }), Date.parse(DEADLINE) + 1],
+    ['ejecutar_herramienta', 'deadline', cp({ estado_interno: 'ejecutar_herramienta', pending_tool_use_ids: ['toolu_1'] }), Date.parse(DEADLINE) + 1],
+    ['ejecutar_herramienta', 'error_fatal', cp({ estado_interno: 'ejecutar_herramienta', pending_tool_use_ids: [] }), AHORA],
+  ];
+  for (const [origen, eventoEsperado, checkpoint, ahora_ms] of pares) {
+    const r = decidirPaso({ checkpoint, ahora_ms });
+    // `sin_reparacion` es el vocabulario del nodo; en checkpoint.mjs el mismo
+    // corte se llama `sin_reparacion` desde validar_salida y `sin_presupuesto`
+    // desde reparar_json: ambos llevan a `error`.
+    assert.equal(r.estado_interno, siguiente(origen, eventoEsperado),
+      `${origen} --${eventoEsperado}--> esperado ${siguiente(origen, eventoEsperado)}, el nodo dio ${r.estado_interno}`);
   }
 });
 
@@ -233,6 +304,116 @@ test('[SIMULADO] tool_results: uno por cada tool_use_id, en orden y sin texto an
 
 test('[SIMULADO] tool_results: un resultado ausente falla el paso en vez de romper la conversación', () => {
   assert.throws(() => armarToolResultsNodo({ cola: [{ tool_use_id: 'toolu_1' }], resultados: [] }), /faltan tool_result/);
+});
+
+
+// Regresión: el nodo recibe del grafo `{tool_use_id, estado, resultado}` —el
+// ledger publica `estado`, no `error`/`is_error`—. Antes, un 5xx de la RPC
+// quedaba registrado como error en tool_ejecuciones y aun así llegaba al modelo
+// como un tool_result normal, que es lo que 17 §5.5 prohíbe.
+test('[SIMULADO] tool_results: un estado de error del ledger llega al modelo COMO error', () => {
+  const cola = [{ tool_use_id: 'toolu_1' }, { tool_use_id: 'toolu_2' }];
+  const r = armarToolResultsNodo({
+    cola,
+    // Forma real de «Registrar resultado tool».
+    resultados: [
+      { tool_use_id: 'toolu_1', estado: 'error', resultado: { message: 'rpc 500' }, duplicado: false },
+      { tool_use_id: 'toolu_2', estado: 'completado', resultado: { ok: true, data: {} }, duplicado: true },
+    ],
+  });
+  assert.equal(r.mensaje.content[0].is_error, true, 'el 5xx tiene que viajar como error tipificado');
+  assert.match(r.mensaje.content[0].content, /rpc 500/);
+  assert.equal(r.mensaje.content[1].is_error, undefined);
+  assert.equal(r.con_error, 1);
+  assert.equal(r.reentregas, 1, 'la reentrega se cuenta, no se oculta');
+  assert.equal(r.estado_interno, 'solicitar_modelo');
+});
+
+// ------------------------------------------------------- expandir-cola-tools
+
+const colaDeDos = {
+  rol: 'documental',
+  ronda: 1,
+  execution_id: UUID.ejecucion,
+  tarea_id: UUID.tarea,
+  caso_id: UUID.caso,
+  paso: 3,
+  base_rest: 'https://ejemplo/rest/v1',
+  pending_tool_use_ids: ['toolu_1', 'toolu_2'],
+  checkpoint: {
+    cola_tools: [
+      { tool_use_id: 'toolu_1', nombre: 'forense_perfil', argumentos: { rfc: 'AAA010101AAA' } },
+      { tool_use_id: 'toolu_2', nombre: 'forense_facturas', argumentos: { rfc: 'AAA010101AAA' } },
+    ],
+  },
+};
+
+test('[SIMULADO] cola: se expanden TODOS los tool_use, en orden y con identidad de backend', () => {
+  const r = expandirColaToolsNodo(colaDeDos);
+  assert.equal(r.total, 2, 'dos tool_use en una respuesta son dos ítems, no uno');
+  assert.deepEqual(r.items.map((i) => i.tool_use_id), ['toolu_1', 'toolu_2']);
+  assert.deepEqual(r.items.map((i) => i.orden), [0, 1]);
+  for (const item of r.items) {
+    // p_tarea / p_caso / p_operacion los fija el backend: el modelo no los elige.
+    assert.equal(item.argumentos_backend.p_tarea, UUID.tarea);
+    assert.equal(item.argumentos_backend.p_caso, UUID.caso);
+    assert.equal(item.argumentos_backend.p_operacion, `${UUID.tarea}:3:${item.tool_use_id}`);
+    assert.equal(item.base_rest, 'https://ejemplo/rest/v1');
+  }
+  // El argumento del modelo se conserva; no se reescribe.
+  assert.equal(r.items[0].argumentos_backend.rfc, 'AAA010101AAA');
+});
+
+test('[SIMULADO] cola: una herramienta fuera de la allowlist detiene el paso, no se llama', () => {
+  const prohibida = {
+    ...colaDeDos,
+    pending_tool_use_ids: ['toolu_1'],
+    checkpoint: { cola_tools: [{ tool_use_id: 'toolu_1', nombre: 'forense_seguir_dinero', argumentos: {} }] },
+  };
+  assert.throws(() => expandirColaToolsNodo(prohibida), /no permitida para documental/);
+  // `leer_senal` solo existe en ronda informada para un especialista (06 ACL).
+  const r1 = {
+    ...colaDeDos,
+    ronda: 1,
+    pending_tool_use_ids: ['toolu_1'],
+    checkpoint: { cola_tools: [{ tool_use_id: 'toolu_1', nombre: 'forense_leer_senal', argumentos: {} }] },
+  };
+  assert.throws(() => expandirColaToolsNodo(r1), /no permitida para documental en ronda 1/);
+  const r2 = expandirColaToolsNodo({ ...r1, ronda: 2 });
+  assert.equal(r2.items[0].nombre, 'forense_leer_senal');
+});
+
+test('[SIMULADO] cola: sin pendientes o con un id sin entrada, el nodo falla en vez de inventar', () => {
+  assert.throws(
+    () => expandirColaToolsNodo({ ...colaDeDos, pending_tool_use_ids: [], checkpoint: { cola_tools: [] } }),
+    /sin tool_use pendientes/,
+  );
+  assert.throws(
+    () => expandirColaToolsNodo({ ...colaDeDos, pending_tool_use_ids: ['toolu_9'] }),
+    /pendiente sin entrada en la cola/,
+  );
+});
+
+
+// La allowlist del nodo y la que el system promete al modelo no pueden
+// separarse: un prompt que autoriza una herramienta que el worker rechaza
+// gasta un turno y deja al especialista sin su pizarrón en ronda informada.
+test('[SIMULADO] cola: la allowlist del nodo es la misma que la del ensamblador de prompts', () => {
+  for (const rol of ['documental', 'financiero', 'relacional', 'temporal', 'externo', 'auditor', 'defensor']) {
+    for (const ronda of [1, 2]) {
+      const delPrompt = [...toolsPorRol(rol, ronda)].sort();
+      for (const nombre of delPrompt) {
+        const r = expandirColaToolsNodo({
+          ...colaDeDos,
+          rol,
+          ronda,
+          pending_tool_use_ids: ['toolu_1'],
+          checkpoint: { cola_tools: [{ tool_use_id: 'toolu_1', nombre, argumentos: {} }] },
+        });
+        assert.equal(r.items[0].nombre, nombre, `${rol}/r${ronda}: el nodo rechaza ${nombre}, que el prompt autoriza`);
+      }
+    }
+  }
 });
 
 // ---------------------------------------------------------- evaluar-frontera

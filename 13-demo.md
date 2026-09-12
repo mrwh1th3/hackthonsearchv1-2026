@@ -108,3 +108,14 @@ Recorrido adicional para preguntas: abrir historial → reporte tipo Docs → se
 5. ¿La evaluación premia cubrir más tipologías, o cubrir menos con mejor sustento?
 
 La primera y la quinta son las que más pueden cambiar dónde se invierten las últimas ocho horas.
+
+## Addendum H0 (21): lo que el juez principal dijo que evaluará
+
+Ajustes al guion, sin quitar nada de lo anterior:
+
+- **Abrir como fundadores, no como contratistas.** Primera frase: qué hace el producto, para quién y qué **no** hace todavía (padrón real, revisión humana obligatoria, sesgo por giro). Cerrar con costo por caso medido y latencia p50/p95 reales de la corrida.
+- **Tendencia, no anomalía.** Al abrir el caso, mostrar primero la `Trayectoria` (serie mensual con alta, primer CFDI, pico, silencio, 69-B) y decir: "no marcamos por una transacción rara; marcamos por una trayectoria que no se explica de forma inocente".
+- **"¿Por qué esta sí y aquella no?"** Después del dictamen, abrir el panel `Contraste`: el RFC comparable con resultado distinto y la razón tipificada. Ese es el minuto que responde literalmente la pregunta del juez.
+- **Inyección en vivo (2:45–3:20 alternativo).** Ofrecer al jurado inyectar su propio paquete en `/datos → Inyectar datos en vivo`, o usar el paquete (a) `eval/inyecciones/`; enseñar `/inyecciones/[id]`: recibida → validada → snapshot N+1 → pistas nuevas → clusters afectados → investigación → dictamen, con timestamps reales, y el diff antes/después. Si la latencia medida supera el tiempo de exposición, mostrar la ejecución guardada e identificarla como tal. Tener a mano el paquete (c) (trampa legítima) para demostrar `anomalia_explicada` bajo inyección.
+- **El camino.** Ruta `/metodo` con la bitácora de decisiones (DECISIONES.md): decisiones bajo ambigüedad, alternativas descartadas, evidencia. Un juez que pregunte "¿cómo llegaron aquí?" recibe esa pantalla.
+- **Preguntas nuevas para el jurado:** ¿el paquete que inyectan sigue el formato CFDI/movimientos que publicamos o traen columnas propias (mapper)? ¿Evalúan la reacción por latencia, por explicación o por ambas? ¿Quieren ver el caso legítimo bajo inyección?
