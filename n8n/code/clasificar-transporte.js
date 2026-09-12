@@ -2,7 +2,12 @@
 // Fuente: ../runtime/nodos/clasificar-transporte.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs
 // Worker: 429/5xx con Retry-After, timeout ambiguo (17 §6).
 
-const x = $input.first().json;
+const ejecucion = $('Cargar ejecución').first().json;
+const respuesta = $input.first().json;
+const x = Object.assign({}, respuesta, {
+  intento: Number($('Reservar request').first().json.intento_transporte ?? 0) + 1,
+  deadline_at: ejecucion.deadline_at,
+});
 const BASE_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 8000;
 const MAX_REINTENTOS = Number(x.max_reintentos ?? 2);

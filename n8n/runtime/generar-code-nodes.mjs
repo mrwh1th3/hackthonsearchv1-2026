@@ -21,11 +21,19 @@ const MARCA_FIN = '// <<<CODE_NODE_FIN';
 const PREAMBULO = 'const x = $input.first().json;';
 const EPILOGO = 'return [{ json: salida }];';
 
-const nodo = (archivo, nota) => ({
+// Algunos nodos no se alimentan solo del nodo anterior: necesitan la identidad
+// del claim (`$('Decidir accion')`), el artefacto de contexto
+// (`$('Cargar ejecución')`) o TODOS los ítems del lote de herramientas
+// (`$input.all()`). El preámbulo es parte del contrato del nodo, así que se
+// declara aquí junto a su fuente y no se escribe a mano dentro del JSON.
+const PASO = "const paso = $('Decidir accion').first().json;";
+const EJECUCION = "const ejecucion = $('Cargar ejecución').first().json;";
+
+const nodo = (archivo, nota, preambulo = PREAMBULO, epilogo = EPILOGO) => ({
   fuente: path.join(RAIZ_N8N, 'runtime', 'nodos', `${archivo}.mjs`),
   destino: path.join(RAIZ_N8N, 'code', `${archivo}.js`),
-  preambulo: PREAMBULO,
-  epilogo: EPILOGO,
+  preambulo,
+  epilogo,
   nota,
 });
 
@@ -38,10 +46,74 @@ export const GENERADOS = [
     nota: 'Auditor Final (07). Entrada preparada por backend, nunca JSON de agente sin validar.',
   },
   nodo('decidir-paso', 'Worker: traduce el checkpoint a la rama de ESTA ejecución (17 §3).'),
-  nodo('construir-cuerpo', 'Worker: compone el body de /v1/messages con insumos de DB (17 §5.2).'),
-  nodo('clasificar-transporte', 'Worker: 429/5xx con Retry-After, timeout ambiguo (17 §6).'),
-  nodo('interpretar-respuesta', 'Worker: stop_reason, cola de tool_use y parseo de salida (17 §5.5–5.8).'),
-  nodo('armar-tool-results', 'Worker: un tool_result por cada tool_use_id, en orden (17 §5.5).'),
+  nodo(
+    'construir-cuerpo',
+    'Worker: compone el body de /v1/messages con el system embebido y el transcript del checkpoint (17 §5.2).',
+    [
+      PASO,
+      EJECUCION,
+      'const reserva = $input.first().json;',
+      'const x = Object.assign({}, ejecucion, paso, {',
+      '  request_id: reserva.request_id ?? paso.request_id,',
+      '  mensajes: (ejecucion.checkpoint || {}).mensajes,',
+      "  sin_herramientas: paso.motivo_request === 'reparacion',",
+      '  max_tokens: MAX_TOKENS_SALIDA[ejecucion.rol] ?? 2000,',
+      '  techo_caracteres: CATALOGO_PROMPTS.techos[ejecucion.rol] ?? 0,',
+      '  catalogo_prompts: CATALOGO_PROMPTS,',
+      '});',
+    ].join('\n'),
+  ),
+  nodo(
+    'clasificar-transporte',
+    'Worker: 429/5xx con Retry-After, timeout ambiguo (17 §6).',
+    [
+      EJECUCION,
+      'const respuesta = $input.first().json;',
+      'const x = Object.assign({}, respuesta, {',
+      "  intento: Number($('Reservar request').first().json.intento_transporte ?? 0) + 1,",
+      '  deadline_at: ejecucion.deadline_at,',
+      '});',
+    ].join('\n'),
+  ),
+  nodo(
+    'interpretar-respuesta',
+    'Worker: stop_reason, cola de tool_use y parseo de salida (17 §5.5–5.8).',
+    [
+      PASO,
+      EJECUCION,
+      'const x = Object.assign({}, paso, {',
+      '  rol: ejecucion.rol,',
+      "  respuesta: $('POST /v1/messages').first().json,",
+      '  mensajes_previos: (ejecucion.checkpoint || {}).mensajes ?? [],',
+      '});',
+    ].join('\n'),
+  ),
+  nodo(
+    'expandir-cola-tools',
+    'Worker: un ítem por tool_use de la respuesta, en orden y con p_operacion de backend (17 §5.5).',
+    [
+      PASO,
+      EJECUCION,
+      'const x = Object.assign({}, ejecucion, paso, {',
+      '  checkpoint: ejecucion.checkpoint,',
+      '  base_rest: BASE_REST,',
+      '});',
+    ].join('\n'),
+    'return salida.items.map((json) => ({ json }));',
+  ),
+  nodo(
+    'armar-tool-results',
+    'Worker: un tool_result por cada tool_use_id, en orden, sobre TODO el lote (17 §5.5).',
+    [
+      PASO,
+      EJECUCION,
+      'const x = Object.assign({}, paso, {',
+      "  cola: $('Expandir cola de tools').all().map((i) => i.json),",
+      '  resultados: $input.all().map((i) => i.json),',
+      '  mensajes_previos: (ejecucion.checkpoint || {}).mensajes ?? [],',
+      '});',
+    ].join('\n'),
+  ),
   nodo('evaluar-frontera', 'Investigación: tabla de despertar de 03 y frontera material (07 §2.6).'),
   nodo('normalizar-investigacion', 'Investigación: une webhook y subworkflow; rechaza campos no aceptados.'),
 ];

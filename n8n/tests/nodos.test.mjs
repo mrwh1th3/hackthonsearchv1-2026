@@ -20,6 +20,7 @@ import { evaluarFronteraNodo } from '../runtime/nodos/evaluar-frontera.mjs';
 import { normalizarInvestigacionNodo } from '../runtime/nodos/normalizar-investigacion.mjs';
 
 import { clasificar } from '../runtime/transporte.mjs';
+import { ESTADOS_TERMINALES, siguiente } from '../runtime/checkpoint.mjs';
 import { parsearRespuesta } from '../runtime/provider/messages.mjs';
 import { calcularDespertados, conjuntoRonda2, evaluarFrontera } from '../runtime/despertar.mjs';
 import { AHORA, DEADLINE, UUID, mensajeTexto, mensajeToolUse, respuestaOK, salidaEspecialistaValida } from './_ayudas.mjs';
@@ -63,6 +64,74 @@ test('[SIMULADO] decidir: un estado terminal no reabre el paso', () => {
   for (const estado of ['terminado', 'error', 'timeout']) {
     const r = decidirPaso({ checkpoint: cp({ estado_interno: estado }), ahora_ms: AHORA });
     assert.equal(r.accion, 'cerrar');
+  }
+});
+
+// Regresión (hallazgo alto del verificador H3): la rama `cerrar` devolvía el
+// estado interno de ORIGEN. El grafo del worker evalúa «¿Estado terminal?»
+// DESPUÉS de guardar el checkpoint, leyendo ese mismo campo: con el estado de
+// origen, un paso que cierra por `valida` o por `deadline` se guardaba como
+// `validar_salida` / `solicitar_modelo`, el IF decía «no terminal» y el worker
+// se redespachaba a sí mismo en bucle en vez de finalizar la tarea.
+test('[SIMULADO] decidir: al cerrar devuelve el estado interno DESTINO, no el de origen', () => {
+  const valida = decidirPaso({ checkpoint: cp({ estado_interno: 'validar_salida', salida_valida: true }), ahora_ms: AHORA });
+  assert.equal(valida.accion, 'cerrar');
+  assert.equal(valida.evento, 'valida');
+  assert.equal(valida.estado_interno, 'terminado', 'salida válida cierra en terminado, no en validar_salida');
+
+  const vencido = decidirPaso({ checkpoint: cp({ estado_interno: 'solicitar_modelo' }), ahora_ms: Date.parse(DEADLINE) + 1 });
+  assert.equal(vencido.evento, 'deadline');
+  assert.equal(vencido.estado_interno, 'timeout');
+
+  const sinReparacion = decidirPaso({ checkpoint: cp({ estado_interno: 'validar_salida', salida_valida: false, reparaciones_json: 1 }), ahora_ms: AHORA });
+  assert.equal(sinReparacion.evento, 'sin_reparacion');
+  assert.equal(sinReparacion.estado_interno, 'error');
+
+  const sinCola = decidirPaso({ checkpoint: cp({ estado_interno: 'ejecutar_herramienta', pending_tool_use_ids: [] }), ahora_ms: AHORA });
+  assert.equal(sinCola.evento, 'error_fatal');
+  assert.equal(sinCola.estado_interno, 'error');
+
+  const desconocido = decidirPaso({ checkpoint: cp({ estado_interno: 'estado_que_no_existe' }), ahora_ms: AHORA });
+  assert.equal(desconocido.evento, 'error_fatal');
+  assert.equal(desconocido.estado_interno, 'error');
+});
+
+test('[SIMULADO] decidir: todo cierre cae en un estado terminal y arrastra estado_tarea', () => {
+  const casos = [
+    [cp({ estado_interno: 'validar_salida', salida_valida: true }), AHORA, 'completada'],
+    [cp({ estado_interno: 'solicitar_modelo' }), Date.parse(DEADLINE) + 1, 'timeout'],
+    [cp({ estado_interno: 'reparar_json', reparaciones_json: 1 }), AHORA, 'error'],
+    [cp({ estado_interno: 'terminado' }), AHORA, 'completada'],
+    [cp({ estado_interno: 'timeout' }), AHORA, 'timeout'],
+    [cp({ estado_interno: 'error' }), AHORA, 'error'],
+  ];
+  for (const [checkpoint, ahora_ms, estadoTarea] of casos) {
+    const r = decidirPaso({ checkpoint, ahora_ms });
+    assert.equal(r.accion, 'cerrar');
+    assert.ok(ESTADOS_TERMINALES.includes(r.estado_interno), `${checkpoint.estado_interno} cerró en ${r.estado_interno}`);
+    assert.equal(r.estado_tarea, estadoTarea);
+  }
+});
+
+// El Code node inlinea el destino porque no puede importar checkpoint.mjs. Este
+// test compara ambas implementaciones para que no se separen en silencio (mismo
+// patrón que clasificar-transporte contra transporte.mjs).
+test('[SIMULADO] decidir: el destino inlineado coincide con TRANSICIONES de checkpoint.mjs', () => {
+  const pares = [
+    ['validar_salida', 'valida', cp({ estado_interno: 'validar_salida', salida_valida: true }), AHORA],
+    ['validar_salida', 'sin_reparacion', cp({ estado_interno: 'validar_salida', salida_valida: false, reparaciones_json: 1 }), AHORA],
+    ['reparar_json', 'sin_presupuesto', cp({ estado_interno: 'reparar_json', reparaciones_json: 1 }), AHORA],
+    ['solicitar_modelo', 'deadline', cp({ estado_interno: 'solicitar_modelo' }), Date.parse(DEADLINE) + 1],
+    ['ejecutar_herramienta', 'deadline', cp({ estado_interno: 'ejecutar_herramienta', pending_tool_use_ids: ['toolu_1'] }), Date.parse(DEADLINE) + 1],
+    ['ejecutar_herramienta', 'error_fatal', cp({ estado_interno: 'ejecutar_herramienta', pending_tool_use_ids: [] }), AHORA],
+  ];
+  for (const [origen, eventoEsperado, checkpoint, ahora_ms] of pares) {
+    const r = decidirPaso({ checkpoint, ahora_ms });
+    // `sin_reparacion` es el vocabulario del nodo; en checkpoint.mjs el mismo
+    // corte se llama `sin_reparacion` desde validar_salida y `sin_presupuesto`
+    // desde reparar_json: ambos llevan a `error`.
+    assert.equal(r.estado_interno, siguiente(origen, eventoEsperado),
+      `${origen} --${eventoEsperado}--> esperado ${siguiente(origen, eventoEsperado)}, el nodo dio ${r.estado_interno}`);
   }
 });
 

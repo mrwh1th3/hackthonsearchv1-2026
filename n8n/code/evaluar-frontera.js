@@ -96,6 +96,12 @@ const conjunto = [...new Set([...despertados, ...porExpansion])]
   .filter((rol) => evaluables.has(FAMILIA_POR_ROL[rol]))
   .sort();
 const salida = {
+  // Identidad del caso: el nodo siguiente crea tareas con ella y no debe
+  // volver a resolverla (misma convención que el worker).
+  caso_id: x.caso_id ?? null,
+  corrida_id: x.corrida_id ?? null,
+  cluster_id: x.cluster_id ?? null,
+  investigacion_id: x.investigacion_id ?? null,
   despertados: conjunto,
   motivos,
   frontera,
