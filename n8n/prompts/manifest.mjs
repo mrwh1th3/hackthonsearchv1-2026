@@ -15,6 +15,7 @@ import { contractVersion } from '../../contracts/index.mjs';
 import {
   ROLES_LLM, SCHEMA_SALIDA_POR_ROL, MODELO_PROPUESTO_POR_ROL, TECHO_CARACTERES,
   TOOLS_DE_SISTEMA, FEWSHOT_POR_ROL, FEWSHOT_POR_DEFECTO, toolsPorRol,
+  MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, AMBITO_TECHO_POR_DEFECTO, TECHO_SYSTEM_CARACTERES,
 } from './ensamblar.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -67,6 +68,13 @@ export function construirManifest() {
       ...[...ROLES_LLM, 'mapper'],
       ...Object.keys(FEWSHOT_POR_ROL).map(rol => `${rol}+fewshot`),
     ],
+    // El reintento es una variante con sufijo (`<rol>+reintento:<motivo>`): 35 combinaciones
+    // no caben en una lista útil, así que se publican sus dos ejes y la regla de nombre.
+    motivos_reintento: [...MOTIVOS_REINTENTO],
+    roles_con_reintento: [...ROLES_CON_REINTENTO],
+    sufijo_variante_reintento: 'reintento:<motivo>',
+    ambito_techo_por_defecto: AMBITO_TECHO_POR_DEFECTO,
+    techo_system_caracteres: TECHO_SYSTEM_CARACTERES,
     schema_salida_por_rol: { ...SCHEMA_SALIDA_POR_ROL },
     modelo_propuesto_por_rol: { ...MODELO_PROPUESTO_POR_ROL },
     techo_caracteres_por_rol: { ...TECHO_CARACTERES },
@@ -108,7 +116,9 @@ export function verificarManifest() {
   for (const clave of [
     'version_manifest', 'contracts_version', 'regla_hash', 'roles', 'tools_de_sistema_prohibidas',
     'tools_por_rol', 'schema_salida_por_rol', 'modelo_propuesto_por_rol', 'techo_caracteres_por_rol',
-    'fewshot_por_rol', 'fewshot_por_defecto', 'variantes',
+    'fewshot_por_rol', 'fewshot_por_defecto', 'variantes', 'motivos_reintento',
+    'roles_con_reintento', 'sufijo_variante_reintento', 'ambito_techo_por_defecto',
+    'techo_system_caracteres',
   ]) {
     if (JSON.stringify(actual[clave]) !== JSON.stringify(esperado[clave])) {
       diferencias.push(`${clave} desactualizado`);

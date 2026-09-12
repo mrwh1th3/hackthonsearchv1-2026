@@ -90,6 +90,24 @@ especialista sin datos (o directamente no cabe).
 las variantes posibles; el runtime la usa para calcular `prompt_hash` y registrarla junto a
 `version_prompts` en `corridas`.
 
+La segunda variante es el **reintento**. Cuando el auditor de proceso rechaza un intento, el
+siguiente se ensambla con `{ motivo_reintento }` y uno de los cinco motivos tipificados
+(`evidencia_insuficiente`, `cadena_incompleta`, `defensa_no_considerada`, `evidencia_invalida`,
+`contradiccion`). Sólo reintentan los siete roles que investigan: los cinco especialistas, el
+Auditor y el Defensor. Cambia el texto del mensaje —el bloque `## Reintento`, con la
+instrucción propia de ese motivo— y no cambian el system, la allowlist, el contrato de salida
+ni el techo; el bloque compite por el mismo presupuesto que los datos. Reintentar no sube el
+nivel (lo calcula código) ni convierte la falta de pruebas en explicación inocente.
+
+El ensamblador rechaza con código tipificado el reintento mal declarado:
+`motivo_reintento_invalido`, `reintento_no_disponible`, `reintento_sin_intento` (motivo con
+`intento=0`) y `motivo_reintento_ausente` (`intento≥1` sin motivo: no se reintenta a ciegas).
+
+La variante se nombra con sufijo, `<rol>+reintento:<motivo>`, y se combina con la anterior
+(`documental+fewshot+reintento:evidencia_invalida`). Las 35 combinaciones no se listan en
+`variantes`: el manifest publica sus dos ejes (`motivos_reintento`, `roles_con_reintento`) y
+la regla de nombre (`sufijo_variante_reintento`).
+
 Procedimiento de comparación (10 §Loop de iteración), **una cosa por corrida**:
 
 1. Editar un prompt **o** cambiar una variante. Nunca las dos a la vez.

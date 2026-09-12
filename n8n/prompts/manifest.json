@@ -3,12 +3,12 @@
   "contracts_version": "1.2.1",
   "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
   "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
-  "version_prompts": "3c5a58c37b50",
+  "version_prompts": "5eefeb37feb7",
   "archivos": [
     {
       "name": "README.md",
-      "sha256": "2d7ddef1cfc0d30c4bb8c73a435731dfbdf52e0ee30a20b9bb89b7b4c99ee54e",
-      "chars": 6612
+      "sha256": "907a59181acfeeed2c9ab065915e17a682454992269680d563bee06e0a675db4",
+      "chars": 7925
     },
     {
       "name": "auditor.md",
@@ -32,8 +32,8 @@
     },
     {
       "name": "ensamblar.mjs",
-      "sha256": "132c7c1bc5f1f682f88e60ad4ce59093eba301344dfad6fd0436b8307852a863",
-      "chars": 37266
+      "sha256": "9c8cd6bd45b572fd313c32cbc414a8bdc2722b315d2e61369dd033b054dc8d9b",
+      "chars": 41318
     },
     {
       "name": "esp-documental.md",
@@ -87,8 +87,8 @@
     },
     {
       "name": "manifest.mjs",
-      "sha256": "b17ea5104c936f2e48154ffb85c47a45a51d672623625f985fb7f3a9fdfe5898",
-      "chars": 5509
+      "sha256": "2d8aa697f15da10a988f8fc29cb7961b3aae99c75e36d43e5200862a557a695b",
+      "chars": 6183
     },
     {
       "name": "mapper.md",
@@ -301,6 +301,25 @@
     "temporal+fewshot",
     "externo+fewshot"
   ],
+  "motivos_reintento": [
+    "evidencia_insuficiente",
+    "cadena_incompleta",
+    "defensa_no_considerada",
+    "evidencia_invalida",
+    "contradiccion"
+  ],
+  "roles_con_reintento": [
+    "documental",
+    "financiero",
+    "relacional",
+    "temporal",
+    "externo",
+    "auditor",
+    "defensor"
+  ],
+  "sufijo_variante_reintento": "reintento:<motivo>",
+  "ambito_techo_por_defecto": "paquete",
+  "techo_system_caracteres": 10000,
   "schema_salida_por_rol": {
     "documental": "agents.especialista",
     "financiero": "agents.especialista",
