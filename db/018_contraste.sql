@@ -188,16 +188,19 @@ language sql stable security invoker set search_path = '' as $$
          -- RFC de 160 caracteres la frase queda muy por debajo.
          left(case r.razon
            when 'cobertura_insuficiente' then
-             format('%s comparte el giro del caso y disparó las mismas pistas %s, pero su cobertura quedó incompleta (%s limitaciones abiertas): cerró en %s frente a %s del caso.',
+             format('%s comparte el giro del caso y disparó las mismas pistas %s, pero su cobertura quedó incompleta (%s %s): cerró en %s frente a %s del caso.',
                     r.rfc, array_to_string(r.codigos, ', '), r.n_pend,
+                    case when r.n_pend = 1 then 'limitación abierta'
+                         else 'limitaciones abiertas' end,
                     r.nivel, (select nivel from k))
            when 'defensa_aceptada' then
              format('%s comparte el giro del caso y disparó las mismas pistas %s, pero su defensa descartó %s de %s pistas evaluadas: cerró en %s frente a %s del caso.',
                     r.rfc, array_to_string(r.codigos, ', '), r.n_desc, r.n_eval,
                     r.nivel, (select nivel from k))
            else
-             format('%s comparte el giro del caso y disparó las mismas pistas %s, pero confirmó %s familias frente a %s del caso: cerró en %s frente a %s del caso.',
+             format('%s comparte el giro del caso y disparó las mismas pistas %s, pero confirmó %s %s frente a %s del caso: cerró en %s frente a %s del caso.',
                     r.rfc, array_to_string(r.codigos, ', '), r.n_fam,
+                    case when r.n_fam = 1 then 'familia' else 'familias' end,
                     (select n_fam from k), r.nivel, (select nivel from k))
          end, 600)
     from razonado r

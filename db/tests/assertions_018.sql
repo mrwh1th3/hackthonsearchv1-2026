@@ -190,7 +190,7 @@ begin
   perform pruebas.assert('018: razon_tipificada = familia_faltante con menos familias confirmadas',
     r.razon_tipificada = 'familia_faltante', coalesce(r.razon_tipificada, 'sin fila'));
   perform pruebas.assert('018: familia_faltante cita los dos conteos de familias',
-    r.explicacion like '%1 familias frente a 3%', left(coalesce(r.explicacion, 'null'), 200));
+    r.explicacion like '%1 familia frente a 3%', left(coalesce(r.explicacion, 'null'), 200));
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -210,7 +210,7 @@ begin
   perform pruebas.assert('018: razon_tipificada = cobertura_insuficiente con cobertura_completa=false',
     r.razon_tipificada = 'cobertura_insuficiente', coalesce(r.razon_tipificada, 'sin fila'));
   perform pruebas.assert('018: cobertura_insuficiente cuenta las limitaciones abiertas, no las cita',
-    r.explicacion like '%(1 limitaciones abiertas)%'
+    r.explicacion like '%(1 limitación abierta)%'
       and r.explicacion not like '%satélite%', left(coalesce(r.explicacion, 'null'), 200));
 end $$;
 
