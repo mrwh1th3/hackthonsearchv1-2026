@@ -142,8 +142,10 @@ uno a uno; el resumen:
    columna** con el nombre de la función: el nodo siguiente no encuentra
    `$json.caso_id` y el grafo se rompe donde no falló nada. Por eso los nodos del
    camino de investigación proyectan con `jsonb_to_record(...) AS x(col tipo…)`.
-   `falla=0` **no** es prueba de cableado; la prueba es
-   `node n8n/tests/e2e-camino-worker.mjs <base>`.
+   `falla=0` **no** es prueba de cableado; la prueban
+   `node n8n/tests/verificar-forma-nodos.mjs <base>` (ejecuta la SQL de cada
+   nodo recableado dentro de BEGIN/ROLLBACK y falla si una columna declarada en
+   `CONTRATOS_NODOS` vuelve NULL) y `node n8n/tests/e2e-camino-worker.mjs <base>`.
 
 ### 3.5 Funciones que faltan en 001–008 (petición a forense-db)
 
@@ -259,9 +261,13 @@ pg_restore -U postgres -d forense_rt --no-owner --no-acl /tmp/forense.dump
 psql -U postgres -d forense_rt -c "ALTER TABLE forense.bitacora \
   DROP CONSTRAINT ck_bitacora_tipo_evento, ADD CONSTRAINT ck_bitacora_tipo_evento \
   CHECK (tipo_evento IS NULL OR tipo_evento = ANY (ARRAY[...,'paso_en_cola','paso_checkpoint']))"
-node n8n/tests/preparar-sql.mjs forense_rt      # espera falla=0
-node n8n/tests/e2e-camino-worker.mjs forense_rt # espera eventos>0 y un nivel
+node n8n/tests/preparar-sql.mjs forense_rt        # espera falla=0
+node n8n/tests/e2e-camino-worker.mjs forense_rt   # espera eventos>0 y un nivel
+node n8n/tests/verificar-forma-nodos.mjs forense_rt  # espera con_problema=0
 ```
+
+El tercero se corre **después** del segundo: necesita un caso con tareas de
+ronda 1 para atar los parámetros.
 
 Referencia medida el 2026-09-12 H5 sobre un clon de `gen-v1` (regla 10: se clona,
 nunca se investiga sobre `gen-v1`): **45 eventos en `forense.bitacora`**
