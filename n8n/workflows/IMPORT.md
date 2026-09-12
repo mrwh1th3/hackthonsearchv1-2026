@@ -110,6 +110,14 @@ segundo; 21 §5 es normativo sobre 00–20).
 | `POST outbound-call` → cuerpo | lo arma `forense.crear_intento_llamada` | Requiere `ELEVENLABS_AGENT_ID` y `ELEVENLABS_AGENT_PHONE_NUMBER_ID` en la fila de configuración, no en el JSON. |
 | `Cada 10 s` (reconciliador) | 10 s | Ajustar tras medir en la instancia (17 §3 lo pide configurable). |
 
+**Variables de entorno de la instancia n8n (no van en el JSON):**
+
+| Variable | Para qué | Si falta |
+|---|---|---|
+| `NODE_FUNCTION_ALLOW_BUILTIN` | Debe incluir `crypto`. El Code node «Verificar HMAC» de `FORENSE_resultado_llamada` lleva embebido `integrations/elevenlabs/hmac.mjs`, que usa `createHmac`/`timingSafeEqual`. | El nodo lanza y **todo callback de voz se rechaza**. Es el lado seguro, pero la llamada nunca se marca entregada. Bloqueante para la demo de voz. |
+| `FORENSE_ELEVENLABS_WEBHOOK_SECRET` | Secreto con el que ElevenLabs firma el callback. Se lee con `$env` dentro del Code node. | `verificarFirma` devuelve `secreto_no_configurado` y el callback se rechaza (401). |
+| Webhook `Webhook resultado` en modo **raw body** | La firma es sobre los BYTES del cuerpo: un JSON reserializado por n8n no reproduce lo firmado. | `'el webhook no entregó el cuerpo crudo'` y 401 permanente, aunque la firma sea buena. |
+
 ### 3.3 Dependencias de base de datos (bloqueantes)
 
 Sin esto, los workflows importan pero no corren. `preparar-sql.mjs` los localiza
@@ -191,7 +199,61 @@ intento en la posición de los agentes; `expandir_y_crear_tareas_r2` mandaba jso
 donde la firma pide `text[]`; `public.forense_validar_evidencia` se llamaba con
 dos argumentos y sólo acepta uno.
 
+### 3.5.bis Contrato de entrada de `FORENSE_editar_expediente` (para forense-editor)
+
+El BFF llama al webhook `editar`. Contrato del cuerpo, tal y como lo aplica el
+Code node «Validar solicitud» hoy:
+
+| Campo | Obligatorio | Nota |
+|---|---|---|
+| `caso_id` | sí | |
+| `idempotency_key` | sí | Sin ella no hay reintento seguro. |
+| `version_base` | sí | Sin ella no se detecta el conflicto de documento. |
+| `modo` | no (`propuesta`) | Aceptados HOY: `pregunta`, `propuesta`. |
+| `instruccion` | no | Llega como `instruccion_untrusted`: es DATO, nunca system prompt (regla 6, 17 §7). |
+| `seleccion`, `directriz_id` | no | |
+| `system`, `system_prompt`, `modelo`, `model`, `nivel`, `dictamen`, `telefono` | **rechazados** | El nivel no lo decide el editor ni el LLM (regla 4); el modelo sale de configuración. |
+
+**Quién mintea `propuesta_id` (decisión del coordinador).** El workflow **no**
+lo mintea:
+
+- `modo=propuesta` → `forense.guardar_propuesta_edicion(...)` **devuelve** el
+  `propuesta_id`. El workflow lo emite en la respuesta; el BFF lo guarda.
+- `modo=aplicar` / `modo=revertir` → el `propuesta_id` **lo aporta el BFF** en
+  el cuerpo, tomado de la propuesta que el usuario está aceptando.
+  `forense.aplicar_propuesta(p_propuesta uuid, p_perfil, p_contenido_json,
+  p_markdown)` y `forense.revertir_expediente(p_caso, p_version_objetivo,
+  p_version_base, p_idempotency, p_perfil)` lo exigen (010).
+
+> **PENDIENTE H8 (runtime).** Las ramas `aplicar` y `revertir` todavía NO están
+> cableadas en `FORENSE_editar_expediente`: «Validar solicitud» rechaza esos
+> modos, y el switch sólo enruta `pregunta`/`propuesta`. Las funciones de 010
+> existen y tipan (`preparar-sql.mjs` → `falla=0`). Al cablearlas, «Validar
+> solicitud» debe exigir `propuesta_id` para `aplicar` (y `version_objetivo`
+> para `revertir`) y rechazar la petición sin él: Aplicar es determinista y no
+> puede inventar sobre qué propuesta aplica.
+
 ### 3.6 Contratos de estado descubiertos al ejecutar
+
+**H8 — forma de `forense.paquete_auditor_final` (010).** La función existe y
+tipa, pero NO devuelve la forma que consume `dictaminar()`
+(`n8n/runtime/auditor-final.mjs`). El nodo «Paquete auditor final» adapta las
+tres diferencias en SQL; si 010 cambia, se borra esa capa, no se duplica:
+
+| `dictaminar()` espera | 010 entrega | Consecuencia sin adaptar |
+|---|---|---|
+| `caso.n_reintentos` | `presupuesto.n_reintentos` | `Number(undefined)` → `NaN < 2` es `false`: nunca se autorizaría un reintento. |
+| `presupuesto.permite_reintento` | `presupuesto.agotado` | Igual: `undefined !== true` → sin reintento. |
+| `evidencia[].hecho_validado.monto_centavos` | `evidencia[].monto_centavos` (raíz del ítem) | `dictaminar` **lanza** `Monto validado ausente/inválido para <ref_id>` en cuanto hay evidencia `cfdi` validada. Verificado: las 5 evidencias del e2e son `cfdi` y todas lo disparaban. |
+
+**H8 — `forense.estado_barrera` devuelve un jsonb escalar, no una tabla.** Un
+`SELECT * FROM forense.estado_barrera(...)` da UNA columna llamada
+`estado_barrera`. El nodo «Barrera reintento» lo hacía así y n8n recibía
+`{estado_barrera:{…}}`: el IF siguiente leía `$json.completa` = `undefined` y la
+barrera de reintento **nunca cerraba por la rama buena**. Corregido con
+`jsonb_to_record`, igual que «Esperar barrera R1». Lo cazó
+`n8n/tests/verificar-forma-nodos.mjs`, no `preparar-sql.mjs`: `PREPARE` valida
+tipos, no la forma de la salida.
 
 - `forense.tareas_agente.estado` admite `pendiente | ejecutando | completada |
   error | timeout | omitida`. **No** admite `terminado`: ése es el
@@ -254,16 +316,28 @@ completo del worker se puede ejecutar contra Postgres con el proveedor simulado,
 sin instancia n8n y sin gastar cuota de Anthropic:
 
 ```sh
-createdb -U postgres forense_rt
-pg_dump -U postgres -Fc -n forense -n public -d forense -f /tmp/forense.dump
-pg_restore -U postgres -d forense_rt --no-owner --no-acl /tmp/forense.dump
-# 009 aún no está en main: ampliar el check en ESTA base, no en la compartida
-psql -U postgres -d forense_rt -c "ALTER TABLE forense.bitacora \
-  DROP CONSTRAINT ck_bitacora_tipo_evento, ADD CONSTRAINT ck_bitacora_tipo_evento \
-  CHECK (tipo_evento IS NULL OR tipo_evento = ANY (ARRAY[...,'paso_en_cola','paso_checkpoint']))"
-node n8n/tests/preparar-sql.mjs forense_rt        # espera falla=0
-node n8n/tests/e2e-camino-worker.mjs forense_rt   # espera eventos>0 y un nivel
+# Base propia y desechable: NUNCA sobre la base compartida `forense`.
+dropdb -U postgres --if-exists forense_rt && createdb -U postgres forense_rt
+for f in db/00{1,2,3,4,5,6,7,8,9}_*.sql db/010_*.sql; do
+  psql -U postgres -d forense_rt -v ON_ERROR_STOP=1 -q -f "$f"
+done
+# Snapshot gen-v1 en solo lectura desde la base compartida (sale 3 si no está).
+bash db/tests/cargar_gen.sh forense_rt
+
+node n8n/tests/preparar-sql.mjs forense_rt           # espera falla=0
+node n8n/tests/e2e-camino-worker.mjs forense_rt      # espera eventos>0 y un nivel
 node n8n/tests/verificar-forma-nodos.mjs forense_rt  # espera con_problema=0
+```
+
+Medido el 2026-09-12 (H8) con 001–010 + `gen-v1`:
+
+| Comando | Resultado |
+|---|---|
+| `preparar-sql.mjs` | `ok=73 pendiente_004_005=0 falla=0` — con 010 aplicada ya no queda función por publicar. |
+| `e2e-camino-worker.mjs` | 46 pasos, **47 eventos** en `forense.bitacora`, 5 443 ms de SQL, nivel `no_concluyente`. El nivel lo decide `n8n/runtime/auditor-final.mjs` y se persiste con `forense.guardar_dictamen` + `forense.cerrar_caso`: el e2e **no** hace `UPDATE` directo, y si `dictaminar()` lanza, falla (no hay fallback que invente niveles). |
+| `verificar-forma-nodos.mjs` | `ok=36 con_problema=0 sin_filas=2 omitidos=35` — recorre los diez workflows; lista uno a uno los nodos sin caso declarado en vez de aprobarlos en silencio. |
+
+```sh
 ```
 
 El tercero se corre **después** del segundo: necesita un caso con tareas de
