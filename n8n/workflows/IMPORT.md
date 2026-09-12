@@ -174,6 +174,15 @@ uno a uno; el resumen:
    se resuelven igual, nombrando columnas y verificando con
    `node n8n/tests/verificar-forma-nodos.mjs <base>`.
 
+   Medido en H10 sobre `forense_rt`: **ok=37, con_problema=3, sin_filas=1,
+   omitidos=34**. De los tres, `FORENSE_inyectar/Validar filas` devuelve
+   `validada` con valor y el resto de columnas en NULL **porque el verificador
+   le pasa una ingesta sin filas**: `validar_inyeccion` contesta
+   `{ok:false, error:'contexto_invalido'}`, que sólo trae esas dos claves. Con
+   una ingesta real (`node n8n/tests/e2e-inyeccion.mjs`) las ocho columnas
+   vuelven con valor. Los otros dos (`Cargar versión base` y `Cargar caso
+   vigente`, columna `nivel`) son de otros dueños.
+
    **Aviso importante sobre `PREPARE`:** analiza tipos, no la forma de la
    salida. Casi todas las funciones de 004–008 devuelven **`jsonb` escalar**, así
    que `SELECT * FROM forense.f(...)` pasa `PREPARE` y publica **una sola
@@ -200,7 +209,7 @@ Queda **una** dependencia viva y **una** petición nueva:
 | Pedido | Quién lo usa | Estado |
 |---|---|---|
 | `forense.asegurar_clusters_inyectados(p_corrida uuid, p_inyeccion uuid)` → `table(cluster_id uuid, rfc text, creado boolean)` | `FORENSE_inyectar` / «Asegurar clusters inyectados» | **db/012, en curso.** El nodo ya está cableado a esta firma. Respaldo mientras tanto: `forense.armar_cluster_para` por RFC afectado (lo usa `n8n/tests/e2e-inyeccion.mjs`, marcado `PENDIENTE_DB_012`). |
-| Alguien tiene que poner `forense.casos.cobertura_completa = true` | `dictaminar()` la EXIGE para pasar de `no_concluyente` | **Bloqueante para el demo.** En 001–011 la única escritura a `true` es `guardar_dictamen`, que la copia del propio dictamen: es circular y hoy **ningún caso puede alcanzar `presuncion`**. Medido con `node n8n/tests/e2e-inyeccion.mjs forense_rt --ensayo a`: familias R y T sustentadas, 2/2 evidencias válidas, `pendientes=[]`, y aun así `no_concluyente`. Debe fijarla el cierre de la última ronda o la validación de evidencia; el runtime no puede inventarla (regla 4). |
+| Alguien tiene que poner `forense.casos.cobertura_completa = true` | `dictaminar()` la EXIGE para pasar de `no_concluyente` | **Bloqueante para el demo.** Verificado contra `pg_proc` de `forense_rt` (no sólo por grep del .sql): las ÚNICAS cuatro funciones que mencionan la columna son `paquete_auditor_final` (la lee), `cerrar_barreras_vencidas` y `crear_tareas_revision` (la ponen en **false** al degradar) y `guardar_dictamen`, que la copia del propio dictamen. `cerrar_ronda` **no** la toca. Es circular y hoy **ningún caso puede alcanzar `presuncion`**. Medido con `node n8n/tests/e2e-inyeccion.mjs forense_rt --ensayo a`: familias R y T sustentadas, 2/2 evidencias válidas, `pendientes=[]`, y aun así `no_concluyente`. Debe fijarla el cierre de la última ronda o la validación de evidencia; el runtime no puede inventarla (regla 4). |
 
 Lo que sigue es el registro de H5, conservado porque documenta los contratos de
 cada nodo (`CONTRATOS_NODOS`) aunque las funciones ya existan:
