@@ -135,7 +135,10 @@ done
 # no la lista de candidatos del cluster) y siembra `max_expansiones_caso=1`.
 # Sin ella `rls-scope` ve tres funciones SECURITY DEFINER abiertas a PUBLIC y
 # la cobertura vuelve a quedar en false para todo cluster real.
-for n in 010 011 012 013 014 015 016 017; do
+# 018 (oleada 6, forense-db): `v_contraste_caso`, la vista del panel Contraste
+# ("por qué esta sí y aquella no", 21 §2). Sin ella `getContraste` devuelve null
+# contra datos reales y el panel queda vacío en el demo.
+for n in 010 011 012 013 014 015 016 017 018; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional
