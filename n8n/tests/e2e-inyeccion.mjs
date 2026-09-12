@@ -21,6 +21,16 @@
 // en forense.bitacora (regla 2) y el cluster del RFC inyectado se despacha
 // PRIMERO (QA-004 / 21 §3).
 //
+// HALLAZGO H10 (medido aquí, no específico de la inyección): el ensayo (a) llega
+// con dos familias sustentadas (R, T), evidencia válida y `pendientes` vacío, y
+// aun así el nivel se queda en `no_concluyente` porque `casos.cobertura_completa`
+// sigue en false. En 001–011 ninguna función la pone en true salvo
+// `guardar_dictamen`, que la copia del dictamen — y `dictaminar()` la EXIGE para
+// pasar de `no_concluyente`. Tal cual está, ningún caso puede alcanzar
+// `presuncion`. Hace falta que el cierre de la última ronda (o la validación de
+// evidencia) la fije cuando la cobertura es real. Petición a forense-db, no algo
+// que el runtime pueda arreglar sin inventarse el dato (regla 4).
+//
 // PENDIENTE_DB_012: `forense.asegurar_clusters_inyectados(corrida, inyeccion)`
 // la entrega forense-db. Mientras no exista, este script usa el respaldo
 // `forense.armar_cluster_para` (004, ya existe) por cada RFC afectado — la misma
@@ -275,6 +285,33 @@ function correrEnsayo(ensayo) {
     `select forense.crear_caso(${lit(corrida)}::uuid, ${lit(cluster)}::uuid, 'inyeccion',
        ${lit(reg.inyeccion_id)}, ${lit(`${SELLO}:${ensayo.id}`)}, null)::text`);
   if (caso.ok !== true) throw new Error(`crear_caso falló: ${JSON.stringify(caso).slice(0, 300)}`);
+  // 7a. Ronda 1 SIMULADA: `dictaminar` sólo sube de `no_concluyente` cuando
+  //     `cobertura_completa` es true, y eso lo fija la barrera de ronda 1
+  //     cerrada, no la evidencia. Se crean las tareas de los roles evaluables
+  //     con las funciones reales, se marcan completadas (el proveedor está
+  //     simulado: no hay llamada al modelo) y se cierra la barrera con
+  //     advance_case_if_ready. El nivel lo sigue calculando código determinista.
+  const ctx1 = pasoJson('preparar_contexto_ronda1',
+    `select forense.preparar_contexto_ronda1(${lit(caso.caso_id)}::uuid)::text`);
+  const roles = (ctx1.roles_evaluables ?? ctx1.agentes ?? []).filter(Boolean);
+  const rolesSql = roles.length
+    ? `array[${roles.map(lit).join(',')}]::text[]`
+    : `array['documental','financiero','relacional','temporal','externo']::text[]`;
+  pasoJson('crear_tareas_ronda(1)',
+    `select forense.crear_tareas_ronda(${lit(caso.caso_id)}::uuid, 1, ${rolesSql})::text`);
+  paso('ronda 1: tareas completadas (proveedor simulado)',
+    `update forense.tareas_agente set estado='completada', terminado=now(),
+            lease_owner=NULL, lease_expires_at=NULL
+      where caso_id = ${lit(caso.caso_id)}::uuid and ronda = 1`);
+  paso('registrar barrera ronda1', `insert into forense.pasos_pipeline
+     (caso_id, paso, revision, tareas_esperadas, estado, deadline)
+     select ${lit(caso.caso_id)}::uuid, 'ronda1', 1,
+            coalesce(array_agg(id), '{}'), 'abierto', now() + interval '15 minutes'
+       from forense.tareas_agente where caso_id = ${lit(caso.caso_id)}::uuid and ronda = 1
+     on conflict do nothing`);
+  const avance = pasoJson('advance_case_if_ready(ronda1)',
+    `select forense.advance_case_if_ready(${lit(caso.caso_id)}::uuid, 'ronda1', NULL)::text`);
+
   // 7b. Auditor SIMULADO: sin evidencia citada el paquete siempre sale
   //     `no_concluyente` y el ensayo no mediría nada. El proveedor es simulado,
   //     pero la evidencia se registra con la RPC real (05 §4.11 valida que los
@@ -349,6 +386,13 @@ function correrEnsayo(ensayo) {
     niveles_esperados: ensayo.niveles,
     cumple: ensayo.niveles.includes(dictamen.nivel),
     cobertura_completa: paquete.cobertura_completa,
+    pendientes: (paquete.pendientes ?? []).map((x) => x.motivo ?? x),
+    familias_dictamen: dictamen.familias,
+    regla_dictamen: dictamen.regla,
+    evidencia_en_paquete: (paquete.evidencia ?? []).length,
+    evidencia_valida_tecnica: (paquete.evidencia ?? []).filter((e) => e.valida_tecnica === true && e.validada === true && e.refutada !== true).length,
+    roles_ronda1: roles,
+    avance_ronda1: avance && avance.avanzo,
     evidencia_registrada: items.length,
     evidencia_valida: validacion && validacion.validas !== undefined ? validacion.validas : validacion,
     registro_ok: registro && registro.ok !== false,
@@ -375,6 +419,7 @@ for (const ensayo of ENSAYOS) {
     if (!r.cumple) fallo = `ensayo (${r.ensayo}): nivel ${r.nivel}, se esperaba ${r.niveles_esperados.join(' o ')}`;
     if (!SALIDA_JSON) {
       console.log(`  → nivel=${r.nivel} (esperado ${r.niveles_esperados.join('|')}) ${r.cumple ? 'OK' : 'FALLA'}`);
+      console.log(`  → cobertura_completa=${r.cobertura_completa} pendientes=${JSON.stringify(r.pendientes)} evidencia=${r.evidencia_en_paquete}/${r.evidencia_valida_tecnica} familias=${JSON.stringify(r.familias_dictamen)}`);
       console.log(`  → garantizados=${r.garantizados.length} despachados=${r.despachados.length} en_cola=${r.en_cola} pistas=${JSON.stringify(r.pistas_insertadas)}`);
     }
   } catch (err) {
