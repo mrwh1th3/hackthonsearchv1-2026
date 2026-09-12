@@ -175,7 +175,12 @@ begin
   -- Cobertura (015): al cerrar la ÚLTIMA ronda del caso se decide en
   -- CÓDIGO si la investigación cubrió lo despachado. En rondas
   -- intermedias no se toca: la ronda siguiente todavía no existe.
-  if p_ronda >= forense.config_int('rondas_por_caso', 2) then
+  -- La última ronda es la 2 y está fijada por el esquema, no por
+  -- configuración: `casos.estado` sólo admite 'ronda1'/'ronda2' (001) y
+  -- `crear_tareas_revision` crea siempre ronda 2. Leerlo de
+  -- config_presupuesto sería una clave que nadie siembra y que podría
+  -- cambiar el pipeline sin que ninguna prueba lo viera.
+  if p_ronda >= 2 then
     perform forense.recalcular_cobertura(p_caso, 'cierre_ronda_' || p_ronda);
   end if;
 

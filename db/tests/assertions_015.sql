@@ -141,8 +141,15 @@ begin
                                  limit 1)),
     'caso sin tareas');
 
-  -- H. cerrar_ronda recalcula al cerrar la última ronda.
+  -- H. cerrar_ronda recalcula al cerrar la ÚLTIMA ronda, y sólo esa: en
+  --    la ronda 1 la ronda siguiente todavía no existe, así que no se
+  --    puede declarar cubierto nada.
   update forense.casos set cobertura_completa = false where id = v_caso;
+  perform forense.cerrar_ronda(v_caso, 1, '{}'::jsonb);
+  select cobertura_completa into v_cob from forense.casos where id = v_caso;
+  perform pruebas.assert('cerrar_ronda de una ronda intermedia NO toca la cobertura',
+    not v_cob, 'columna tras cerrar_ronda(1)=' || v_cob::text);
+
   perform forense.cerrar_ronda(v_caso, 2, '{}'::jsonb);
   select cobertura_completa into v_cob from forense.casos where id = v_caso;
   perform pruebas.assert('cerrar_ronda de la última ronda recalcula la cobertura',
