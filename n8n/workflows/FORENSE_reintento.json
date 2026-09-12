@@ -238,7 +238,7 @@
         "operation": "executeQuery",
         "query": "-- Si la única expansión del cluster ya se usó, se registra el límite y el reintento sigue SIN expandir (07 §3).\nWITH ev AS (\n  SELECT forense.log(\n           p_caso => $1::uuid, p_agente => 'sistema', p_tipo => 'presupuesto_agotado',\n           p_payload => $2::jsonb, p_corrida => $3::uuid)\n)\nSELECT $1::uuid AS caso_id, $4::text[] AS autores, false AS expandido,\n       'cuota_expansion_agotada'::text AS limitacion FROM ev",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ={{ $('Validar intento').first().json.corrida_id }}, ={{ `{${($json.autores ?? []).join(\",\")}}` }}"
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ={{ $('Validar intento').first().json.corrida_id }}, ={{ '{' + ($json.autores ?? []).join(',') + '}' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -280,7 +280,7 @@
         "operation": "executeQuery",
         "query": "-- Ronda 2 con intento 1|2 y la version_contexto vigente; las señales nuevas se enlazan a las previas y la historia se conserva. DEPENDE de forense-db.\nSELECT * FROM forense.crear_tareas_revision($1::uuid, $2::int, $3::text[], $4::jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.intento }}, ={{ `{${($json.autores ?? []).join(\",\")}}` }}, ={{ $('Validar intento').first().json.objetivo }}"
+          "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ $('Validar intento').first().json.intento }}, ={{ '{' + ($json.autores ?? []).join(',') + '}' }}, ={{ $('Validar intento').first().json.objetivo }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

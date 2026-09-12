@@ -208,7 +208,7 @@
         "operation": "executeQuery",
         "query": "-- Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).\nSELECT * FROM forense.guardar_propuesta_edicion($1::uuid, $2::int, $3::jsonb, $4::jsonb, $5::text[])",
         "options": {
-          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ `{${($json.citas ?? []).join(\",\")}}` }}"
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ '{' + ($json.citas ?? []).join(',') + '}' }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

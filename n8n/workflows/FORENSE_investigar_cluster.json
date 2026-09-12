@@ -179,7 +179,7 @@
         "operation": "executeQuery",
         "query": "-- La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.\nINSERT INTO forense.pasos_pipeline\n       (caso_id, paso, revision, tareas_esperadas, snapshot_senales, estado, deadline)\nVALUES ($1::uuid, 'ronda1', 1, $2::uuid[], $3::bigint[], 'abierto', $4::timestamptz)\nRETURNING *",
         "options": {
-          "queryReplacement": "={{ $json.caso_id }}, ={{ `{${($json.tarea_ids ?? []).join(\",\")}}` }}, ={{ `{${($json.snapshot_senales ?? []).join(\",\")}}` }}, ={{ $json.deadline }}"
+          "queryReplacement": "={{ $json.caso_id }}, ={{ '{' + ($json.tarea_ids ?? []).join(',') + '}' }}, ={{ '{' + ($json.snapshot_senales ?? []).join(',') + '}' }}, ={{ $json.deadline }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

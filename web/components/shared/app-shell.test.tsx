@@ -27,93 +27,77 @@ function investigacion(overrides: Partial<Investigacion> = {}): Investigacion {
 }
 
 /**
- * docs/22-frontend-inspector.md (corrección 2026-09-12): el shell del
- * diseño Inspector SUSTITUYE a la barra lateral fija anterior. La
- * navegación entera —incluidas las rutas que el diseño no contempla— vive
- * dentro del panel deslizante, cerrado por omisión; estas pruebas abren el
- * panel primero, que es como un usuario real llega a esos enlaces.
+ * `docs/22-frontend-inspector.md`: el shell es un puerto **fiel** del `aside`
+ * de `design-ref/Agents.dc.html` (líneas 26–56). Estas pruebas fijan que siga
+ * siendo fiel, porque ya se desvió dos veces: se le añadieron nueve entradas de
+ * navegación y una pantalla índice que el diseño no tiene.
  */
-describe("AppShell (docs/22: shell del diseño Inspector como navegación única)", () => {
-  it("el panel empieza cerrado: solo el disparador 'Forense' es visible", () => {
-    render(
-      <AppShell perfilNombre="Auditor Demo" investigaciones={[]}>
-        <p>contenido</p>
-      </AppShell>,
-    );
-    expect(screen.getAllByText("Forense").length).toBeGreaterThan(0);
-    expect(screen.getByText("contenido")).toBeInTheDocument();
-    // La navegación no está en el DOM accesible mientras el panel permanece
-    // cerrado (aria-hidden vía el overlay no basta: aquí se comprueba que el
-    // enlace de la sección no es lo primero que un lector de pantalla anuncia
-    // sin abrir el panel — Radix no se usa aquí, así que se verifica que el
-    // trigger es un botón real, no que el enlace esté ausente del DOM).
-    expect(screen.getByRole("button", { name: "Abrir navegación" })).toBeInTheDocument();
+describe("AppShell (puerto fiel del panel del diseño)", () => {
+  it("el panel lleva SOLO lo que lleva el diseño: buscador, rótulo, lista y pie", async () => {
+    render(<AppShell perfilNombre="Ana" investigaciones={[investigacion()]}>{null}</AppShell>);
+    await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
+
+    expect(screen.getByPlaceholderText("Buscar investigaciones")).toBeTruthy();
+    expect(screen.getByText("Investigaciones")).toBeTruthy();
+    expect(screen.getByText("Sigue el dinero del cluster 200")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /salir/i })).toBeTruthy();
   });
 
-  it("abre el panel y lista investigaciones reales, secciones y perfil", async () => {
-    const user = userEvent.setup();
-    render(
-      <AppShell
-        perfilNombre="Auditor Demo"
-        perfilOrganizacion="Equipo Auditoría"
-        notificacionesNoLeidas={2}
-        investigaciones={[investigacion()]}
-      >
-        <p>contenido</p>
-      </AppShell>,
-    );
+  it("no reaparece una barra de navegación que el diseño no tiene", async () => {
+    render(<AppShell perfilNombre="Ana" investigaciones={[investigacion()]}>{null}</AppShell>);
+    await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
 
-    await user.click(screen.getByRole("button", { name: "Abrir navegación" }));
-
-    expect(screen.getByRole("navigation", { name: "Navegación" })).toBeInTheDocument();
-    expect(screen.getByText("Sigue el dinero del cluster 200")).toBeInTheDocument();
-    expect(screen.getByText("Investigación completa")).toBeInTheDocument();
-
-    for (const label of ["Inicio", "Corridas", "Historial", "Estadísticas", "Notificaciones", "Datos", "Método"]) {
-      expect(screen.getByRole("link", { name: new RegExp(`^${label}`) })).toBeInTheDocument();
+    // El diseño no lista secciones en el panel. Si alguien las vuelve a meter,
+    // esta prueba lo dice en vez de descubrirlo el usuario por tercera vez.
+    for (const prohibido of ["Inicio", "Corridas", "Estadísticas", "Notificaciones", "Datos", "Método", "Navegación de prueba"]) {
+      expect(screen.queryByRole("link", { name: prohibido })).toBeNull();
     }
-
-    expect(screen.getByRole("link", { name: /Notificaciones/ }).textContent).toContain("2");
-    expect(screen.getAllByText("Auditor Demo").length).toBeGreaterThan(0);
-    expect(screen.getByText("Equipo Auditoría")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cerrar sesión" })).toBeInTheDocument();
   });
 
-  it("el ítem activo ('/') marca aria-current=page", async () => {
-    const user = userEvent.setup();
-    render(
-      <AppShell perfilNombre="Auditor Demo" investigaciones={[]}>
-        <p>contenido</p>
-      </AppShell>,
-    );
-    await user.click(screen.getByRole("button", { name: "Abrir navegación" }));
-    expect(screen.getByRole("link", { name: /^Inicio/ })).toHaveAttribute("aria-current", "page");
-  });
-
-  it("sin investigaciones, el estado vacío es honesto (no una lista fabricada)", async () => {
-    const user = userEvent.setup();
-    render(
-      <AppShell perfilNombre="Auditor Demo" investigaciones={[]}>
-        <p>contenido</p>
-      </AppShell>,
-    );
-    await user.click(screen.getByRole("button", { name: "Abrir navegación" }));
-    expect(screen.getByText("Sin investigaciones todavía.")).toBeInTheDocument();
-  });
-
-  it("el buscador filtra investigaciones por título", async () => {
-    const user = userEvent.setup();
+  it("una investigación en curso gira el spinner; una terminada no", async () => {
     render(
       <AppShell
-        perfilNombre="Auditor Demo"
-        investigaciones={[investigacion({ id: "a", titulo: "Sigue el dinero" }), investigacion({ id: "b", titulo: "Compara con pares" })]}
+        perfilNombre="Ana"
+        investigaciones={[
+          investigacion({ id: "a", titulo: "En curso", estado: "investigando", completada_at: null }),
+          investigacion({ id: "b", titulo: "Terminada", estado: "investigacion_completa" }),
+        ]}
       >
-        <p>contenido</p>
+        {null}
       </AppShell>,
     );
-    await user.click(screen.getByRole("button", { name: "Abrir navegación" }));
-    await user.type(screen.getByPlaceholderText("Buscar investigaciones"), "pares");
-    expect(screen.queryByText("Sigue el dinero")).not.toBeInTheDocument();
-    expect(screen.getByText("Compara con pares")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
+
+    expect(screen.getByText("Investigando…")).toBeTruthy();
+    expect(screen.getByText(/^Lista · /)).toBeTruthy();
+    // El diseño ordena las terminadas al final.
+    const titulos = screen.getAllByText(/En curso|Terminada/).map((n) => n.textContent);
+    expect(titulos.indexOf("En curso")).toBeLessThan(titulos.indexOf("Terminada"));
+  });
+
+  it("el buscador filtra por título", async () => {
+    render(
+      <AppShell
+        perfilNombre="Ana"
+        investigaciones={[
+          investigacion({ id: "a", titulo: "Sigue el dinero" }),
+          investigacion({ id: "b", titulo: "Compara pares" }),
+        ]}
+      >
+        {null}
+      </AppShell>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
+    await userEvent.type(screen.getByPlaceholderText("Buscar investigaciones"), "pares");
+
+    expect(screen.getByText("Compara pares")).toBeTruthy();
+    expect(screen.queryByText("Sigue el dinero")).toBeNull();
+  });
+
+  it("sin investigaciones el vacío es honesto, no una lista fabricada", async () => {
+    render(<AppShell perfilNombre="Ana" investigaciones={[]}>{null}</AppShell>);
+    await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
+
+    expect(screen.getByText(/Todavía no hay investigaciones/i)).toBeTruthy();
   });
 });

@@ -1,6 +1,6 @@
 {
   "base": "https://n8n.srv1550651.hstgr.cloud",
-  "actualizado": "2026-09-12T16:57:54.697Z",
+  "actualizado": "2026-09-12T17:41:36.869Z",
   "ids": {
     "FORENSE_ejecutar_agente": "haHlIxNpUFEHEio8",
     "FORENSE_reintento": "RpWmAx4dkJSeVIBC",
@@ -19,15 +19,15 @@
       "id": "haHlIxNpUFEHEio8",
       "nodos": 32,
       "sinResolver": [],
-      "estado": "creado+ids",
-      "active": false
+      "estado": "actualizado",
+      "active": true
     },
     {
       "nombre": "FORENSE_reintento",
       "id": "RpWmAx4dkJSeVIBC",
       "nodos": 16,
       "sinResolver": [],
-      "estado": "creado",
+      "estado": "actualizado",
       "active": false
     },
     {
@@ -35,7 +35,7 @@
       "id": "gA5ixBwH0g01Whqq",
       "nodos": 10,
       "sinResolver": [],
-      "estado": "creado",
+      "estado": "actualizado",
       "active": false
     },
     {
@@ -43,7 +43,7 @@
       "id": "6B5Jn12ZCKyBWwCv",
       "nodos": 38,
       "sinResolver": [],
-      "estado": "creado+ids",
+      "estado": "actualizado",
       "active": false
     },
     {
@@ -51,7 +51,7 @@
       "id": "BhB9ALAsr1NR7fTY",
       "nodos": 22,
       "sinResolver": [],
-      "estado": "creado",
+      "estado": "actualizado",
       "active": false
     },
     {
@@ -59,7 +59,7 @@
       "id": "eDoF6frXEcrGNQjD",
       "nodos": 14,
       "sinResolver": [],
-      "estado": "creado",
+      "estado": "actualizado",
       "active": false
     },
     {
@@ -67,32 +67,32 @@
       "id": "DG6HjcFZaXyMcVbD",
       "nodos": 10,
       "sinResolver": [],
-      "estado": "creado",
-      "active": false
+      "estado": "actualizado",
+      "active": true
     },
     {
       "nombre": "FORENSE_resultado_llamada",
       "id": "7gkvkBxzaPC6lzao",
       "nodos": 6,
       "sinResolver": [],
-      "estado": "creado",
-      "active": false
+      "estado": "actualizado",
+      "active": true
     },
     {
       "nombre": "FORENSE_reconciliador",
       "id": "cPXfol7DO0nkJOAh",
       "nodos": 8,
       "sinResolver": [],
-      "estado": "creado",
-      "active": false
+      "estado": "actualizado",
+      "active": true
     },
     {
       "nombre": "FORENSE_errores",
       "id": "Yh6AlrOm7ULKSkQk",
       "nodos": 5,
       "sinResolver": [],
-      "estado": "creado",
-      "active": false
+      "estado": "actualizado",
+      "active": true
     }
   ]
 }

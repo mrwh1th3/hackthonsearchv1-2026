@@ -827,15 +827,21 @@ export function investigarCluster() {
     [
       'INSERT INTO forense.pasos_pipeline',
       "       (caso_id, paso, revision, tareas_esperadas, snapshot_senales, estado, deadline)",
-      "VALUES ($1::uuid, 'ronda1', 1, $2::uuid[], $3::bigint[], 'abierto', $4::timestamptz)",
+      'VALUES ($1::uuid, \'ronda1\', 1,',
+      "        coalesce((select array_agg(x::uuid) from jsonb_array_elements_text($2::jsonb) x), '{}'::uuid[]),",
+      "        coalesce((select array_agg(x::bigint) from jsonb_array_elements_text($3::jsonb) x), '{}'::bigint[]),",
+      "        'abierto', $4::timestamptz)",
       'RETURNING *',
     ].join('\n'),
-    // tareas_esperadas es uuid[] y snapshot_senales bigint[]: necesitan LITERAL
-    // de array de Postgres, no JSON. `JSON.stringify` produciría ["a","b"] y el
-    // INSERT fallaría en ejecución aunque PREPARE lo acepte (comprobado con
-    // psql contra 001–003; ver IMPORT.md §Verificación). `estado` solo admite
-    // abierto|cerrado|cancelado|timeout: 'esperando' violaba el CHECK.
-    `={{ $json.caso_id }}, ={{ '{' + ($json.tarea_ids ?? []).join(',') + '}' }}, ={{ '{' + ($json.snapshot_senales ?? []).join(',') + '}' }}, ={{ $json.deadline }}`,
+    // tareas_esperadas es uuid[] y snapshot_senales bigint[]. Un literal de array
+    // de Postgres armado a mano con concatenación ('{' + join(',') + '}') se
+    // corrompe al pasar por el "Query Replacement" del nodo Postgres de n8n
+    // (confirmado en ejecución real 2026-09-12: el valor llega truncado en la
+    // primera coma). En vez de eso se manda JSON.stringify (el mismo patrón que
+    // ya usa 'Crear tareas R1' con roles_evaluables, y ahí sí funciona) y el
+    // SQL lo abre con jsonb_array_elements_text + array_agg. `estado` solo
+    // admite abierto|cerrado|cancelado|timeout: 'esperando' violaba el CHECK.
+    `={{ $json.caso_id }}, ={{ JSON.stringify($json.tarea_ids ?? []) }}, ={{ JSON.stringify($json.snapshot_senales ?? []) }}, ={{ $json.deadline }}`,
     'La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.',
   ));
 
@@ -1186,10 +1192,15 @@ export function reintento() {
       "           p_caso => $1::uuid, p_agente => 'sistema', p_tipo => 'presupuesto_agotado',",
       '           p_payload => $2::jsonb, p_corrida => $3::uuid)',
       ')',
-      'SELECT $1::uuid AS caso_id, $4::text[] AS autores, false AS expandido,',
+      'SELECT $1::uuid AS caso_id,',
+      "       coalesce((select array_agg(x) from jsonb_array_elements_text($4::jsonb) x), '{}'::text[]) AS autores,",
+      '       false AS expandido,',
       "       'cuota_expansion_agotada'::text AS limitacion FROM ev",
     ].join('\n'),
-    `${R('caso_id')}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ${R('corrida_id')}, ={{ '{' + ($json.autores ?? []).join(',') + '}' }}`,
+    // autores viaja como JSON.stringify (no como literal '{...}' armado a mano:
+    // ver la nota de 'Registrar barrera R1' sobre por qué ese patrón se corrompe
+    // en el Query Replacement del nodo Postgres).
+    `${R('caso_id')}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ${R('corrida_id')}, ={{ JSON.stringify($json.autores ?? []) }}`,
     'Si la única expansión del cluster ya se usó, se registra el límite y el reintento sigue SIN expandir (07 §3).',
   ));
 
@@ -1204,8 +1215,12 @@ export function reintento() {
   fila = 1; columna = 7;
   add(sql(
     'Crear tareas de revisión',
-    'SELECT * FROM forense.crear_tareas_revision($1::uuid, $2::int, $3::text[], $4::jsonb)',
-    `${R('caso_id')}, ${R('intento')}, ={{ '{' + ($json.autores ?? []).join(',') + '}' }}, ${R('objetivo')}`,
+    [
+      'SELECT * FROM forense.crear_tareas_revision($1::uuid, $2::int,',
+      "  coalesce((select array_agg(x) from jsonb_array_elements_text($3::jsonb) x), '{}'::text[]),",
+      '  $4::jsonb)',
+    ].join('\n'),
+    `${R('caso_id')}, ${R('intento')}, ={{ JSON.stringify($json.autores ?? []) }}, ${R('objetivo')}`,
     'Ronda 2 con intento 1|2 y la version_contexto vigente; las señales nuevas se enlazan a las previas y la historia se conserva. DEPENDE de forense-db.',
   ));
 
@@ -1414,7 +1429,7 @@ export function editarExpediente() {
   add(sql(
     'Guardar propuesta',
     'SELECT * FROM forense.guardar_propuesta_edicion($1::uuid, $2::int, $3::jsonb, $4::jsonb, $5::text[])',
-    `={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ \`{\${($json.citas ?? []).join(",")}}\` }}`,
+    `={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ '{' + ($json.citas ?? []).join(',') + '}' }}`,
     'Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).',
   ));
 
