@@ -141,7 +141,9 @@ done
 # 019 (oleada 6, forense-db): recalibra la pierna (a) de T2 (sincronía) a la
 # ventana de un lote de timbrado. Es `create or replace` de una sola función;
 # sin ella T2 marca 85 de 100 RFC sobre un snapshot con hora intradía.
-for n in 010 011 012 013 014 015 016 017 018 019; do
+# 020 (oleada 6, forense-db): el comparable del panel Contraste se busca
+# primero dentro del cluster (casos.resultado_por_rfc) y cae al caso-a-caso de 018.
+for n in 010 011 012 013 014 015 016 017 018 019 020; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional
