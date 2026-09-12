@@ -25,13 +25,27 @@ const PSQL = process.env.PSQL ?? '/opt/homebrew/opt/postgresql@17/bin/psql';
 // Funciones que entrega forense-db en 004/005 (y el enum de bitácora que hay
 // que ampliar). Un fallo que las mencione es dependencia, no defecto.
 const PENDIENTES = [
+  // 004/005 — investigación y herramientas
   'advance_case_if_ready', 'validar_salida_rol', 'reclamar_cluster', 'crear_caso',
   'preparar_contexto_ronda1', 'crear_tareas_ronda', 'estado_barrera', 'cerrar_ronda',
   'expandir_y_crear_tareas_r2', 'abrir_tarea_cierre', 'forense_validar_evidencia',
   'aplicar_resolucion_replica', 'paquete_auditor_final', 'guardar_dictamen',
-  'validar_expediente', 'cerrar_caso', 'clonar_corrida_con_inyeccion', 'correr_pistas',
-  'armar_clusters', 'v_metricas_corrida', 'ck_bitacora_tipo_evento',
-  'paso_en_cola', 'paso_checkpoint', 'corrida_cargada',
+  'validar_expediente', 'cerrar_caso', 'armar_clusters', 'v_metricas_corrida',
+  // 004/005 — reintento y corrida
+  'autores_reintento', 'expandir_cluster_reintento', 'crear_tareas_revision',
+  'revalidar_caso', 'abrir_corrida', 'cargar_o_clonar_snapshot',
+  'verificar_integridad_corrida', 'estado_corrida', 'cerrar_barreras_vencidas',
+  // 006 — producto y editor
+  'cargar_version_expediente', 'guardar_propuesta_edicion',
+  // 007 — notificaciones y voz
+  'leer_evento_salida', 'reclamar_evento_salida', 'destinatario_aviso',
+  'omitir_llamada', 'crear_intento_llamada', 'guardar_aceptacion_llamada',
+  'registrar_callback_llamada', 'actualizar_llamada', 'eventos_salida_pendientes',
+  // 008 — ingesta e inyección en vivo (21 §3)
+  'clonar_corrida_con_inyeccion', 'registrar_inyeccion', 'validar_inyeccion',
+  'clusters_por_prioridad_inyeccion', 'forense.inyecciones',
+  // enum de bitácora a ampliar
+  'ck_bitacora_tipo_evento', 'paso_en_cola', 'paso_checkpoint', 'corrida_cargada',
 ];
 
 const archivos = fs.readdirSync(path.join(RAIZ, 'workflows')).filter((f) => f.endsWith('.json'));

@@ -37,6 +37,7 @@ export const CREDENCIALES = Object.freeze({
   supabase: { supabaseApi: { name: 'Forense Supabase' } },
   anthropic: { anthropicApi: { name: 'Anthropic account' } },
   webhook: { httpHeaderAuth: { name: 'Forense Webhook' } },
+  elevenlabs: { httpHeaderAuth: { name: 'ElevenLabs Forense' } },
 });
 
 /** Pares (type, typeVersion) permitidos — MANIFEST §0.3. */
@@ -911,6 +912,992 @@ export function investigarCluster() {
   return workflow('FORENSE_investigar_cluster', nodes, connections);
 }
 
+// ------------------------------------------------------------ FORENSE_reintento
+//
+// 07 §3 + 17 §3: entra tras el claim del padre con `intento` ya incrementado.
+// No incrementa contadores, no crea caso y no se invoca a sí mismo.
+
+export function reintento() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+  const R = (campo) => `={{ $('Validar intento').first().json.${campo} }}`;
+
+  add(nodo('Entrada reintento', 'n8n-nodes-base.executeWorkflowTrigger', { inputSource: 'passthrough' }));
+
+  add(codeInline('Validar intento', [
+    '// 03: máximo dos reintentos forenses por caso. El padre ya hizo el claim',
+    '// (UPDATE ... WHERE n_reintentos < 2): aquí NO se incrementa nada.',
+    'const x = $input.first().json;',
+    'const intento = Number(x.intento);',
+    'if (![1, 2].includes(intento)) throw new Error(`intento fuera de rango: ${x.intento}`);',
+    'if (!x.caso_id) throw new Error(\'caso_id obligatorio\');',
+    "const motivo = x.motivo ?? null;",
+    "const MOTIVOS = ['evidencia_insuficiente', 'cadena_incompleta', 'defensa_no_considerada', 'evidencia_invalida', 'contradiccion'];",
+    'if (!MOTIVOS.includes(motivo)) throw new Error(`motivo no tipificado: ${motivo}`);',
+    'const objetivo = x.objetivo ?? null;',
+    "if (!objetivo || (typeof objetivo === 'string' && objetivo.trim() === '')) {",
+    "  throw new Error('objetivo vacío: un reintento sin objetivo concreto es otra ronda 1');",
+    '}',
+    'const salida = { caso_id: x.caso_id, intento, motivo, objetivo, corrida_id: x.corrida_id ?? null, cluster_id: x.cluster_id ?? null };',
+    'return [{ json: salida }];',
+  ].join('\n')));
+
+  add(sql(
+    'Cargar caso vigente',
+    [
+      '-- version_contexto y la cuota de expansión viven en el CLUSTER, no en el',
+      '-- caso (001): el reintento conserva la versión vigente, no la reinicia.',
+      'SELECT c.id AS caso_id, c.corrida_id, c.cluster_id, c.nivel, c.n_reintentos,',
+      '       c.tool_calls, c.presupuesto_agotado,',
+      '       k.version_contexto, k.expandido AS expansiones_usadas,',
+      '       $2::int AS intento, $3::text AS motivo, $4::jsonb AS objetivo',
+      '  FROM forense.casos c',
+      '  LEFT JOIN forense.clusters k ON k.corrida_id = c.corrida_id AND k.id = c.cluster_id',
+      ' WHERE c.id = $1::uuid',
+    ].join('\n'),
+    `${R('caso_id')}, ${R('intento')}, ${R('motivo')}, ={{ JSON.stringify($json.objetivo) }}`,
+    'Conserva caso, historial y versión de contexto (17 §3): el reintento no reconstruye el cluster.',
+  ));
+
+  add(ruta('Ruta por motivo', R('motivo'), [
+    'evidencia_insuficiente', 'cadena_incompleta', 'defensa_no_considerada',
+    'evidencia_invalida', 'contradiccion',
+  ]));
+
+  fila = 1; columna = 4;
+  add(sql(
+    'Seleccionar autores',
+    'SELECT * FROM forense.autores_reintento($1::uuid, $2::text, $3::jsonb)',
+    `${R('caso_id')}, ${R('motivo')}, ${R('objetivo')}`,
+    'Por motivo (07 §3): comprobación pendiente en familia evaluable, ruta concreta, trampa con evidencias objetivo, autor de la evidencia inválida o autores en contradicción. NUNCA «todos los faltantes por defecto». DEPENDE de forense-db.',
+  ));
+
+  add(si('¿Queda cuota de expansión?', '={{ $json.puede_expandir }}'));
+
+  fila = 2; columna = 6;
+  add(sql(
+    'Registrar límite de expansión',
+    [
+      'WITH ev AS (',
+      '  SELECT forense.log(',
+      "           p_caso => $1::uuid, p_agente => 'sistema', p_tipo => 'presupuesto_agotado',",
+      '           p_payload => $2::jsonb, p_corrida => $3::uuid)',
+      ')',
+      'SELECT $1::uuid AS caso_id, $4::text[] AS autores, false AS expandido,',
+      "       'cuota_expansion_agotada'::text AS limitacion FROM ev",
+    ].join('\n'),
+    `${R('caso_id')}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ${R('corrida_id')}, ={{ \`{\${($json.autores ?? []).join(",")}}\` }}`,
+    'Si la única expansión del cluster ya se usó, se registra el límite y el reintento sigue SIN expandir (07 §3).',
+  ));
+
+  fila = 1; columna = 6;
+  add(sql(
+    'Expandir para reintento',
+    'SELECT * FROM forense.expandir_cluster_reintento($1::uuid, $2::jsonb)',
+    `${R('caso_id')}, ${R('objetivo')}`,
+    'Solo para cadena_incompleta y solo si queda la cuota. DEPENDE de forense-db.',
+  ));
+
+  fila = 1; columna = 7;
+  add(sql(
+    'Crear tareas de revisión',
+    'SELECT * FROM forense.crear_tareas_revision($1::uuid, $2::int, $3::text[], $4::jsonb)',
+    `${R('caso_id')}, ${R('intento')}, ={{ \`{\${($json.autores ?? []).join(",")}}\` }}, ${R('objetivo')}`,
+    'Ronda 2 con intento 1|2 y la version_contexto vigente; las señales nuevas se enlazan a las previas y la historia se conserva. DEPENDE de forense-db.',
+  ));
+
+  add(subworkflow('Despachar revisión', 'FORENSE_ejecutar_agente', {
+    tarea_id: '={{ $json.tarea_id }}',
+    owner: '={{ $execution.id }}',
+  }, { esperar: false, modo: 'each' }));
+
+  fila = 1; columna = 9;
+  add(sql(
+    'Barrera reintento',
+    'SELECT * FROM forense.estado_barrera($1::uuid, $2::text)',
+    `${R('caso_id')}, ={{ 'reintento' + $('Validar intento').first().json.intento }}`,
+    'Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.',
+  ));
+  add(si('¿Barrera reintento completa?', '={{ $json.completa || $json.vencida }}'));
+
+  fila = 2; columna = 11;
+  add(esperar('Espera barrera reintento', '={{ 10000 }}'));
+
+  fila = 1; columna = 11;
+  add(sql(
+    'Revalidar si cambió evidencia',
+    'SELECT * FROM forense.revalidar_caso($1::uuid)',
+    R('caso_id'),
+    'Repite validaciones y defensas aplicables ANTES del dictamen: evidencia nueva no entra sin validar. DEPENDE de forense-db.',
+  ));
+
+  add(codeInline('Retornar al padre', [
+    '// El padre reanuda DONDE indica este resultado: no repite preparación ni',
+    '// crea un caso nuevo (07 §3).',
+    'const x = $input.first().json;',
+    "const paso = $('Validar intento').first().json;",
+    "const REANUDAR = {",
+    "  evidencia_insuficiente: 'auditoria',",
+    "  cadena_incompleta: 'auditoria',",
+    "  defensa_no_considerada: 'defensa',",
+    "  evidencia_invalida: 'auditoria',",
+    "  contradiccion: 'replica',",
+    '};',
+    'const salida = {',
+    '  caso_id: paso.caso_id,',
+    '  intento: paso.intento,',
+    "  reanudar_en: REANUDAR[paso.motivo] ?? 'auditoria',",
+    '  limitaciones: x.limitaciones ?? [],',
+    '};',
+    'return [{ json: salida }];',
+  ].join('\n')));
+
+  fila = 4; columna = 0;
+  add(nota('Nota reintento', [
+    'FORENSE_reintento (07 §3, 17 §3).',
+    '',
+    'intento ∈ {1,2} y NO se incrementa aquí: el claim es del padre.',
+    'Se seleccionan autores por motivo, no «todos los faltantes».',
+    'Agotar reintentos nunca sube el nivel (regla 10 de CLAUDE.md).',
+  ].join('\n'), 220, 400));
+
+  const connections = conectar([
+    ['Entrada reintento', 'Validar intento'],
+    ['Validar intento', 'Cargar caso vigente'],
+    ['Cargar caso vigente', 'Ruta por motivo'],
+    ['Ruta por motivo', 'Seleccionar autores', 0],
+    ['Ruta por motivo', 'Seleccionar autores', 1],
+    ['Ruta por motivo', 'Seleccionar autores', 2],
+    ['Ruta por motivo', 'Seleccionar autores', 3],
+    ['Ruta por motivo', 'Seleccionar autores', 4],
+    ['Seleccionar autores', '¿Queda cuota de expansión?'],
+    ['¿Queda cuota de expansión?', 'Expandir para reintento', 0],
+    ['¿Queda cuota de expansión?', 'Registrar límite de expansión', 1],
+    ['Expandir para reintento', 'Crear tareas de revisión'],
+    ['Registrar límite de expansión', 'Crear tareas de revisión'],
+    ['Crear tareas de revisión', ['Despachar revisión', 'Barrera reintento']],
+    ['Barrera reintento', '¿Barrera reintento completa?'],
+    ['¿Barrera reintento completa?', 'Revalidar si cambió evidencia', 0],
+    ['¿Barrera reintento completa?', 'Espera barrera reintento', 1],
+    ['Espera barrera reintento', 'Barrera reintento'],
+    ['Revalidar si cambió evidencia', 'Retornar al padre'],
+  ]);
+
+  return workflow('FORENSE_reintento', nodes, connections);
+}
+
+// --------------------------------------------------- FORENSE_editar_expediente
+//
+// 15 + 17 §6: presupuesto propio por operación (3 requests, deadline 90 s).
+// Chat propone y «Aplicar» versiona: este workflow NUNCA cambia el expediente.
+
+export function editarExpediente() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+  const E = (campo) => `={{ $('Validar solicitud').first().json.${campo} }}`;
+
+  add(nodo(
+    'Webhook editar',
+    'n8n-nodes-base.webhook',
+    {
+      httpMethod: 'POST',
+      path: 'forense/editar',
+      authentication: 'headerAuth',
+      responseMode: 'responseNode',
+      options: {},
+    },
+    { credentials: CREDENCIALES.webhook },
+  ));
+
+  add(codeInline('Validar solicitud', [
+    '// Contrato editor.solicitud (contracts v1). El TEXTO del documento es dato,',
+    '// nunca system prompt (17 §7): viaja marcado y no se obedece.',
+    'const x = $input.first().json;',
+    'const c = x.body ?? x;',
+    "const PROHIBIDOS = ['system', 'system_prompt', 'modelo', 'model', 'nivel', 'dictamen', 'telefono'];",
+    'const presentes = PROHIBIDOS.filter((k) => c[k] !== undefined);',
+    'if (presentes.length > 0) throw new Error(`campos no aceptados: ${presentes.join(\', \')}`);',
+    "if (!c.caso_id) throw new Error('caso_id obligatorio');",
+    "if (!c.idempotency_key) throw new Error('idempotency_key obligatoria');",
+    "const modo = c.modo ?? 'propuesta';",
+    "if (!['pregunta', 'propuesta'].includes(modo)) throw new Error(`modo no soportado: ${modo}`);",
+    'if (c.version_base === undefined || c.version_base === null) {',
+    "  throw new Error('version_base obligatoria: sin ella no se detecta el conflicto de documento');",
+    '}',
+    'const salida = {',
+    '  caso_id: c.caso_id,',
+    '  modo,',
+    '  version_base: Number(c.version_base),',
+    '  idempotency_key: c.idempotency_key,',
+    '  instruccion_untrusted: c.instruccion ?? null,',
+    '  seleccion: c.seleccion ?? null,',
+    '  directriz_id: c.directriz_id ?? null,',
+    '};',
+    'return [{ json: salida }];',
+  ].join('\n')));
+
+  add(sql(
+    'Cargar versión base',
+    'SELECT * FROM forense.cargar_version_expediente($1::uuid, $2::int)',
+    `${E('caso_id')}, ${E('version_base')}`,
+    'Versión base, evidencia y argumentos verificados y dictamen; persiste el mensaje del usuario. DEPENDE de forense-db (006).',
+  ));
+
+  add(sql(
+    'Abrir operación editor',
+    [
+      'INSERT INTO forense.ejecuciones_agente',
+      '       (corrida_id, caso_id, editor_operacion_id, rol, estado_interno, context_hash,',
+      '        prompt_hash, model_id, deadline_at)',
+      'SELECT c.corrida_id, NULL, gen_random_uuid(), $2::text, $3::text, $4::text,',
+      '       $5::text, $6::text, now() + interval \'90 seconds\'',
+      '  FROM forense.casos c WHERE c.id = $1::uuid',
+      'RETURNING id AS execution_id, editor_operacion_id, rol, deadline_at, corrida_id',
+    ].join('\n'),
+    `${E('caso_id')}, ={{ 'editor' }}, ={{ 'preparar_contexto' }}, ={{ $json.context_hash }}, ={{ $json.prompt_hash }}, ={{ $json.modelo }}`,
+    'XOR de 001: una operación del editor NO lleva tarea_id y tiene presupuesto propio (3 requests, deadline 90 s de 17 §6).',
+  ));
+
+  add(subworkflow('Ejecutar editor', 'FORENSE_ejecutar_agente', {
+    execution_id: '={{ $json.execution_id }}',
+    owner: '={{ $execution.id }}',
+  }, { esperar: true }));
+
+  add(codeInline('Validar propuesta', [
+    '// La propuesta no puede introducir IDs ajenos, montos distintos ni cambiar',
+    '// el nivel: el dictamen es determinista y el editor no lo toca (regla 4).',
+    'const x = $input.first().json;',
+    "const base = $('Cargar versión base').first().json;",
+    "const solicitud = $('Validar solicitud').first().json;",
+    'const salida_modelo = x.salida ?? {};',
+    'const permitidas = new Set((base.citas_permitidas ?? []).map(String));',
+    'const citas = (salida_modelo.citas ?? []).map(String);',
+    'const ajenas = citas.filter((id) => !permitidas.has(id));',
+    'if (ajenas.length > 0) throw new Error(`citas fuera del paquete del documento: ${ajenas.join(\', \')}`);',
+    'if (salida_modelo.nivel !== undefined && salida_modelo.nivel !== base.nivel) {',
+    "  throw new Error('una edición no puede cambiar el nivel del dictamen');",
+    '}',
+    '// Documento cambiado bajo los pies: se conserva el borrador y se avisa.',
+    'const conflicto = Number(base.version_actual) !== Number(solicitud.version_base);',
+    'const salida = {',
+    '  caso_id: solicitud.caso_id,',
+    '  modo: solicitud.modo,',
+    "  modo_salida: solicitud.modo === 'pregunta' ? 'respuesta' : (solicitud.seleccion ? 'fragmento' : 'documento'),",
+    '  conflicto,',
+    '  version_base: solicitud.version_base,',
+    '  mensaje: salida_modelo.mensaje ?? null,',
+    '  patch: salida_modelo.patch ?? null,',
+    '  diff: salida_modelo.diff ?? null,',
+    '  citas,',
+    '};',
+    'return [{ json: salida }];',
+  ].join('\n')));
+
+  add(ruta('Ruta por modo', '={{ $json.modo_salida }}', ['respuesta', 'fragmento', 'documento']));
+
+  fila = 1; columna = 7;
+  add(sql(
+    'Guardar propuesta',
+    'SELECT * FROM forense.guardar_propuesta_edicion($1::uuid, $2::int, $3::jsonb, $4::jsonb, $5::text[])',
+    `={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ \`{\${($json.citas ?? []).join(",")}}\` }}`,
+    'Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).',
+  ));
+
+  fila = 0; columna = 8;
+  add(nodo('Responder edición', 'n8n-nodes-base.respondToWebhook', {
+    respondWith: 'json',
+    responseBody: "={{ JSON.stringify({ modo: $('Validar propuesta').first().json.modo_salida, mensaje: $('Validar propuesta').first().json.mensaje, propuesta_id: $json.propuesta_id ?? null, conflicto: $('Validar propuesta').first().json.conflicto }) }}",
+    options: { responseCode: 200 },
+  }));
+
+  fila = 3; columna = 0;
+  add(nota('Nota editor', [
+    'FORENSE_editar_expediente (15, 16, 17 §6).',
+    '',
+    'Chat PROPONE; «Aplicar» versiona y es del BFF, no de aquí.',
+    'Una edición no reactiva el aviso de fin ya emitido (16 §1).',
+    'El texto del documento es dato, no instrucción.',
+  ].join('\n'), 220, 400));
+
+  const connections = conectar([
+    ['Webhook editar', 'Validar solicitud'],
+    ['Validar solicitud', 'Cargar versión base'],
+    ['Cargar versión base', 'Abrir operación editor'],
+    ['Abrir operación editor', 'Ejecutar editor'],
+    ['Ejecutar editor', 'Validar propuesta'],
+    ['Validar propuesta', 'Ruta por modo'],
+    ['Ruta por modo', 'Responder edición', 0],
+    ['Ruta por modo', 'Guardar propuesta', 1],
+    ['Ruta por modo', 'Guardar propuesta', 2],
+    ['Guardar propuesta', 'Responder edición'],
+  ]);
+
+  return workflow('FORENSE_editar_expediente', nodes, connections);
+}
+
+// -------------------------------------------------------------- FORENSE_corrida
+
+export function corrida() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+  const C = (campo) => `={{ $('Validar e idempotencia').first().json.${campo} }}`;
+
+  add(nodo(
+    'Webhook corrida',
+    'n8n-nodes-base.webhook',
+    {
+      httpMethod: 'POST',
+      path: 'forense/corrida',
+      authentication: 'headerAuth',
+      responseMode: 'responseNode',
+      options: {},
+    },
+    { credentials: CREDENCIALES.webhook },
+  ));
+
+  add(sql(
+    'Validar e idempotencia',
+    'SELECT * FROM forense.abrir_corrida($1::text, $2::text, $3::uuid)',
+    '={{ $json.body.dataset }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.corrida_origen_id }}',
+    'Reutiliza la corrida `lista` con la misma idempotency_key o crea una `preparando`. `dataset` selecciona un ORIGEN AUTORIZADO, nunca una URL arbitraria. DEPENDE de forense-db.',
+  ));
+
+  fila = 1; columna = 2;
+  add(nodo('Responder corrida 202', 'n8n-nodes-base.respondToWebhook', {
+    respondWith: 'json',
+    responseBody: '={{ JSON.stringify({ corrida_id: $json.corrida_id, estado: $json.estado }) }}',
+    options: { responseCode: 202 },
+  }));
+
+  fila = 0; columna = 2;
+  add(sql(
+    'Cargar o clonar snapshot',
+    'SELECT * FROM forense.cargar_o_clonar_snapshot($1::uuid, $2::uuid)',
+    `${C('corrida_id')}, ${C('corrida_origen_id')}`,
+    'Snapshot COMPLETO; con corrida_origen_id clona (regla 10: corridas aisladas). DEPENDE de forense-db.',
+  ));
+
+  add(sql(
+    'Verificar integridad',
+    'SELECT * FROM forense.verificar_integridad_corrida($1::uuid)',
+    C('corrida_id'),
+    'Conteos, dataset_hash, fecha_corte y familias_evaluables → `lista`; fallo → `error` con causa. Una corrida vacía no se investiga. DEPENDE de forense-db.',
+  ));
+
+  add(sql(
+    'Correr pistas',
+    'SELECT forense.correr_pistas($1::uuid) AS pistas_insertadas',
+    C('corrida_id'),
+    'La función hace el claim atómico de `lista` a `procesando`: n8n NO anticipa el cambio de estado (003).',
+  ));
+
+  add(sql(
+    'Armar clusters',
+    'SELECT forense.armar_clusters($1::uuid) AS clusters_armados',
+    C('corrida_id'),
+    'DEPENDE de 004 (forense-db).',
+  ));
+
+  add(sql(
+    'Clusters por score',
+    [
+      'SELECT k.id AS cluster_id, k.corrida_id, k.score, k.estado,',
+      "       $2::uuid AS investigacion_id, $3::text AS idempotency_key",
+      '  FROM forense.clusters k',
+      ' WHERE k.corrida_id = $1::uuid',
+      ' ORDER BY k.score DESC NULLS LAST, k.id',
+    ].join('\n'),
+    `${C('corrida_id')}, ${C('investigacion_id')}, ${C('idempotency_key')}`,
+    'Cola COMPLETA ordenada por score; el límite de 4 activos lo impone el nodo siguiente, no este SELECT.',
+  ));
+
+  add(codeInline('Despachar hasta 4', [
+    '// 17 §2: el límite propio de DB controla ocho pasos y CUATRO clusters. Un',
+    '// límite de n8n no sustituye ese control. Lo que no cabe queda EN COLA, no',
+    '// fallido (regla 10: no se pierde la cola si se acaba el tiempo).',
+    'const MAX_ACTIVOS = 4;',
+    'const filas = $input.all().map((i) => i.json);',
+    'const admitidos = filas.slice(0, MAX_ACTIVOS);',
+    'const en_cola = filas.slice(MAX_ACTIVOS);',
+    'return admitidos.map((f) => ({ json: {',
+    '  cluster_id: f.cluster_id,',
+    '  corrida_id: f.corrida_id,',
+    '  investigacion_id: f.investigacion_id ?? null,',
+    '  idempotency_key: `${f.idempotency_key}:${f.cluster_id}`,',
+    '  admitidos: admitidos.length,',
+    '  en_cola: en_cola.length,',
+    '  cola_restante: en_cola.map((c) => c.cluster_id),',
+    '} }));',
+  ].join('\n')));
+
+  add(subworkflow('Despachar cluster', 'FORENSE_investigar_cluster', {
+    cluster_id: '={{ $json.cluster_id }}',
+    corrida_id: '={{ $json.corrida_id }}',
+    investigacion_id: '={{ $json.investigacion_id }}',
+    idempotency_key: '={{ $json.idempotency_key }}',
+  }, { esperar: false, modo: 'each' }));
+
+  add(sql(
+    'Esperar y reconciliar',
+    'SELECT * FROM forense.estado_corrida($1::uuid)',
+    C('corrida_id'),
+    'Espera SOLO los clusters admitidos y reconcilia errores, timeouts y leases. Terminar de despachar NO cierra la corrida. DEPENDE de forense-db.',
+  ));
+  add(si('¿Corrida terminada?', '={{ $json.terminada }}'));
+
+  fila = 1; columna = 10;
+  add(esperar('Espera corrida', '={{ 10000 }}'));
+
+  fila = 0; columna = 10;
+  add(sql(
+    'Métricas',
+    'SELECT forense.v_metricas_corrida($1::uuid) AS metricas',
+    C('corrida_id'),
+    'Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb.',
+  ));
+
+  add(sql(
+    'Cerrar corrida',
+    [
+      'UPDATE forense.corridas',
+      '   SET estado = $2::text, fin = now(), metricas = $3::jsonb',
+      ' WHERE id = $1::uuid',
+      'RETURNING id AS corrida_id, estado, fin, metricas',
+    ].join('\n'),
+    `${C('corrida_id')}, ={{ $('Esperar y reconciliar').first().json.estado_final }}, ={{ JSON.stringify($json.metricas) }}`,
+    '`completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables.',
+  ));
+
+  fila = 3; columna = 0;
+  add(nota('Nota corrida', [
+    'FORENSE_corrida (07 §1, 17 §2, regla 10).',
+    '',
+    'Cuatro clusters activos como máximo; el resto queda EN COLA.',
+    'Una corrida vacía no se investiga y terminar de despachar',
+    'no es cerrar la corrida.',
+  ].join('\n'), 220, 400));
+
+  const connections = conectar([
+    ['Webhook corrida', 'Validar e idempotencia'],
+    ['Validar e idempotencia', ['Responder corrida 202', 'Cargar o clonar snapshot']],
+    ['Cargar o clonar snapshot', 'Verificar integridad'],
+    ['Verificar integridad', 'Correr pistas'],
+    ['Correr pistas', 'Armar clusters'],
+    ['Armar clusters', 'Clusters por score'],
+    ['Clusters por score', 'Despachar hasta 4'],
+    ['Despachar hasta 4', ['Despachar cluster', 'Esperar y reconciliar']],
+    ['Esperar y reconciliar', '¿Corrida terminada?'],
+    ['¿Corrida terminada?', 'Métricas', 0],
+    ['¿Corrida terminada?', 'Espera corrida', 1],
+    ['Espera corrida', 'Esperar y reconciliar'],
+    ['Métricas', 'Cerrar corrida'],
+  ]);
+
+  return workflow('FORENSE_corrida', nodes, connections);
+}
+
+// ------------------------------------------------------------- FORENSE_inyectar
+//
+// 21 §3 (normativo): una inyección NUNCA muta un snapshot existente.
+
+export function inyectar() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+  const I = (campo) => `={{ $('Registrar inyección').first().json.${campo} }}`;
+
+  add(nodo(
+    'Webhook inyectar',
+    'n8n-nodes-base.webhook',
+    {
+      httpMethod: 'POST',
+      path: 'forense/inyectar',
+      authentication: 'headerAuth',
+      responseMode: 'responseNode',
+      options: {},
+    },
+    { credentials: CREDENCIALES.webhook },
+  ));
+
+  add(sql(
+    'Registrar inyección',
+    'SELECT * FROM forense.registrar_inyeccion($1::uuid, $2::uuid, $3::text, $4::text)',
+    "={{ $json.body.corrida_base_id }}, ={{ $json.body.ingesta_id }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.prioridad ?? 'inyectados' }}",
+    "Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. DEPENDE de 008 (forense-db).",
+  ));
+
+  fila = 1; columna = 2;
+  add(nodo('Responder inyección 202', 'n8n-nodes-base.respondToWebhook', {
+    respondWith: 'json',
+    responseBody: '={{ JSON.stringify({ inyeccion_id: $json.inyeccion_id, estado: $json.estado }) }}',
+    options: { responseCode: 202 },
+  }));
+
+  fila = 0; columna = 2;
+  add(sql(
+    'Validar filas',
+    'SELECT * FROM forense.validar_inyeccion($1::uuid)',
+    I('inyeccion_id'),
+    'Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. DEPENDE de 008.',
+  ));
+  add(si('¿Inyección validada?', '={{ $json.validada }}'));
+
+  fila = 1; columna = 4;
+  add(sql(
+    'Cerrar inyección rechazada',
+    [
+      'UPDATE forense.inyecciones',
+      "   SET estado = 'rechazada', diagnostico = $2::jsonb, terminado = now()",
+      ' WHERE id = $1::uuid',
+      'RETURNING id AS inyeccion_id, estado, diagnostico',
+    ].join('\n'),
+    `${I('inyeccion_id')}, ={{ JSON.stringify($json.diagnostico) }}`,
+    'Rechazo con motivo legible: la UI lo muestra en /inyecciones/[id] (21 §3.3).',
+  ));
+
+  fila = 0; columna = 4;
+  add(sql(
+    'Clonar corrida',
+    'SELECT * FROM forense.clonar_corrida_con_inyeccion($1::uuid, $2::uuid)',
+    `${I('corrida_base_id')}, ${I('ingesta_id')}`,
+    'Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). DEPENDE de 008.',
+  ));
+
+  add(sql(
+    'Recalcular pistas y clusters',
+    [
+      'SELECT $1::uuid AS corrida_nueva_id, $2::uuid AS inyeccion_id,',
+      '       forense.correr_pistas($1::uuid) AS pistas_insertadas,',
+      '       forense.armar_clusters($1::uuid) AS clusters_armados',
+    ].join('\n'),
+    `={{ $json.corrida_nueva_id }}, ${I('inyeccion_id')}`,
+    'Sobre la corrida NUEVA. Estado de la inyección: pistas_recalculadas.',
+  ));
+
+  add(sql(
+    'Clusters afectados primero',
+    'SELECT * FROM forense.clusters_por_prioridad_inyeccion($1::uuid, $2::uuid)',
+    `={{ $json.corrida_nueva_id }}, ${I('inyeccion_id')}`,
+    'Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). DEPENDE de 008.',
+  ));
+
+  add(codeInline('Priorizar afectados', [
+    '// 21 §3: los clusters con RFC inyectados se despachan PRIMERO; el resto',
+    '// espera. El juez tiene que ver la reacción en segundos, sin perder la',
+    '// corrida de referencia.',
+    'const MAX_ACTIVOS = 4;',
+    'const filas = $input.all().map((i) => i.json);',
+    'const afectados = filas.filter((f) => f.afectado === true);',
+    'const resto = filas.filter((f) => f.afectado !== true);',
+    'const admitidos = [...afectados, ...resto].slice(0, MAX_ACTIVOS);',
+    'return admitidos.map((f) => ({ json: {',
+    '  cluster_id: f.cluster_id,',
+    '  corrida_id: f.corrida_id,',
+    '  inyeccion_id: f.inyeccion_id ?? null,',
+    '  investigacion_id: f.investigacion_id ?? null,',
+    '  afectado: f.afectado === true,',
+    '  idempotency_key: `inyeccion:${f.inyeccion_id}:${f.cluster_id}`,',
+    '  afectados_total: afectados.length,',
+    '  en_cola: Math.max(0, filas.length - admitidos.length),',
+    '} }));',
+  ].join('\n')));
+
+  add(subworkflow('Despachar afectados', 'FORENSE_investigar_cluster', {
+    cluster_id: '={{ $json.cluster_id }}',
+    corrida_id: '={{ $json.corrida_id }}',
+    investigacion_id: '={{ $json.investigacion_id }}',
+    idempotency_key: '={{ $json.idempotency_key }}',
+  }, { esperar: false, modo: 'each' }));
+
+  add(sql(
+    'Cerrar inyección',
+    [
+      'UPDATE forense.inyecciones',
+      "   SET estado = 'investigando', corrida_nueva_id = $2::uuid, terminado = NULL",
+      ' WHERE id = $1::uuid',
+      'RETURNING id AS inyeccion_id, estado, corrida_nueva_id, creado',
+    ].join('\n'),
+    `${I('inyeccion_id')}, ={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}`,
+    'La latencia recibida→dictamen se mide sobre los eventos persistidos, no aquí: el cierre a `completada` lo hace el agregador cuando los casos terminan (21 §3.4).',
+  ));
+
+  fila = 3; columna = 0;
+  add(nota('Nota inyección', [
+    'FORENSE_inyectar (21 §3, normativo).',
+    '',
+    'Una inyección NUNCA muta un snapshot: crea corrida nueva',
+    'con corrida_origen_id = base, recalcula y despacha primero',
+    'los clusters con RFC inyectados.',
+    '',
+    'Cada paso deja evento con tipo_evento = inyeccion:',
+    'sin evento persistido no hay timeline ni animación.',
+  ].join('\n'), 260, 420));
+
+  const connections = conectar([
+    ['Webhook inyectar', 'Registrar inyección'],
+    ['Registrar inyección', ['Responder inyección 202', 'Validar filas']],
+    ['Validar filas', '¿Inyección validada?'],
+    ['¿Inyección validada?', 'Clonar corrida', 0],
+    ['¿Inyección validada?', 'Cerrar inyección rechazada', 1],
+    ['Clonar corrida', 'Recalcular pistas y clusters'],
+    ['Recalcular pistas y clusters', 'Clusters afectados primero'],
+    ['Clusters afectados primero', 'Priorizar afectados'],
+    ['Priorizar afectados', ['Despachar afectados', 'Cerrar inyección']],
+  ]);
+
+  return workflow('FORENSE_inyectar', nodes, connections);
+}
+
+// -------------------------------------------------- FORENSE_notificar_completada
+
+export function notificarCompletada() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+  const N = (campo) => `={{ $('Releer evento desde DB').first().json.${campo} }}`;
+
+  add(nodo(
+    'Webhook investigación completa',
+    'n8n-nodes-base.webhook',
+    {
+      httpMethod: 'POST',
+      path: 'forense/investigacion-completa',
+      authentication: 'headerAuth',
+      responseMode: 'onReceived',
+      options: {},
+    },
+    { credentials: CREDENCIALES.webhook },
+  ));
+
+  add(sql(
+    'Releer evento desde DB',
+    'SELECT * FROM forense.leer_evento_salida($1::uuid)',
+    '={{ $json.body.evento_id }}',
+    'NO confía en el payload: relee evento y estado desde DB. Un teléfono en el payload se IGNORA (16 §2). DEPENDE de 007 (forense-db).',
+  ));
+
+  add(sql(
+    'Reclamar evento',
+    'SELECT * FROM forense.reclamar_evento_salida($1::uuid, $2::text)',
+    `${N('evento_id')}, ={{ $execution.id }}`,
+    'Claim atómico con lease; unicidad (investigacion_id, tipo_evento). Cinco entregas del webhook NO generan cinco llamadas (16 §2). DEPENDE de 007.',
+  ));
+
+  add(sql(
+    'Resolver destinatario',
+    'SELECT * FROM forense.destinatario_aviso($1::uuid)',
+    N('investigacion_id'),
+    'Perfil propietario, teléfono E.164, preferencia de llamadas vigente y permiso guardado. El teléfono sale del PERFIL, jamás del prompt (16 §3). DEPENDE de 007.',
+  ));
+
+  add(si('¿Puede llamar?', '={{ $json.puede_llamar }}'));
+
+  fila = 1; columna = 5;
+  add(sql(
+    'Omitir con motivo',
+    'SELECT * FROM forense.omitir_llamada($1::uuid, $2::text)',
+    `${N('investigacion_id')}, ={{ $json.motivo_omision }}`,
+    "Estado `omitida` con motivo; el aviso DENTRO de la app se mantiene: la voz es un extra, no el canal (16 §2).",
+  ));
+
+  fila = 0; columna = 5;
+  add(sql(
+    'Crear intento de llamada',
+    'SELECT * FROM forense.crear_intento_llamada($1::uuid, $2::uuid)',
+    `${N('investigacion_id')}, ${N('evento_id')}`,
+    "Congela destinatario y configuración y reclama `solicitando` ANTES del POST (16 §2.5). Devuelve las dynamic_variables ya normalizadas: sin RFC, montos ni sospechas. DEPENDE de 007.",
+  ));
+
+  add(nodo(
+    'POST outbound-call',
+    'n8n-nodes-base.httpRequest',
+    {
+      method: 'POST',
+      url: 'https://api.elevenlabs.io/v1/convai/twilio/outbound-call',
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpHeaderAuth',
+      sendBody: true,
+      specifyBody: 'json',
+      // 16 §3: nunca RFC, montos, sospechas ni reporte. El cuerpo lo arma la
+      // RPC anterior con variables normalizadas y acotadas.
+      jsonBody: '={{ JSON.stringify($json.cuerpo_elevenlabs) }}',
+      options: {
+        timeout: 20000,
+        response: { response: { fullResponse: true, neverError: true } },
+      },
+    },
+    { credentials: CREDENCIALES.elevenlabs, retryOnFail: false },
+  ));
+
+  add(sql(
+    'Guardar aceptación',
+    'SELECT * FROM forense.guardar_aceptacion_llamada($1::uuid, $2::int, $3::jsonb)',
+    "={{ $('Crear intento de llamada').first().json.llamada_id }}, ={{ $json.statusCode }}, ={{ JSON.stringify($json.body) }}",
+    'HTTP 200 = solicitud ACEPTADA, no que alguien contestó. Timeout después de enviar → `resultado_desconocido` y reconciliación, nunca redial ciego (16 §2.7). DEPENDE de 007.',
+  ));
+
+  fila = 3; columna = 0;
+  add(nota('Nota voz', [
+    'FORENSE_notificar_completada (16 §2).',
+    '',
+    'Una llamada por INVESTIGACIÓN, nunca una por cluster ni una por',
+    'cada entrega duplicada del webhook. Editar el reporte no vuelve',
+    'a llamar. El fallo de la llamada no invalida el reporte.',
+    '',
+    'Bloqueo externo conocido (21 §5): la cuenta ElevenLabs tiene CERO',
+    'números salientes. Se entrega el circuito y la interfaz; la',
+    'llamada real no se ha ejecutado.',
+  ].join('\n'), 260, 430));
+
+  const connections = conectar([
+    ['Webhook investigación completa', 'Releer evento desde DB'],
+    ['Releer evento desde DB', 'Reclamar evento'],
+    ['Reclamar evento', 'Resolver destinatario'],
+    ['Resolver destinatario', '¿Puede llamar?'],
+    ['¿Puede llamar?', 'Crear intento de llamada', 0],
+    ['¿Puede llamar?', 'Omitir con motivo', 1],
+    ['Crear intento de llamada', 'POST outbound-call'],
+    ['POST outbound-call', 'Guardar aceptación'],
+  ]);
+
+  return workflow('FORENSE_notificar_completada', nodes, connections);
+}
+
+// --------------------------------------------------- FORENSE_resultado_llamada
+
+export function resultadoLlamada() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+
+  add(nodo(
+    'Webhook resultado',
+    'n8n-nodes-base.webhook',
+    {
+      httpMethod: 'POST',
+      path: 'forense/elevenlabs-resultado',
+      // La HMAC se verifica sobre el cuerpo CRUDO: sin rawBody, n8n reserializa
+      // el JSON y la firma deja de coincidir (16 §3).
+      options: { rawBody: true },
+      responseMode: 'responseNode',
+    },
+  ));
+
+  add(codeInline('Verificar HMAC', [
+    '// 16 §3: firma sobre el cuerpo CRUDO + ventana temporal. Firma inválida →',
+    '// 401 sin escribir nada.',
+    '//',
+    '// STUB MARCADO: el adaptador real es de forense-voice',
+    '// (integrations/elevenlabs), que todavía no existe. Este nodo declara la',
+    '// INTERFAZ que consumirá: {crudo, firma, tolerancia_s} → {valido, evento}.',
+    '// Mientras el adaptador no exista, VERIFICACION_DISPONIBLE=false y el nodo',
+    '// RECHAZA: nunca acepta un callback sin verificar.',
+    'const VERIFICACION_DISPONIBLE = false;',
+    'const TOLERANCIA_S = 300;',
+    'const x = $input.first().json;',
+    "const firma = (x.headers ?? {})['elevenlabs-signature'] ?? null;",
+    'if (!firma) throw new Error(\'callback sin cabecera de firma: 401\');',
+    'if (!VERIFICACION_DISPONIBLE) {',
+    "  throw new Error('verificador HMAC no instalado (integrations/elevenlabs, forense-voice): el callback se rechaza en vez de aceptarse sin verificar');",
+    '}',
+    'const salida = { valido: false, tolerancia_s: TOLERANCIA_S, evento: null };',
+    'return [{ json: salida }];',
+  ].join('\n')));
+
+  add(sql(
+    'Deduplicar callback',
+    'SELECT * FROM forense.registrar_callback_llamada($1::text, $2::text, $3::jsonb)',
+    '={{ $json.evento.conversation_id }}, ={{ $json.evento.call_sid }}, ={{ JSON.stringify($json.evento) }}',
+    'Deduplica por evento/identidad del proveedor y correlaciona por conversation_id/callSid. Un callback que llega ANTES de guardar el POST se conserva para conciliación posterior (16 §2.7). DEPENDE de 007.',
+  ));
+
+  add(sql(
+    'Actualizar llamada',
+    'SELECT * FROM forense.actualizar_llamada($1::uuid, $2::text, $3::boolean)',
+    '={{ $json.llamada_id }}, ={{ $json.estado_llamada }}, ={{ $json.aviso_entregado }}',
+    'Mapea SOLO hechos recibidos: sin callback de timbrado no se muestra «Sonando». `aviso_entregado` solo si el análisis lo respalda. El fallo de voz no revierte la investigación ni borra el reporte (16 §2.7). DEPENDE de 007.',
+  ));
+
+  add(nodo('Responder acuse', 'n8n-nodes-base.respondToWebhook', {
+    respondWith: 'json',
+    responseBody: '={{ JSON.stringify({ recibido: true }) }}',
+    options: { responseCode: 200 },
+  }));
+
+  fila = 2; columna = 0;
+  add(nota('Nota callback', [
+    'FORENSE_resultado_llamada (16 §3).',
+    '',
+    'rawBody + HMAC sobre el cuerpo crudo. El acuse no lleva datos',
+    'del caso. Sin verificador instalado, el nodo RECHAZA.',
+  ].join('\n'), 200, 400));
+
+  const connections = conectar([
+    ['Webhook resultado', 'Verificar HMAC'],
+    ['Verificar HMAC', 'Deduplicar callback'],
+    ['Deduplicar callback', 'Actualizar llamada'],
+    ['Actualizar llamada', 'Responder acuse'],
+  ]);
+
+  return workflow('FORENSE_resultado_llamada', nodes, connections);
+}
+
+// --------------------------------------------------------- FORENSE_reconciliador
+
+export function reconciliador() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+
+  add(nodo('Cada 10 s', 'n8n-nodes-base.scheduleTrigger', {
+    rule: { interval: [{ field: 'seconds', secondsInterval: 10 }] },
+  }));
+
+  add(sql(
+    'Slots vencidos',
+    [
+      'SELECT r.ok, r.clusters, r.tareas, r.ejecuciones, r.slots, r.solicitudes, r.pasos',
+      '  FROM jsonb_to_record(forense.recover_expired(now()))',
+      '    AS r(ok boolean, clusters int, tareas int, ejecuciones int, slots int,',
+      '         solicitudes int, pasos int)',
+    ].join('\n'),
+    null,
+    'Leases vencidos, tareas huérfanas y pasos sin avance. La ejecución conserva su fence_token: el siguiente claim_step lo incrementa y deja fuera al proceso viejo (17 §4).',
+  ));
+
+  add(sql(
+    'Pasos recuperables',
+    [
+      'SELECT e.id AS execution_id, e.caso_id, e.tarea_id, e.corrida_id, e.rol,',
+      "       'reconciliador'::text AS owner",
+      '  FROM forense.ejecuciones_agente e',
+      "  WHERE e.estado_interno NOT IN ('terminado','error','timeout')",
+      '    AND e.lease_owner IS NULL',
+      '    AND (e.deadline_at IS NULL OR e.deadline_at > now())',
+      '  ORDER BY e.actualizado',
+      '  LIMIT 8',
+    ].join('\n'),
+    null,
+    '17 §2: ocho pasos activos como máximo. El reconciliador es RECUPERACIÓN, no el camino normal: el dispatcher es inmediato al guardar checkpoint.',
+  ));
+
+  add(subworkflow('Redespachar pasos', 'FORENSE_ejecutar_agente', {
+    execution_id: '={{ $json.execution_id }}',
+    tarea_id: '={{ $json.tarea_id }}',
+    owner: '={{ $json.owner }}',
+  }, { esperar: false, modo: 'each' }));
+
+  fila = 1; columna = 2;
+  add(sql(
+    'Barreras vencidas',
+    'SELECT * FROM forense.cerrar_barreras_vencidas(now())',
+    null,
+    'Cierra barreras con deadline vencido marcando limitaciones y llama a advance_case_if_ready. Error o timeout NO es ausencia de fraude (07). DEPENDE de forense-db.',
+  ));
+
+  add(sql(
+    'Outbox pendiente',
+    'SELECT * FROM forense.eventos_salida_pendientes($1::int)',
+    '={{ 20 }}',
+    'Reenvía eventos de eventos_salida no entregados (16 §2). El backoff de outbox NO equivale a repetir una llamada ya aceptada. DEPENDE de 007.',
+  ));
+
+  add(subworkflow('Reenviar outbox', 'FORENSE_notificar_completada', {
+    evento_id: '={{ $json.evento_id }}',
+  }, { esperar: false, modo: 'each' }));
+
+  fila = 3; columna = 0;
+  add(nota('Nota reconciliador', [
+    'FORENSE_reconciliador (17 §3).',
+    '',
+    'Cada 10 s, configurable y a validar en la instancia.',
+    'Es la RED DE SEGURIDAD, no el camino normal.',
+    'No hace polling al LLM.',
+  ].join('\n'), 200, 400));
+
+  const connections = conectar([
+    ['Cada 10 s', ['Slots vencidos', 'Barreras vencidas']],
+    ['Slots vencidos', 'Pasos recuperables'],
+    ['Pasos recuperables', 'Redespachar pasos'],
+    ['Barreras vencidas', 'Outbox pendiente'],
+    ['Outbox pendiente', 'Reenviar outbox'],
+  ]);
+
+  return workflow('FORENSE_reconciliador', nodes, connections);
+}
+
+// ---------------------------------------------------------------- FORENSE_errores
+
+export function errores() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+
+  add(nodo('Error Trigger', 'n8n-nodes-base.errorTrigger', {}));
+
+  add(sql(
+    'Resolver por execution.id',
+    [
+      'SELECT c.id AS caso_id, c.corrida_id, c.cluster_id, t.id AS tarea_id, t.agente,',
+      '       t.lease_owner, t.estado AS estado_tarea, $1::text AS n8n_execution_id',
+      '  FROM forense.casos c',
+      '  LEFT JOIN forense.tareas_agente t ON t.caso_id = c.id',
+      ' WHERE c.n8n_execution_id = $1::text',
+      ' ORDER BY t.iniciado DESC NULLS LAST',
+      ' LIMIT 1',
+    ].join('\n'),
+    '={{ $json.execution.id }}',
+    'Localiza caso y tarea por el n8n_execution_id persistido: un error técnico sin caso no puede cerrar nada.',
+  ));
+
+  add(si('¿Propietario vigente?', '={{ $json.lease_owner !== null }}'));
+
+  fila = 1; columna = 3;
+  add(sql(
+    'Registrar y liberar',
+    [
+      'WITH ev AS (',
+      '  SELECT forense.log(',
+      "           p_caso => $1::uuid, p_agente => coalesce($2::text, 'sistema'), p_tipo => 'error',",
+      '           p_payload => $3::jsonb, p_tarea => $4::uuid, p_corrida => $5::uuid)',
+      '), t AS (',
+      '  UPDATE forense.tareas_agente',
+      "     SET estado = 'error', terminado = now(), error = $6::text,",
+      '         lease_owner = NULL, lease_expires_at = NULL',
+      '   WHERE id = $4::uuid',
+      '  RETURNING id',
+      ')',
+      "SELECT $1::uuid AS caso_id, $4::uuid AS tarea_id, 'error'::text AS estado_tarea,",
+      '       true AS registrado FROM ev, t',
+    ].join('\n'),
+    "={{ $json.caso_id }}, ={{ $json.agente }}, ={{ JSON.stringify({ execution_id: $json.n8n_execution_id, error: $('Error Trigger').first().json.execution?.error?.message ?? null }) }}, ={{ $json.tarea_id }}, ={{ $json.corrida_id }}, ={{ $('Error Trigger').first().json.execution?.error?.message ?? 'error técnico de ejecución' }}",
+    'Causa en bitácora, tarea a `error` y lease liberado. Una tarea fallida PASA por la barrera para conservar los resultados de las demás (07).',
+  ));
+
+  fila = 3; columna = 0;
+  add(nota('Nota errores', [
+    'FORENSE_errores (07).',
+    '',
+    'Entrada de OTRA ejecución, no un catch de la rama normal.',
+    'No corre en pruebas manuales de n8n: se prueba con un webhook',
+    'automático y un fallo controlado.',
+    '',
+    'Comprueba owner/fence antes de escribir: un proceso viejo no',
+    'cierra un caso ajeno.',
+  ].join('\n'), 240, 420));
+
+  const connections = conectar([
+    ['Error Trigger', 'Resolver por execution.id'],
+    ['Resolver por execution.id', '¿Propietario vigente?'],
+    ['¿Propietario vigente?', 'Registrar y liberar', 0],
+  ]);
+
+  return workflow('FORENSE_errores', nodes, connections);
+}
+
 // --------------------------------------------------- contrato entre nodos
 //
 // Qué campos publica cada nodo. Es el contrato que cierra el hueco de
@@ -1030,6 +2017,102 @@ export const CONTRATOS_NODOS = Object.freeze({
       'duracion_ms'],
     'Avisar agregador': [],
   }),
+  FORENSE_reintento: Object.freeze({
+    'Entrada reintento': ['caso_id', 'intento', 'motivo', 'objetivo', 'corrida_id', 'cluster_id'],
+    'Validar intento': ['caso_id', 'intento', 'motivo', 'objetivo', 'corrida_id', 'cluster_id'],
+    'Cargar caso vigente': ['caso_id', 'corrida_id', 'cluster_id', 'nivel', 'n_reintentos',
+      'version_contexto', 'tool_calls', 'presupuesto_agotado', 'expansiones_usadas',
+      'intento', 'motivo', 'objetivo'],
+    'Seleccionar autores': ['caso_id', 'autores', 'puede_expandir', 'motivo', 'objetivo'],
+    'Registrar límite de expansión': ['caso_id', 'autores', 'expandido', 'limitacion'],
+    'Expandir para reintento': ['caso_id', 'autores', 'expandido', 'version_contexto', 'rfcs_nuevos'],
+    'Crear tareas de revisión': ['caso_id', 'tarea_id', 'tarea_ids', 'version_contexto', 'deadline'],
+    'Despachar revisión': [],
+    'Barrera reintento': ['caso_id', 'paso', 'completa', 'faltantes', 'vencida'],
+    'Revalidar si cambió evidencia': ['caso_id', 'limitaciones', 'evidencia_revalidada'],
+    'Retornar al padre': ['caso_id', 'intento', 'reanudar_en', 'limitaciones'],
+  }),
+  FORENSE_editar_expediente: Object.freeze({
+    'Webhook editar': ['headers', 'params', 'query', 'body'],
+    'Validar solicitud': ['caso_id', 'modo', 'version_base', 'idempotency_key',
+      'instruccion_untrusted', 'seleccion', 'directriz_id'],
+    'Cargar versión base': ['caso_id', 'version_actual', 'nivel', 'citas_permitidas',
+      'context_hash', 'prompt_hash', 'modelo', 'documento'],
+    'Abrir operación editor': ['execution_id', 'editor_operacion_id', 'rol', 'deadline_at', 'corrida_id'],
+    'Ejecutar editor': ['salida', 'estado_interno', 'execution_id'],
+    'Validar propuesta': ['caso_id', 'modo', 'modo_salida', 'conflicto', 'version_base',
+      'mensaje', 'patch', 'diff', 'citas'],
+    'Guardar propuesta': ['propuesta_id', 'caso_id', 'version_base', 'creado'],
+  }),
+  FORENSE_corrida: Object.freeze({
+    'Webhook corrida': ['headers', 'params', 'query', 'body'],
+    'Validar e idempotencia': ['corrida_id', 'estado', 'idempotency_key', 'corrida_origen_id',
+      'investigacion_id', 'dataset', 'reutilizada'],
+    'Cargar o clonar snapshot': ['corrida_id', 'estado', 'filas_por_tabla', 'corrida_origen_id'],
+    'Verificar integridad': ['corrida_id', 'estado', 'dataset_hash', 'fecha_corte',
+      'familias_evaluables', 'causa'],
+    'Correr pistas': ['pistas_insertadas'],
+    'Armar clusters': ['clusters_armados'],
+    'Clusters por score': ['cluster_id', 'corrida_id', 'score', 'estado',
+      'investigacion_id', 'idempotency_key'],
+    'Despachar hasta 4': ['cluster_id', 'corrida_id', 'investigacion_id', 'idempotency_key',
+      'admitidos', 'en_cola', 'cola_restante'],
+    'Despachar cluster': [],
+    'Esperar y reconciliar': ['corrida_id', 'terminada', 'estado_final', 'completados',
+      'en_cola', 'errores'],
+    'Métricas': ['metricas'],
+    'Cerrar corrida': ['corrida_id', 'estado', 'fin', 'metricas'],
+  }),
+  FORENSE_inyectar: Object.freeze({
+    'Webhook inyectar': ['headers', 'params', 'query', 'body'],
+    'Registrar inyección': ['inyeccion_id', 'estado', 'corrida_base_id', 'ingesta_id',
+      'idempotency_key', 'prioridad'],
+    'Validar filas': ['inyeccion_id', 'validada', 'diagnostico', 'rfcs_afectados',
+      'filas_por_tabla', 'fecha_corte_nueva'],
+    'Cerrar inyección rechazada': ['inyeccion_id', 'estado', 'diagnostico'],
+    'Clonar corrida': ['inyeccion_id', 'corrida_nueva_id', 'dataset_hash', 'estado'],
+    'Recalcular pistas y clusters': ['corrida_nueva_id', 'inyeccion_id', 'pistas_insertadas',
+      'clusters_armados'],
+    'Clusters afectados primero': ['cluster_id', 'corrida_id', 'inyeccion_id',
+      'investigacion_id', 'afectado', 'score'],
+    'Priorizar afectados': ['cluster_id', 'corrida_id', 'inyeccion_id', 'investigacion_id',
+      'afectado', 'idempotency_key', 'afectados_total', 'en_cola'],
+    'Despachar afectados': [],
+    'Cerrar inyección': ['inyeccion_id', 'estado', 'corrida_nueva_id', 'creado'],
+  }),
+  FORENSE_notificar_completada: Object.freeze({
+    'Webhook investigación completa': ['headers', 'params', 'query', 'body'],
+    'Releer evento desde DB': ['evento_id', 'investigacion_id', 'tipo_evento', 'estado',
+      'completada_at', 'reporte_hash'],
+    'Reclamar evento': ['evento_id', 'reclamado', 'lease_owner', 'motivo'],
+    'Resolver destinatario': ['investigacion_id', 'puede_llamar', 'motivo_omision',
+      'perfil_id', 'referencia_corta'],
+    'Omitir con motivo': ['investigacion_id', 'estado', 'motivo_omision'],
+    'Crear intento de llamada': ['llamada_id', 'investigacion_id', 'estado', 'cuerpo_elevenlabs'],
+    'POST outbound-call': ['statusCode', 'headers', 'body'],
+    'Guardar aceptación': ['llamada_id', 'estado', 'conversation_id', 'call_sid'],
+  }),
+  FORENSE_resultado_llamada: Object.freeze({
+    'Webhook resultado': ['headers', 'params', 'query', 'body'],
+    'Verificar HMAC': ['valido', 'tolerancia_s', 'evento'],
+    'Deduplicar callback': ['llamada_id', 'duplicado', 'estado_llamada', 'aviso_entregado'],
+    'Actualizar llamada': ['llamada_id', 'estado', 'aviso_entregado'],
+  }),
+  FORENSE_reconciliador: Object.freeze({
+    'Cada 10 s': [],
+    'Slots vencidos': ['ok', 'clusters', 'tareas', 'ejecuciones', 'slots', 'solicitudes', 'pasos'],
+    'Pasos recuperables': ['execution_id', 'caso_id', 'tarea_id', 'corrida_id', 'rol', 'owner'],
+    'Redespachar pasos': [],
+    'Barreras vencidas': ['caso_id', 'paso', 'cerradas', 'limitaciones'],
+    'Outbox pendiente': ['evento_id', 'investigacion_id', 'intentos'],
+    'Reenviar outbox': [],
+  }),
+  FORENSE_errores: Object.freeze({
+    'Error Trigger': ['execution', 'workflow', 'trigger'],
+    'Resolver por execution.id': ['caso_id', 'corrida_id', 'cluster_id', 'tarea_id', 'agente',
+      'lease_owner', 'estado_tarea', 'n8n_execution_id'],
+    'Registrar y liberar': ['caso_id', 'tarea_id', 'estado_tarea', 'registrado'],
+  }),
 });
 
 // Nodos cuya FORMA de salida no puede comprobarse contra el texto de la
@@ -1040,17 +2123,42 @@ export const CONTRATOS_NODOS = Object.freeze({
 // si la lista crece o encoge sin actualizarla.
 export const FORMA_PENDIENTE = Object.freeze({
   FORENSE_ejecutar_agente: Object.freeze([]),
+  FORENSE_errores: Object.freeze([]),
   FORENSE_investigar_cluster: Object.freeze([
     'Aplicar resolución', 'Auditoría', 'Barrera R2', 'Cerrar caso', 'Contexto ronda 1',
     'Crear caso', 'Crear tareas R1', 'Defensa', 'Esperar barrera R1',
     'Expandir y crear tareas R2', 'Guardar dictamen', 'Paquete auditor final',
     'Redacción', 'Resolver y reclamar cluster', 'Ronda fin R1', 'Validar citas',
   ]),
+  FORENSE_reintento: Object.freeze([
+    'Barrera reintento', 'Crear tareas de revisión', 'Expandir para reintento',
+    'Revalidar si cambió evidencia', 'Seleccionar autores',
+  ]),
+  FORENSE_editar_expediente: Object.freeze(['Cargar versión base', 'Guardar propuesta']),
+  FORENSE_corrida: Object.freeze([
+    'Cargar o clonar snapshot', 'Esperar y reconciliar', 'Validar e idempotencia',
+    'Verificar integridad',
+  ]),
+  FORENSE_inyectar: Object.freeze([
+    'Clonar corrida', 'Clusters afectados primero', 'Registrar inyección', 'Validar filas',
+  ]),
+  FORENSE_notificar_completada: Object.freeze([
+    'Crear intento de llamada', 'Guardar aceptación', 'Omitir con motivo', 'Reclamar evento',
+    'Releer evento desde DB', 'Resolver destinatario',
+  ]),
+  FORENSE_resultado_llamada: Object.freeze(['Actualizar llamada', 'Deduplicar callback']),
+  FORENSE_reconciliador: Object.freeze(['Barreras vencidas', 'Outbox pendiente']),
 });
 
 // ------------------------------------------------------------------ emisión
 
-export const WORKFLOWS = [workerEjecutarAgente, investigarCluster];
+// Orden de 17 §2 (worker → reintento → editor → investigación → corrida →
+// notificador → callback → reconciliador/errores) con FORENSE_inyectar entre
+// corrida y notificador, por su dependencia de ambas (21 §3).
+export const WORKFLOWS = [
+  workerEjecutarAgente, reintento, editarExpediente, investigarCluster, corrida,
+  inyectar, notificarCompletada, resultadoLlamada, reconciliador, errores,
+];
 
 export function generar({ check = false } = {}) {
   const informe = [];

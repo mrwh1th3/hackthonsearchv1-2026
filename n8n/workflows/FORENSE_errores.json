@@ -1,0 +1,144 @@
+{
+  "name": "FORENSE_errores",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Localiza caso y tarea por el n8n_execution_id persistido: un error técnico sin caso no puede cerrar nada.\nSELECT c.id AS caso_id, c.corrida_id, c.cluster_id, t.id AS tarea_id, t.agente,\n       t.lease_owner, t.estado AS estado_tarea, $1::text AS n8n_execution_id\n  FROM forense.casos c\n  LEFT JOIN forense.tareas_agente t ON t.caso_id = c.id\n WHERE c.n8n_execution_id = $1::text\n ORDER BY t.iniciado DESC NULLS LAST\n LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ $json.execution.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Resolver por execution.id",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.lease_owner !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        0
+      ],
+      "name": "¿Propietario vigente?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Causa en bitácora, tarea a `error` y lease liberado. Una tarea fallida PASA por la barrera para conservar los resultados de las demás (07).\nWITH ev AS (\n  SELECT forense.log(\n           p_caso => $1::uuid, p_agente => coalesce($2::text, 'sistema'), p_tipo => 'error',\n           p_payload => $3::jsonb, p_tarea => $4::uuid, p_corrida => $5::uuid)\n), t AS (\n  UPDATE forense.tareas_agente\n     SET estado = 'error', terminado = now(), error = $6::text,\n         lease_owner = NULL, lease_expires_at = NULL\n   WHERE id = $4::uuid\n  RETURNING id\n)\nSELECT $1::uuid AS caso_id, $4::uuid AS tarea_id, 'error'::text AS estado_tarea,\n       true AS registrado FROM ev, t",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.agente }}, ={{ JSON.stringify({ execution_id: $json.n8n_execution_id, error: $('Error Trigger').first().json.execution?.error?.message ?? null }) }}, ={{ $json.tarea_id }}, ={{ $json.corrida_id }}, ={{ $('Error Trigger').first().json.execution?.error?.message ?? 'error técnico de ejecución' }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        140
+      ],
+      "name": "Registrar y liberar",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_errores (07).\n\nEntrada de OTRA ejecución, no un catch de la rama normal.\nNo corre en pruebas manuales de n8n: se prueba con un webhook\nautomático y un fallo controlado.\n\nComprueba owner/fence antes de escribir: un proceso viejo no\ncierra un caso ajeno.",
+        "height": 240,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ],
+      "name": "Nota errores"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resolver por execution.id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolver por execution.id": {
+      "main": [
+        [
+          {
+            "node": "¿Propietario vigente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Propietario vigente?": {
+      "main": [
+        [
+          {
+            "node": "Registrar y liberar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

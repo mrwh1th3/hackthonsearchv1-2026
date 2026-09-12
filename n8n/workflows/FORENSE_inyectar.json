@@ -1,0 +1,390 @@
+{
+  "name": "FORENSE_inyectar",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "forense/inyectar",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook inyectar",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Forense Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. DEPENDE de 008 (forense-db).\nSELECT * FROM forense.registrar_inyeccion($1::uuid, $2::uuid, $3::text, $4::text)",
+        "options": {
+          "queryReplacement": "={{ $json.body.corrida_base_id }}, ={{ $json.body.ingesta_id }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.prioridad ?? 'inyectados' }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Registrar inyección",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ inyeccion_id: $json.inyeccion_id, estado: $json.estado }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        440,
+        140
+      ],
+      "name": "Responder inyección 202"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. DEPENDE de 008.\nSELECT * FROM forense.validar_inyeccion($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Registrar inyección').first().json.inyeccion_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Validar filas",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.validada }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        0
+      ],
+      "name": "¿Inyección validada?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Rechazo con motivo legible: la UI lo muestra en /inyecciones/[id] (21 §3.3).\nUPDATE forense.inyecciones\n   SET estado = 'rechazada', diagnostico = $2::jsonb, terminado = now()\n WHERE id = $1::uuid\nRETURNING id AS inyeccion_id, estado, diagnostico",
+        "options": {
+          "queryReplacement": "={{ $('Registrar inyección').first().json.inyeccion_id }}, ={{ JSON.stringify($json.diagnostico) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        880,
+        140
+      ],
+      "name": "Cerrar inyección rechazada",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). DEPENDE de 008.\nSELECT * FROM forense.clonar_corrida_con_inyeccion($1::uuid, $2::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Registrar inyección').first().json.corrida_base_id }}, ={{ $('Registrar inyección').first().json.ingesta_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        880,
+        0
+      ],
+      "name": "Clonar corrida",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Sobre la corrida NUEVA. Estado de la inyección: pistas_recalculadas.\nSELECT $1::uuid AS corrida_nueva_id, $2::uuid AS inyeccion_id,\n       forense.correr_pistas($1::uuid) AS pistas_insertadas,\n       forense.armar_clusters($1::uuid) AS clusters_armados",
+        "options": {
+          "queryReplacement": "={{ $json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Recalcular pistas y clusters",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). DEPENDE de 008.\nSELECT * FROM forense.clusters_por_prioridad_inyeccion($1::uuid, $2::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Clusters afectados primero",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 21 §3: los clusters con RFC inyectados se despachan PRIMERO; el resto\n// espera. El juez tiene que ver la reacción en segundos, sin perder la\n// corrida de referencia.\nconst MAX_ACTIVOS = 4;\nconst filas = $input.all().map((i) => i.json);\nconst afectados = filas.filter((f) => f.afectado === true);\nconst resto = filas.filter((f) => f.afectado !== true);\nconst admitidos = [...afectados, ...resto].slice(0, MAX_ACTIVOS);\nreturn admitidos.map((f) => ({ json: {\n  cluster_id: f.cluster_id,\n  corrida_id: f.corrida_id,\n  inyeccion_id: f.inyeccion_id ?? null,\n  investigacion_id: f.investigacion_id ?? null,\n  afectado: f.afectado === true,\n  idempotency_key: `inyeccion:${f.inyeccion_id}:${f.cluster_id}`,\n  afectados_total: afectados.length,\n  en_cola: Math.max(0, filas.length - admitidos.length),\n} }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Priorizar afectados"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_INVESTIGAR_CLUSTER",
+          "cachedResultName": "FORENSE_investigar_cluster"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "cluster_id": "={{ $json.cluster_id }}",
+            "corrida_id": "={{ $json.corrida_id }}",
+            "investigacion_id": "={{ $json.investigacion_id }}",
+            "idempotency_key": "={{ $json.idempotency_key }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1760,
+        0
+      ],
+      "name": "Despachar afectados"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- La latencia recibida→dictamen se mide sobre los eventos persistidos, no aquí: el cierre a `completada` lo hace el agregador cuando los casos terminan (21 §3.4).\nUPDATE forense.inyecciones\n   SET estado = 'investigando', corrida_nueva_id = $2::uuid, terminado = NULL\n WHERE id = $1::uuid\nRETURNING id AS inyeccion_id, estado, corrida_nueva_id, creado",
+        "options": {
+          "queryReplacement": "={{ $('Registrar inyección').first().json.inyeccion_id }}, ={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1980,
+        0
+      ],
+      "name": "Cerrar inyección",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_inyectar (21 §3, normativo).\n\nUna inyección NUNCA muta un snapshot: crea corrida nueva\ncon corrida_origen_id = base, recalcula y despacha primero\nlos clusters con RFC inyectados.\n\nCada paso deja evento con tipo_evento = inyeccion:\nsin evento persistido no hay timeline ni animación.",
+        "height": 260,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ],
+      "name": "Nota inyección"
+    }
+  ],
+  "connections": {
+    "Webhook inyectar": {
+      "main": [
+        [
+          {
+            "node": "Registrar inyección",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar inyección": {
+      "main": [
+        [
+          {
+            "node": "Responder inyección 202",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Validar filas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar filas": {
+      "main": [
+        [
+          {
+            "node": "¿Inyección validada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Inyección validada?": {
+      "main": [
+        [
+          {
+            "node": "Clonar corrida",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cerrar inyección rechazada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clonar corrida": {
+      "main": [
+        [
+          {
+            "node": "Recalcular pistas y clusters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recalcular pistas y clusters": {
+      "main": [
+        [
+          {
+            "node": "Clusters afectados primero",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clusters afectados primero": {
+      "main": [
+        [
+          {
+            "node": "Priorizar afectados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Priorizar afectados": {
+      "main": [
+        [
+          {
+            "node": "Despachar afectados",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cerrar inyección",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

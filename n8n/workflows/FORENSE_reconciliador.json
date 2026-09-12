@@ -1,0 +1,239 @@
+{
+  "name": "FORENSE_reconciliador",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Cada 10 s"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Leases vencidos, tareas huérfanas y pasos sin avance. La ejecución conserva su fence_token: el siguiente claim_step lo incrementa y deja fuera al proceso viejo (17 §4).\nSELECT r.ok, r.clusters, r.tareas, r.ejecuciones, r.slots, r.solicitudes, r.pasos\n  FROM jsonb_to_record(forense.recover_expired(now()))\n    AS r(ok boolean, clusters int, tareas int, ejecuciones int, slots int,\n         solicitudes int, pasos int)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Slots vencidos",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 17 §2: ocho pasos activos como máximo. El reconciliador es RECUPERACIÓN, no el camino normal: el dispatcher es inmediato al guardar checkpoint.\nSELECT e.id AS execution_id, e.caso_id, e.tarea_id, e.corrida_id, e.rol,\n       'reconciliador'::text AS owner\n  FROM forense.ejecuciones_agente e\n  WHERE e.estado_interno NOT IN ('terminado','error','timeout')\n    AND e.lease_owner IS NULL\n    AND (e.deadline_at IS NULL OR e.deadline_at > now())\n  ORDER BY e.actualizado\n  LIMIT 8",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Pasos recuperables",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "execution_id": "={{ $json.execution_id }}",
+            "tarea_id": "={{ $json.tarea_id }}",
+            "owner": "={{ $json.owner }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Redespachar pasos"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Cierra barreras con deadline vencido marcando limitaciones y llama a advance_case_if_ready. Error o timeout NO es ausencia de fraude (07). DEPENDE de forense-db.\nSELECT * FROM forense.cerrar_barreras_vencidas(now())",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        140
+      ],
+      "name": "Barreras vencidas",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Reenvía eventos de eventos_salida no entregados (16 §2). El backoff de outbox NO equivale a repetir una llamada ya aceptada. DEPENDE de 007.\nSELECT * FROM forense.eventos_salida_pendientes($1::int)",
+        "options": {
+          "queryReplacement": "={{ 20 }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        140
+      ],
+      "name": "Outbox pendiente",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_NOTIFICAR_COMPLETADA",
+          "cachedResultName": "FORENSE_notificar_completada"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "evento_id": "={{ $json.evento_id }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        880,
+        140
+      ],
+      "name": "Reenviar outbox"
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_reconciliador (17 §3).\n\nCada 10 s, configurable y a validar en la instancia.\nEs la RED DE SEGURIDAD, no el camino normal.\nNo hace polling al LLM.",
+        "height": 200,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ],
+      "name": "Nota reconciliador"
+    }
+  ],
+  "connections": {
+    "Cada 10 s": {
+      "main": [
+        [
+          {
+            "node": "Slots vencidos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Barreras vencidas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slots vencidos": {
+      "main": [
+        [
+          {
+            "node": "Pasos recuperables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pasos recuperables": {
+      "main": [
+        [
+          {
+            "node": "Redespachar pasos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Barreras vencidas": {
+      "main": [
+        [
+          {
+            "node": "Outbox pendiente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outbox pendiente": {
+      "main": [
+        [
+          {
+            "node": "Reenviar outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
