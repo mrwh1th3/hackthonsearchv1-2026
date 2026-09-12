@@ -34,12 +34,60 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 | qa | 131 integración (forense_qa 001–011) + 7 e2e; informes oleadas 2–3 | 131/131, 7/7 |
 Oleada 4 integrada (H11): db 001–013 (381 aserciones sin gen; 012/013), runtime 337 tests y 155 nodos, QA 149 pruebas (gate de rendimiento rojo hasta 014), RUNBOOK/RESUMEN-H10. Contratos **1.3.1**: 110/110. Supabase remoto: **001–013 + 003 recalibrada + seeds aplicadas** (012/013: 5/5 cuerpos idénticos, 4 índices, 128 funciones con ACL explícita; 014 del hotfix pendiente) (versiones hasta 20260912094346; 32/32 cuerpos de 010/011 idénticos; 126 funciones en `forense`, ninguna con EXECUTE público; `v_metricas_corrida` completa). Datos remotos: solo fixture; gen-v1 pendiente de `SUPABASE_DB_URL`.
 
-## Abierto (hotfix H11 en curso: db6 ∥ runtime6 → qa5)
-- ANALYZE tras clonar (014) → gate de inyección <5 s; cobertura_completa calculada en código; FORENSE_corrida redespacha hasta vaciar la cola; e2e de corrida completa.
-- ~~QA-004~~ resuelto en 012 (asegurar_clusters_inyectados) y cableado en FORENSE_inyectar.
-- Rendimiento: causa real = estadísticas rancias tras clonar (F1 42 s → 0.24 s con ANALYZE); 013 añade índices y F1 equivalente; 014 (hotfix) añade el ANALYZE en el clonado.
-- ~~Runtime: prompt_hash por variante y aviso de reintento~~ hecho en runtime5 (orden del nodo de aviso se corrige en hotfix).
+## Hotfix H11 — integrado en main (commits ffb5050 → 93385ba)
+Las tres ramas (db6, runtime6, qa5) entraron en orden de dependencia, y el
+coordinador añadió 016 y 017 para cerrar lo que los verificadores dejaron
+abierto. Todo lo de abajo está **medido en main**, no heredado de los
+informes de los builders.
+
+| Qué | Dónde | Medido en main |
+|---|---|---|
+| ANALYZE al clonar: el barrido de un clon no terminaba en 300 s | `db/014_estadisticas.sql` | clonado 417 ms + barrido 1 473 ms; el gate de QA mide 1 440 ms contra un umbral de 30 000 ms |
+| `cobertura_completa` no la escribía nadie, así que todo caso salía `no_concluyente` | `db/015_cobertura.sql` | regla determinista en SQL, recalculada al cerrar la última ronda y antes del dictamen |
+| Tres funciones de 014/015 quedaron ejecutables por PUBLIC (`proacl '=X'`) | `db/016_permisos_cobertura.sql` | aserción sobre `pg_proc.proacl`: ninguna entrada con beneficiario vacío |
+| La cobertura medía `clusters.rfcs_frontera`, la LISTA DE CANDIDATOS, no la frontera que pidieron las señales | `db/016` | sobre un cluster real de gen-v1 (40 RFC, **70 candidatos**): sin frontera pedida `true`; con frontera pedida y cuota `false`; cuota agotada `true` |
+| `max_expansiones_caso` sin sembrar caía en el default de código 2, contra el "máximo una expansión por cluster" de 03 §127 | `db/016` | sembrada en 1 y comprobada con un default imposible (99) |
+| `casos.cobertura_completa` tenía dos escritores: la regla y el payload del dictaminador | `db/016` + `db/017` | el payload ya no la sube ni la baja; se recalcula tras el UPDATE, con evento en bitácora |
+| **`anomalia_explicada` era inalcanzable** (ver abajo) | `db/017_evaluacion_pistas.sql` + `n8n/runtime/auditor-final.mjs` | 353 tests de runtime, con casos nuevos para pista sostenida, `no_evaluable` y defensa ausente |
+| FORENSE_corrida no redespachaba hasta vaciar la cola | `n8n/` (runtime6) | e2e de corrida: 6 clusters con MAX_ACTIVOS=2 → 7 vueltas, 4 redespachos, corrida `completada`, 6,9 s |
+
+Suites en main tras el hotfix: `db/tests/run.sh` **459 aserciones, 0 fallidas,
+0 omitidas** con GEN=1 (417 con GEN=0, 4 omitidas); integración **157/157**
+(exit 0, sin parches ad hoc); e2e webapp **8/8**; runtime **353/353**;
+contratos **110/110**; prompts 106; voz 67; web typecheck + lint + **272/272**;
+generadores de code-nodes y workflows sin deriva.
+
+### Hallazgo H11-b: la capa de descarte de falsos positivos no podía producirse
+Lo destapó el arreglo de la cobertura: mientras `cobertura_completa` era
+siempre false, TODO caso salía `no_concluyente` y nadie notó que el nivel
+`anomalia_explicada` era imposible.
+
+- El dictaminador llegaba a ese nivel por una sola vía: que todas las pistas
+  tuvieran `estado === 'refutada'`.
+- `forense.pistas.estado` admite `disparada` y `no_evaluable`, y nada más
+  (001); el contrato `entities.pista` declara el mismo par. El valor
+  `refutada` no existe, así que la condición era siempre falsa.
+- La defensa no toca el estado global de la pista, y hace bien: escribe el
+  resultado **por caso** en `casos.evaluacion_pistas`.
+- `paquete_auditor_final` exponía ese objeto leyéndolo por código de pista
+  (`R1`) cuando la clave es el **ID** de la pista, que es como lo escribe la
+  réplica y como lo declara el contrato del defensor. `evaluacion_caso`
+  viajaba en null siempre.
+
+Las pruebas lo ocultaron cinco oleadas porque alimentaban valores que la base
+no puede contener (`estado: 'refutada'`, `estado: 'confirmada'`).
+
+**Sin verificar todavía:** el descarte no se ha ejercido de punta a punta. El
+ensayo (c) con proveedor simulado no corre el Defensor, y sin defensa ese
+nivel es inalcanzable por construcción, así que el e2e lo reporta
+`requiere_api_real` **antes** de mirar el nivel. Las cifras de trampas
+(0/15) miden el **selector**, no el descarte. Queda como gate H8–10 con la
+API real: una trampa legítima que cierre en `anomalia_explicada`.
+
+## Abierto
+- Aplicar 014–017 al proyecto Supabase `hackthon2026` (en curso por el coordinador).
 - Bloqueado por .env: credenciales n8n, importación de workflows, carga remota de gen-v1, smoke H4 y gate H8–10 (primer expediente real con API).
+- Sin empezar por los builders: horas intradía en `generator/gen.py` (gen-v2, necesario para que T2 sea evaluable), `loaders/load_69b.py`, `loaders/load_ibm_aml.py`.
 
 ## Acciones pendientes del usuario
 - Rellenar `.env` (raíz, gitignored): `N8N_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`. Con eso el coordinador ejecuta `node scripts/n8n-credentials.mjs`, `node scripts/n8n-import.mjs`, carga gen-v1 en remoto y corre el smoke H4.

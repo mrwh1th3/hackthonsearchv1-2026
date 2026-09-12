@@ -198,7 +198,7 @@ Valida que cada workflow JSON tenga nodos válidos, que las referencias de subwo
 
 ```bash
 PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh
-# Devuelve: 461 aserciones (001-017) con GEN=1, 0 fallos; 417 con GEN=0 (4 omitidas)
+# Devuelve: 459 aserciones (001-017) con GEN=1, 0 fallos; 417 con GEN=0 (4 omitidas)
 # Archivos: assertions.sql, assertions_003…017.sql, assertions_*_gen.sql (gen-v1)
 ```
 
