@@ -1,0 +1,140 @@
+{
+  "_nota": "PROPUESTA de forense-editor al coordinador (hallazgo 5 del verificador). NO es un contrato publicado: contracts/ es ownership exclusivo del coordinador y este worktree no lo toca. Mientras no se publiquen, las cuatro operaciones se validan con los zod de lib/document/esquemas.ts, que son el espejo exacto de estos schemas. Al publicarse, las rutas cambian a validateContract(...) y esquemas.ts desaparece. Convenciones tomadas de editor.schema.json v1.2.1: $id 'editor.<op>', additionalProperties:false, uuid por formato, version como entero >=1, common.hash = ^[a-f0-9]{64}$.",
+  "editor.descartar": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "editor.descartar",
+    "title": "Descartar una propuesta de edición",
+    "description": "07 §4: descartar registra estado y NO crea versión. El documento queda como estaba.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["caso_id", "propuesta_id", "idempotency_key"],
+    "properties": {
+      "caso_id": { "type": "string", "format": "uuid" },
+      "propuesta_id": { "type": "string", "format": "uuid" },
+      "idempotency_key": { "type": "string", "format": "uuid" }
+    }
+  },
+  "editor.descartado": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "editor.descartado",
+    "title": "Resultado de descartar",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["origen", "propuesta_id", "estado", "version_actual"],
+    "properties": {
+      "origen": { "enum": ["supabase", "fixture", "n8n"] },
+      "propuesta_id": { "type": "string", "format": "uuid" },
+      "estado": { "enum": ["propuesta", "aplicada", "descartada", "conflicto"] },
+      "version_actual": { "type": "integer", "minimum": 1 }
+    }
+  },
+  "editor.revertir": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "editor.revertir",
+    "title": "Revertir a una versión anterior",
+    "description": "07 §4: copia la versión elegida a una NUEVA tras comprobar el estado actual; sin LLM y sin borrado (09 §8: el historial nunca se destruye).",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["caso_id", "accion", "version_objetivo", "version_base", "idempotency_key"],
+    "properties": {
+      "caso_id": { "type": "string", "format": "uuid" },
+      "accion": { "const": "revertir" },
+      "version_objetivo": { "type": "integer", "minimum": 1 },
+      "version_base": { "type": "integer", "minimum": 1 },
+      "idempotency_key": { "type": "string", "format": "uuid" }
+    }
+  },
+  "editor.borrador": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "editor.borrador",
+    "title": "Autoguardado del expediente",
+    "description": "15 §10: el autoguardado NO crea versión. Si version_base ya no es la vigente, el servidor responde 409 y el cliente CONSERVA su borrador.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["caso_id", "version_base", "documento"],
+    "properties": {
+      "caso_id": { "type": "string", "format": "uuid" },
+      "version_base": { "type": "integer", "minimum": 1 },
+      "documento": { "$ref": "editor.documento" }
+    }
+  },
+  "editor.borrador_guardado": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "editor.borrador_guardado",
+    "title": "Resultado del autoguardado",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["origen", "guardado", "version_base", "content_hash", "revisar_citas", "citas_invalidas"],
+    "properties": {
+      "origen": { "enum": ["supabase", "fixture", "n8n"] },
+      "guardado": { "type": "string", "format": "date-time" },
+      "version_base": { "type": "integer", "minimum": 1 },
+      "content_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+      "revisar_citas": { "type": "boolean" },
+      "citas_invalidas": { "type": "array", "items": { "type": "string" }, "maxItems": 200 }
+    }
+  },
+  "editor.exportar": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "editor.exportar",
+    "title": "Exportar el expediente",
+    "description": "15 §11. El PDF no se pide aquí: se imprime la hoja A4 con CSS de impresión desde el navegador.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["caso_id", "formato"],
+    "properties": {
+      "caso_id": { "type": "string", "format": "uuid" },
+      "version": { "type": "integer", "minimum": 1 },
+      "formato": { "enum": ["md", "json"] }
+    }
+  },
+  "editor.exportado": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "editor.exportado",
+    "title": "Descarga del expediente con su manifiesto",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["formato", "nombre", "mime", "contenido", "manifiesto", "citas"],
+    "properties": {
+      "formato": { "enum": ["md", "json"] },
+      "nombre": { "type": "string", "maxLength": 200 },
+      "mime": { "type": "string", "maxLength": 100 },
+      "contenido": { "type": "string", "maxLength": 2000000 },
+      "citas": { "type": "array", "items": { "type": "string" }, "maxItems": 2000 },
+      "manifiesto": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "caso_id",
+          "rfc_principal",
+          "version",
+          "estado_revision",
+          "autor",
+          "creado",
+          "generado",
+          "origen",
+          "contratos",
+          "content_hash",
+          "citas_totales",
+          "citas_sin_evidencia",
+          "nota"
+        ],
+        "properties": {
+          "caso_id": { "type": "string", "format": "uuid" },
+          "rfc_principal": { "type": "string", "maxLength": 50 },
+          "version": { "type": "integer", "minimum": 1 },
+          "estado_revision": { "enum": ["borrador", "validado"] },
+          "autor": { "enum": ["agente", "humano"] },
+          "creado": { "type": "string", "format": "date-time" },
+          "generado": { "type": "string", "format": "date-time" },
+          "origen": { "enum": ["supabase", "fixture", "n8n"] },
+          "contratos": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" },
+          "content_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "citas_totales": { "type": "integer", "minimum": 0 },
+          "citas_sin_evidencia": { "type": "array", "items": { "type": "string" }, "maxItems": 200 },
+          "nota": { "type": "string", "maxLength": 500 }
+        }
+      }
+    }
+  }
+}
