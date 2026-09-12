@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { validateContract } from "@/lib/contracts/validate";
-import { aplicarPropuestaGuardada } from "@/lib/document/almacen-demo";
 import { estadoCitas } from "@/lib/document/citas";
-import { cargarCasoEditor, guardas, modoBackend, origenDe, respuestaNoConfigurado } from "@/lib/document/servidor";
+import { cargarCasoEditor, guardas, repositorio, respuestaNoConfigurado } from "@/lib/document/servidor";
 import type { SolicitudAplicar } from "@/lib/document/tipos";
 
 /**
@@ -35,17 +34,28 @@ export async function POST(req: Request) {
   }
   const solicitud = control.ok.body as SolicitudAplicar;
 
-  const modo = modoBackend();
-  if (modo === "no_configurado") return respuestaNoConfigurado();
+  // Sin repositorio NO se acepta la escritura: 503 y el cliente conserva su
+  // borrador. La memoria del proceso nunca se hace pasar por persistencia.
+  const repo = repositorio();
+  if (!repo) return respuestaNoConfigurado();
 
-  const caso = await cargarCasoEditor(casoId);
+  const caso = await cargarCasoEditor(casoId, repo);
   if (!caso) return NextResponse.json({ error: "caso_no_encontrado" }, { status: 404 });
 
-  const resultado = aplicarPropuestaGuardada(casoId, {
-    propuesta_id: solicitud.propuesta_id,
-    version_base: solicitud.version_base,
-    idempotency_key: solicitud.idempotency_key,
-  });
+  let resultado;
+  try {
+    resultado = await repo.aplicar(
+      casoId,
+      {
+        propuesta_id: solicitud.propuesta_id,
+        version_base: solicitud.version_base,
+        idempotency_key: solicitud.idempotency_key,
+      },
+      { perfilId: control.ok.session.perfil_id ?? null },
+    );
+  } catch {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
 
   if (!resultado.ok) {
     if (resultado.motivo === "conflicto_version") {
@@ -68,7 +78,10 @@ export async function POST(req: Request) {
   const citas = estadoCitas(reporte.contenido_json, caso.referenciasValidadas);
 
   return NextResponse.json({
-    origen: origenDe(modo),
+    origen: repo.origen,
+    // CLAUDE.md regla 2: se declara si esta escritura dejó evento `edicion`
+    // en `forense.bitacora`. El modo fixture nunca lo afirma.
+    bitacora: repo.dejaBitacora,
     repetido,
     version: reporte.version,
     reporte,

@@ -324,6 +324,51 @@ describe("ReportChat", () => {
     expect(await screen.findByText(/en conflicto/i)).toBeInTheDocument();
   });
 
+  it("Descartar no marca nada hasta que el BFF confirma; un 503 devuelve la propuesta a pendiente", async () => {
+    const usuario = userEvent.setup();
+    const descarteEnEspera: { resolver?: (r: Response) => void } = {};
+    let fallar = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/reportes/propuestas") {
+          return respuestaJson({
+            origen: "fixture",
+            modo: "propuesta",
+            advertencias: [],
+            propuesta: { ...propuestaFalsa, propuesta_id: "00000000-0000-4000-8000-000000000405" },
+          });
+        }
+        if (fallar) {
+          return new Promise<Response>((resolver) => {
+            descarteEnEspera.resolver = resolver;
+          });
+        }
+        return respuestaJson({ origen: "fixture", propuesta_id: "x", estado: "descartada", version_actual: 1 });
+      }),
+    );
+
+    render(<ReportChat {...props} seleccion={seleccion} />);
+    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Quita el párrafo");
+    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
+    await usuario.click(await screen.findByRole("button", { name: "Descartar" }));
+
+    // Mientras el BFF no responde NO se afirma que quedó descartada.
+    expect(screen.queryByText(/descartada: el documento quedó sin cambios/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Descartar" })).toBeDisabled();
+
+    descarteEnEspera.resolver?.(respuestaJson({ error: "backend_no_configurado" }, 503));
+    expect(await screen.findByText(/no hay backend de edición configurado/i)).toBeInTheDocument();
+    // El fallo devuelve la propuesta a pendiente: sigue siendo aplicable.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Descartar" })).toBeEnabled());
+    expect(screen.queryByText(/descartada: el documento quedó sin cambios/i)).not.toBeInTheDocument();
+
+    // Con el BFF confirmando, entonces sí se marca.
+    fallar = false;
+    await usuario.click(screen.getByRole("button", { name: "Descartar" }));
+    expect(await screen.findByText(/descartada: el documento quedó sin cambios/i)).toBeInTheDocument();
+  });
+
   it("sin backend configurado lo dice, no finge una respuesta", async () => {
     const usuario = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn(async () => respuestaJson({ error: "backend_no_configurado" }, 503)));

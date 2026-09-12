@@ -166,7 +166,7 @@ export function DocumentWorkspace({
         tipo: "error",
         mensaje:
           resultado.error.error === "backend_no_configurado"
-            ? "Sin backend configurado: el borrador no se está guardando."
+            ? "Sin backend configurado: el borrador se conserva aquí pero no se está guardando; no cierres la pestaña."
             : `No se pudo guardar (${resultado.error.error}).`,
       });
     },

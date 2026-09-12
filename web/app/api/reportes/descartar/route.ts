@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { descartarPropuestaGuardada } from "@/lib/document/almacen-demo";
 import { esquemaDescartar } from "@/lib/document/esquemas";
-import { cargarCasoEditor, guardas, modoBackend, origenDe, respuestaNoConfigurado } from "@/lib/document/servidor";
+import { cargarCasoEditor, guardas, repositorio, respuestaNoConfigurado } from "@/lib/document/servidor";
 
 /**
  * `POST /api/reportes/descartar` — 07 §4: "Descartar registra estado sin crear
@@ -25,17 +24,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "cuerpo_invalido", detalles: parseo.error.issues }, { status: 422 });
   }
 
-  const modo = modoBackend();
-  if (modo === "no_configurado") return respuestaNoConfigurado();
+  const repo = repositorio();
+  if (!repo) return respuestaNoConfigurado();
 
-  const caso = await cargarCasoEditor(parseo.data.caso_id);
+  const caso = await cargarCasoEditor(parseo.data.caso_id, repo);
   if (!caso) return NextResponse.json({ error: "caso_no_encontrado" }, { status: 404 });
 
-  const resultado = descartarPropuestaGuardada(parseo.data.caso_id, parseo.data.propuesta_id);
+  let resultado;
+  try {
+    resultado = await repo.descartar(parseo.data.caso_id, parseo.data.propuesta_id);
+  } catch {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
   if (!resultado.ok) return NextResponse.json({ error: resultado.motivo }, { status: 404 });
 
   return NextResponse.json({
-    origen: origenDe(modo),
+    origen: repo.origen,
     propuesta_id: parseo.data.propuesta_id,
     estado: resultado.valor.estado,
     version_actual: caso.versionActual.version,

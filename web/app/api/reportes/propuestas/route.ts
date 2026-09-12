@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { validateContract } from "@/lib/contracts/validate";
-import { borradorActual, registrarPropuesta } from "@/lib/document/almacen-demo";
+import { borradorActual } from "@/lib/document/almacen-demo";
 import { indexarBloques } from "@/lib/document/documento";
+import { verificarSeleccion } from "@/lib/document/seleccion";
 import { construirPropuesta, salidaEditorDemostracion } from "@/lib/document/propuesta";
 import {
   cargarCasoEditor,
   guardas,
-  modoBackend,
+  modoPropuesta,
   nuevoUuid,
   origenDe,
   reenviarAWebhook,
+  repositorio,
   respuestaNoConfigurado,
 } from "@/lib/document/servidor";
 import type { SalidaEditor, SolicitudEdicion } from "@/lib/document/tipos";
@@ -39,10 +41,15 @@ export async function POST(req: Request) {
 
   // Antes de tocar la fuente de datos: sin backend de agentes ni fuente de
   // fixtures no hay respuesta que dar (no se finge una).
-  const modo = modoBackend();
+  const modo = modoPropuesta();
   if (modo === "no_configurado") return respuestaNoConfigurado();
 
-  const caso = await cargarCasoEditor(solicitud.caso_id);
+  // Una propuesta se calcula contra el expediente persistido: sin repositorio
+  // no hay versión base que leer ni propuesta que guardar (503, no invención).
+  const repo = repositorio();
+  if (!repo) return respuestaNoConfigurado();
+
+  const caso = await cargarCasoEditor(solicitud.caso_id, repo);
   if (!caso) return NextResponse.json({ error: "caso_no_encontrado" }, { status: 404 });
 
   // Control optimista: la propuesta se calcula contra la versión vigente.
@@ -63,6 +70,7 @@ export async function POST(req: Request) {
 
   // La selección se verifica contra la versión base: si los bloques ya no
   // existen, se pide reconfirmar la selección actual (07 §4 paso 3).
+  let seleccionVerificada: boolean | undefined;
   if (solicitud.seleccion) {
     const indice = indexarBloques(documento);
     const faltantes = solicitud.seleccion.block_ids.filter((id) => !indice.has(id));
@@ -72,6 +80,23 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+    // Y el `texto_hash` se contrasta con el contenido real de esos bloques
+    // (07 §4 nodo 6). Solo se rechaza cuando el desplazamiento se PUEDE
+    // probar; si no cabe en el presupuesto o la selección toca contenedores,
+    // se sigue adelante declarando que no se verificó.
+    const verificacion = verificarSeleccion(documento, solicitud.seleccion);
+    if (verificacion.estado === "desplazada") {
+      return NextResponse.json(
+        {
+          error: "seleccion_desplazada",
+          motivo: "texto_hash",
+          bloques: solicitud.seleccion.block_ids,
+          version_actual: caso.versionActual.version,
+        },
+        { status: 409 },
+      );
+    }
+    seleccionVerificada = verificacion.estado === "verificada";
   }
 
   let salida: SalidaEditor;
@@ -119,6 +144,7 @@ export async function POST(req: Request) {
       modo: "pregunta",
       mensaje: salida.mensaje,
       version_base: solicitud.version_base,
+      seleccion_verificada: seleccionVerificada,
     });
   }
 
@@ -139,19 +165,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: resultado.motivo, detalle: resultado.detalle, origen }, { status: 422 });
   }
 
+  // Se PERSISTE antes de responder: el `propuesta_id` que la UI reciba tiene
+  // que existir en `forense.propuestas_edicion`, o Aplicar (006 §7, que busca
+  // la fila por id) devolvería `contexto_invalido`.
+  let registro;
+  try {
+    registro = await repo.registrarPropuesta(solicitud.caso_id, resultado.propuesta, resultado.previsualizacion, {
+      perfilId: control.ok.session.perfil_id ?? null,
+      requestId: solicitud.idempotency_key,
+      seleccionHash: solicitud.seleccion?.texto_hash ?? null,
+    });
+  } catch {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
+  if (!registro.ok) {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
+  // Reintento con el mismo `idempotency_key`: se devuelve la propuesta que ya
+  // estaba, no una segunda.
+  resultado.propuesta.propuesta_id = registro.propuestaId;
+
   const propuestaValida = validateContract("editor.propuesta", resultado.propuesta);
   if (!propuestaValida.ok) {
     // Nunca se devuelve algo que no cumple el contrato publicado.
     return NextResponse.json({ error: "propuesta_invalida", detalles: propuestaValida.errors }, { status: 500 });
   }
 
-  registrarPropuesta(solicitud.caso_id, resultado.propuesta, resultado.previsualizacion);
-
   return NextResponse.json({
     origen,
     modo: "propuesta",
     propuesta: resultado.propuesta,
     advertencias: resultado.advertencias,
+    seleccion_verificada: seleccionVerificada,
+    repetida: registro.repetida,
   });
 }
 
