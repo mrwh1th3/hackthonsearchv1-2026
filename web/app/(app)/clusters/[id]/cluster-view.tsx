@@ -1,5 +1,6 @@
 "use client";
 
+import * as Dialog from "@radix-ui/react-dialog";
 import { useMemo, useState } from "react";
 import { FamiliaChip } from "@/components/shared/badges";
 import { ClusterForceGraph } from "@/components/shared/force-graph";
@@ -132,17 +133,21 @@ export function ClusterView({ tareas, senales, grafo }: { tareas: Tarea[]; senal
         <ClusterForceGraph nodos={grafo?.nodos ?? []} aristas={grafo?.aristas ?? []} />
       </section>
 
-      {senalAbierta && (
-        <div role="dialog" aria-label="Detalle de señal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setSenalAbierta(null)}>
-          <div className="max-w-md rounded-[var(--radius-card)] border border-border bg-surface p-4 text-sm" onClick={(e) => e.stopPropagation()}>
-            <p className="mb-2 font-medium text-text">{senalAbierta.titular}</p>
-            <pre className="overflow-x-auto rounded border border-border bg-surface-muted p-2 text-xs">{JSON.stringify(senalAbierta.detalle, null, 2)}</pre>
-            <button type="button" onClick={() => setSenalAbierta(null)} className="mt-3 h-8 rounded-[var(--radius-input)] border border-border px-3 text-xs hover:bg-surface-hover">
-              Cerrar
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Radix Dialog: Escape cierra, foco atrapado y devuelto al disparador (15 §12) */}
+      <Dialog.Root open={Boolean(senalAbierta)} onOpenChange={(open) => !open && setSenalAbierta(null)}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/30" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-card)] border border-border bg-surface p-4 text-sm">
+            <Dialog.Title className="mb-2 font-medium text-text">{senalAbierta?.titular}</Dialog.Title>
+            <pre className="overflow-x-auto rounded border border-border bg-surface-muted p-2 text-xs">{JSON.stringify(senalAbierta?.detalle, null, 2)}</pre>
+            <Dialog.Close asChild>
+              <button type="button" className="mt-3 h-8 rounded-[var(--radius-input)] border border-border px-3 text-xs hover:bg-surface-hover">
+                Cerrar
+              </button>
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
