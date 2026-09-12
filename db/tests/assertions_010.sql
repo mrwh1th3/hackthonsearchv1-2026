@@ -18,7 +18,8 @@ declare
     'abrir_corrida', 'corrida_id,estado,idempotency_key,corrida_origen_id,investigacion_id,dataset,reutilizada',
     'cargar_o_clonar_snapshot', 'corrida_id,estado,filas_por_tabla,corrida_origen_id',
     'verificar_integridad_corrida', 'corrida_id,estado,dataset_hash,fecha_corte,familias_evaluables,causa',
-    'estado_corrida', 'corrida_id,terminada,estado_final,completados,en_cola,errores',
+    -- 012 le añade cola_restante al final (cola de clusters sin despachar).
+    'estado_corrida', 'corrida_id,terminada,estado_final,completados,en_cola,errores,cola_restante',
     'cerrar_ronda', 'caso_id,cluster_id,corrida_id,investigacion_id,senales,familias_evaluables,version_contexto,roles_por_expansion,rfcs_frontera,ruta_material,expansiones_usadas,tipo_evento,registrado',
     'aplicar_resolucion_replica', 'caso_id,cluster_id,corrida_id,investigacion_id,resoluciones',
     'paquete_auditor_final', 'caso_id,cluster_id,corrida_id,investigacion_id,caso,pistas,evidencia,pendientes,cobertura_completa,presupuesto',

@@ -76,6 +76,8 @@ aplicar "$DBDIR/008_ingesta.sql" "008_ingesta.sql"
 aplicar "$DBDIR/009_runtime_eventos.sql" "009_runtime_eventos.sql"
 aplicar "$DBDIR/010_runtime_funciones.sql" "010_runtime_funciones.sql"
 aplicar "$DBDIR/011_metricas_corrida.sql" "011_metricas_corrida.sql"
+aplicar "$DBDIR/012_inyeccion_clusters.sql" "012_inyeccion_clusters.sql"
+aplicar "$DBDIR/013_rendimiento.sql" "013_rendimiento.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$DBDIR/seeds/seed_producto.sql" "seeds/seed_producto.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
@@ -88,7 +90,8 @@ for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" 
          "$DBDIR/004_clusters.sql" "$DBDIR/005_rpc.sql" "$DBDIR/006_producto_ui.sql" \
          "$DBDIR/007_notificaciones_voz.sql" "$DBDIR/008_ingesta.sql" \
          "$DBDIR/009_runtime_eventos.sql" "$DBDIR/010_runtime_funciones.sql" \
-         "$DBDIR/011_metricas_corrida.sql" \
+         "$DBDIR/011_metricas_corrida.sql" "$DBDIR/012_inyeccion_clusters.sql" \
+         "$DBDIR/013_rendimiento.sql" \
          "$DBDIR/seeds/seed_fake.sql" "$DBDIR/seeds/seed_producto.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
@@ -110,6 +113,8 @@ aplicar "$HERE/assertions_006_007.sql" "tests/assertions_006_007.sql"
 aplicar "$HERE/assertions_008.sql" "tests/assertions_008.sql"
 aplicar "$HERE/assertions_009.sql" "tests/assertions_009.sql"
 aplicar "$HERE/assertions_010.sql" "tests/assertions_010.sql"
+aplicar "$HERE/assertions_012.sql" "tests/assertions_012.sql"
+aplicar "$HERE/assertions_013.sql" "tests/assertions_013.sql"
 
 echo "== paquetes de inyección (eval/inyecciones) =="
 bash "$HERE/cargar_paquetes.sh" "$DB" || fallos=$((fallos + 1))
@@ -121,6 +126,7 @@ if [ "$GEN" = "0" ]; then
 else
   if bash "$HERE/cargar_gen.sh" "$DB"; then
     aplicar "$HERE/assertions_gen.sql" "tests/assertions_gen.sql"
+    aplicar "$HERE/assertions_012_gen.sql" "tests/assertions_012_gen.sql"
   else
     rc=$?
     if [ "$rc" = "3" ] && [ "$GEN" != "1" ]; then

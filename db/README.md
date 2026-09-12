@@ -77,3 +77,61 @@ sembradas** entran por el selector de dos familias, **0 de 15 trampas legítimas
 y **0 del fondo**. La que falta es el eslabón final de la cadena de `capas`: sólo
 recibe facturas y nunca emite, así que deja familia R y ninguna más; entra por el
 cluster (004) o por `/investigar`, no por el selector.
+
+## Migraciones 012 y 013 (oleada 4)
+
+`012_inyeccion_clusters.sql` — QA-004 y el cierre de corrida:
+
+* `forense.asegurar_clusters_inyectados(corrida, inyeccion)` crea, por la ruta
+  manual de 004 (`armar_cluster_para`), un cluster para cada RFC afectado por la
+  inyección que no quedó dentro de ningún cluster de la corrida **nueva**.
+  "Sin cluster" es pertenencia al array `rfcs`, no ser semilla. Cada cluster
+  creado deja evento `inyeccion` con `payload.evento_real='cluster_garantizado'`;
+  si `armar_cluster_para` devuelve null (sin `fecha_corte`, o RFC ausente del
+  padrón de esa corrida) no hay cluster y **no** hay evento.
+  Es idempotente y se niega a escribir sobre la corrida base.
+* `clusters_por_prioridad_inyeccion` la llama primero (así el nodo
+  `FORENSE_inyectar` hereda la garantía sin recablear) y devuelve **primero los
+  garantizados**, después los afectados, después el resto por score. Mismas seis
+  columnas de 010: el `SELECT *` del nodo no cambia.
+* El selector de dos familias **no se toca**: sobre el paquete (c) el RFC tiene
+  cluster y sigue fuera de `score_entidad`. Esa es la diferencia entre garantizar
+  investigación y bajar el umbral (la alternativa que se rechazó en H9 07:32).
+* `estado_corrida` gana `cola_restante` (al final, para no romper lectores
+  posicionales): clusters `pendiente` que todavía no tienen caso. `terminada`
+  exige ahora las dos colas en cero. Se cuenta "pendiente sin caso" porque el
+  cluster no pasa a `ronda1` hasta que el caso arranca la ronda 1.
+
+### Rendimiento del barrido (013, medido)
+
+Postgres 17 local, base desechable con el snapshot `gen-v1` (100 contribuyentes,
+8 081 CFDI, 6 006 movimientos), tiempos **cálidos** (segunda ejecución), medidos
+con `\timing` y `EXPLAIN (analyze, buffers)`:
+
+| paso | antes | después |
+|---|---|---|
+| `correr_pistas` completo | **1 108 ms** | **906 ms** |
+| F1 conciliación | 372 ms | 70 ms |
+| `refresh v_pares_giro` | 166 ms | 182 ms |
+| E1 cercanía 69-B | 135 ms | 140 ms |
+| R2 ciclos de dinero | 128 ms | 128 ms |
+| F3 concentración | 99 ms | 101 ms |
+| R1 atributos compartidos | 76 ms | 77 ms |
+| resto (D1–D4, F2, F4, R3, T1, T2) | < 70 ms c/u | igual |
+
+F1 era el `not exists` correlacionado: el plan lo ejecutaba 5 120 veces (una por
+CFDI PUE de la ventana) y tocaba 44 426 buffers para 6 006 movimientos. Resuelto
+los pagos una sola vez, baja a 13 ms la parte de conciliación. Mismo resultado
+comprobado con `EXCEPT` en las dos direcciones (los 1 471 CFDI PUE sin conciliar
+son los mismos) y con `db/tests/assertions_013.sql`, que recalcula F1 con la
+formulación original de 003 en cada corrida de la base de prueba.
+
+**Sobre los ≈46 s del e2e de runtime:** no se reproducen en Postgres local. El
+barrido medía 1 101 ms en H7 (arriba) y 1 108 ms ahora sobre el mismo snapshot.
+Los 46 s son del e2e completo contra el proyecto remoto, no del SQL: ahí entran
+la latencia de red por llamada y una instancia compartida. Lo que sí escala mal
+y queda **abierto** es `refresh materialized view forense.v_pares_giro`: la
+matview es GLOBAL (agrupa por `corrida_id` sobre `v_agregado_rfc` de todas las
+corridas), así que cada clon de inyección encarece el refresh de todas las demás.
+Pasarla a por-corrida exige tocar las lecturas de D1/D2/D4 y no es aditivo: va a
+la oleada siguiente.
