@@ -40,15 +40,17 @@ const TRANSICIONES = Object.freeze({
   en_curso: ['finalizada', 'fallida', 'sin_respuesta', 'resultado_desconocido'],
 });
 
-function normalizarSeñal(señal) {
-  return señal === 'timeout' ? 'resultado_desconocido' : señal;
-}
-
 /**
  * Aplica una transición de estado. Nunca lanza para una transición inválida:
  * un callback fuera de orden, tardío o duplicado no debe romper el pipeline
  * (16 línea 127); en su lugar devuelve `cambio:false` con el motivo. Un
  * estado terminal es absorbente: ninguna señal posterior lo mueve.
+ *
+ * `'timeout'` es una válvula de escape universal: desde CUALQUIER estado no
+ * terminal —incluido 'pendiente'— mueve a 'resultado_desconocido'. Es la
+ * única señal que no depende de la tabla de transiciones, porque un timeout
+ * puede llegar sin que exista todavía un callback real que lo explique
+ * (16 línea 29: "si el POST tiene timeout ... marcar resultado_desconocido").
  *
  * @returns {{estado:string, cambio:boolean, motivo:string|null}}
  */
@@ -59,15 +61,17 @@ export function transicionarEstado(estadoActual, señalCruda) {
   if (ESTADOS_TERMINALES.includes(estadoActual)) {
     return { estado: estadoActual, cambio: false, motivo: 'estado_terminal' };
   }
-  const señal = normalizarSeñal(señalCruda);
-  if (!ESTADOS_LLAMADA.includes(señal)) {
+  if (señalCruda === 'timeout') {
+    return { estado: 'resultado_desconocido', cambio: true, motivo: null };
+  }
+  if (!ESTADOS_LLAMADA.includes(señalCruda)) {
     return { estado: estadoActual, cambio: false, motivo: 'senal_desconocida' };
   }
   const permitidos = TRANSICIONES[estadoActual] ?? [];
-  if (!permitidos.includes(señal)) {
+  if (!permitidos.includes(señalCruda)) {
     return { estado: estadoActual, cambio: false, motivo: 'transicion_no_permitida' };
   }
-  return { estado: señal, cambio: true, motivo: null };
+  return { estado: señalCruda, cambio: true, motivo: null };
 }
 
 /** Timeout ambiguo del POST saliente (sin callback aún) → resultado_desconocido. Nunca redial automático. */
