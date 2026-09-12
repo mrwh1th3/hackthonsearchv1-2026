@@ -111,5 +111,5 @@ node --test "tests/voice/*.test.mjs"
 ## Pendiente para el integrador (no bloquea esta entrega)
 
 1. Confirmar el formato real de la firma del webhook de ElevenLabs contra la cuenta cuando exista número, y ajustar `OPCIONES_POR_DEFECTO` en `hmac.mjs` (hoy es un supuesto documentado, no una verificación).
-2. Decidir si el runtime importa `verificarFirma` en su forma posicional (recomendado) o sigue usando la forma objeto de compatibilidad.
+2. **El runtime debe migrar a la forma posicional de `verificarFirma`, no es una opción.** La forma objeto (`{crudo, firma, ahora_ms, tolerancia_s}`) solo existe para que un import literal del stub no rompa en tiempo de conexión; internamente asume el mismo esquema `t=`/`v0=` sin verificar, así que si el header real de ElevenLabs difiere, esa ruta falla de forma indistinguible de un `firma_invalida` legítimo. No usarla como camino permanente.
 3. El backend, no este paquete, es responsable de: enmascarar `destino_enmascarado` antes de exponerlo por BFF, elegir qué guardar en `provider_payload`, y emitir `llamada_solicitada`/`llamada_resultado` en `actividad_producto`/`bitacora`.

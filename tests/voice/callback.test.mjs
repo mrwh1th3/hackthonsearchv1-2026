@@ -80,6 +80,12 @@ test('procesarCallback: callback duplicado (mismo conversation_id) no cambia el 
   assert.equal(segundo.aceptado, true);
   assert.equal(segundo.duplicado, true);
   assert.equal(segundo.estado, 'en_curso'); // no se recalculó la transición: se devolvió el estado tal cual llegó
+  // Discriminante real de "no se reprocesó" (no un simple eco del argumento):
+  // en el camino fresco estas claves SIEMPRE están presentes (ver primero.*).
+  assert.notEqual(primero.cambio_estado, undefined);
+  assert.notEqual(primero.aviso_entregado, undefined);
+  assert.equal(segundo.cambio_estado, undefined);
+  assert.equal(segundo.aviso_entregado, undefined);
 });
 
 test('procesarCallback: timeout ambiguo del POST saliente (sin callback) → resultado_desconocido vía marcarTimeout', async () => {

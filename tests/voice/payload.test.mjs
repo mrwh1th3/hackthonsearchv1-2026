@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { validateContract } from '../../contracts/index.mjs';
 import { construirPayload, VARIABLES_PERMITIDAS, enmascararTelefono } from '../../integrations/elevenlabs/payload.mjs';
 import { ErrorVoz } from '../../integrations/elevenlabs/estados.mjs';
+import { crearAlmacenDedupe, reservarSolicitud } from '../../integrations/elevenlabs/dedupe.mjs';
 
 const aquí = path.dirname(fileURLToPath(import.meta.url));
 const raíz = path.resolve(aquí, '../..');
@@ -121,6 +122,18 @@ test('construirPayload: configuración de agente incompleta → omitida, no revi
 test('construirPayload: una variable con forma de RFC lanza ErrorVoz en vez de enviarse', () => {
   const perfil = perfilValido({ nombre: 'AAA010101AAA contribuyente' });
   assert.throws(() => construirPayload(eventoCompleta, perfil, CONFIG_VALIDA), ErrorVoz);
+});
+
+test('reservarSolicitud + construirPayload: cinco entregas del mismo evento producen un único cuerpo enviable (16 línea 124)', () => {
+  const almacen = crearAlmacenDedupe();
+  const cuerposEnviados = [];
+  for (let i = 0; i < 5; i += 1) {
+    const reserva = reservarSolicitud(almacen, { event_id: eventoCompleta.event_id });
+    if (!reserva.reservado) continue; // exactamente lo que hace el runtime: no construye ni envía de nuevo
+    const resultado = construirPayload(eventoCompleta, perfilValido(), CONFIG_VALIDA);
+    if (!resultado.omitida) cuerposEnviados.push(resultado.cuerpo);
+  }
+  assert.equal(cuerposEnviados.length, 1);
 });
 
 test('enmascararTelefono: siempre al menos 4 asteriscos y últimos 4 dígitos visibles', () => {
