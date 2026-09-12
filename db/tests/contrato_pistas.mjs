@@ -10,14 +10,21 @@ const [, , archivo, indice] = process.argv;
 const { validateContract, contractVersion } = await import(indice);
 const filas = JSON.parse(fs.readFileSync(archivo, 'utf8'));
 let malas = 0;
+const porCodigo = new Map();
 for (const fila of filas) {
   const r = validateContract('entities.pista', fila);
   if (!r.ok) {
     malas++;
+    porCodigo.set(fila.codigo, (porCodigo.get(fila.codigo) ?? 0) + 1);
     if (malas <= 3) {
       console.error(`  ${fila.codigo}: ${r.errors.map(e => e.instancePath + ' ' + e.message).join('; ')}`);
     }
   }
+}
+if (malas > 0) {
+  const reparto = [...porCodigo.entries()].sort((a, b) => b[1] - a[1])
+    .map(([c, n]) => `${c}=${n}`).join(' ');
+  console.error(`  reparto por pista: ${reparto}`);
 }
 console.log(`  contracts v${contractVersion}: ${filas.length} pistas, ${malas} fuera de contrato`);
 process.exit(malas === 0 && filas.length > 0 ? 0 : 1);

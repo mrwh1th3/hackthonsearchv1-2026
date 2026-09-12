@@ -809,14 +809,65 @@ end $$;
 -- >60% de facturas con monto múltiplo de 1,000, o desvío de Benford
 -- (chi² sobre el primer dígito) por encima del umbral de 8 grados de
 -- libertad al 1% (20.09).
--- Trampa: consultoría real que cobra en montos redondos a clientes diversos;
--- el detalle publica el número de clientes distintos para poder refutarla.
+--
+-- Dos correcciones respecto a la primera versión, ambas medidas sobre
+-- gen-v1 (docs/10: una pista que dispara sobre 77 de 100 RFC no informa):
+--
+--  (a) Trampa de montos redondos: la consultoría real cobra redondo a
+--      CLIENTES DIVERSOS. El umbral es relativo a los pares de la corrida
+--      (p75 de clientes distintos), no una constante: sobre gen-v1 las 9
+--      trampas legítimas facturan a 15–23 clientes y el fraude a 8, con
+--      p75 = 10. El detalle publica ambos números para poder refutarla.
+--
+--  (b) Benford solo tiene poder si la POBLACIÓN de la corrida se ajusta a
+--      Benford. Si la mayoría de los emisores comparables ya supera el
+--      umbral, el desvío describe al dataset, no al contribuyente: la
+--      pierna queda no evaluable y se registra en bitácora con su motivo
+--      (regla 2; evidencia insuficiente no sube el nivel).
 -- ---------------------------------------------------------------------
 create or replace function forense.pista_d3(p_corrida uuid, p_min_facturas int default 20)
 returns int language plpgsql set search_path = '' as $$
-declare n int; v_corte timestamptz;
+declare n int; v_corte timestamptz; v_p75 numeric; v_benford boolean; v_pobl int; v_sobre int;
 begin
   select fecha_corte into v_corte from forense.corridas where id = p_corrida;
+
+  -- Pares de la corrida: p75 de clientes distintos y poder del test de
+  -- Benford sobre esta población. Se calcula una vez, no por RFC.
+  with emitidas as (
+    select f.emisor_rfc, f.total, f.receptor_rfc,
+           left(trunc(abs(f.total))::text, 1)::int as d1
+      from forense.cfdi f
+     where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+       and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months'
+       and f.total >= 1
+  ),
+  b as (
+    select emisor_rfc as rfc, count(*) as n_facturas,
+           count(distinct receptor_rfc) as n_clientes
+      from emitidas group by emisor_rfc
+  ),
+  d as (
+    select emisor_rfc as rfc, d1, count(*) as obs
+      from emitidas where d1 between 1 and 9 group by emisor_rfc, d1
+  ),
+  chi as (
+    select b.rfc,
+           sum(power(coalesce(d.obs, 0) - b.n_facturas * log(1 + 1.0 / g.d), 2)
+               / nullif(b.n_facturas * log(1 + 1.0 / g.d), 0)) as chi2
+      from b cross join generate_series(1, 9) g(d)
+      left join d on d.rfc = b.rfc and d.d1 = g.d
+     group by b.rfc
+  )
+  select percentile_cont(0.75) within group (order by b.n_clientes),
+         count(*) filter (where b.n_facturas >= p_min_facturas),
+         count(*) filter (where b.n_facturas >= p_min_facturas and chi.chi2 > 20.09)
+    into v_p75, v_pobl, v_sobre
+    from b join chi on chi.rfc = b.rfc;
+
+  v_p75 := coalesce(v_p75, 0);
+  -- Con menos de 10 emisores comparables no hay población con la que
+  -- calibrar: se prefiere no evaluar antes que inventar poder estadístico.
+  v_benford := v_pobl >= 10 and v_sobre::numeric / nullif(v_pobl, 0) <= 0.50;
 
   insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
   with emitidas as (
@@ -855,8 +906,10 @@ begin
          least(1.0,
            greatest(
              case when b.n_redondos::numeric / b.n_facturas > 0.60
+                       and b.n_clientes <= v_p75
                   then 0.5 + (b.n_redondos::numeric / b.n_facturas - 0.60) else 0 end,
-             case when c.chi2 > 20.09 then least(0.9, 0.5 + (c.chi2 - 20.09) / 100.0) else 0 end
+             case when v_benford and c.chi2 > 20.09
+                  then least(0.9, 0.5 + (c.chi2 - 20.09) / 100.0) else 0 end
            ))::numeric,
          jsonb_build_object(
            'n_facturas', b.n_facturas,
@@ -867,7 +920,13 @@ begin
            'benford_umbral', 20.09,
            'benford_gl', 8,
            'benford_distribucion', c.distribucion,
+           'benford_evaluable', v_benford,
+           'benford_poblacion_sobre_umbral', v_sobre,
+           'benford_poblacion_comparable', v_pobl,
+           'clientes_p75_corrida', v_p75,
+           'diversidad_clientes', case when b.n_clientes > v_p75 then 'alta' else 'concentrada' end,
            'motivo', case when b.n_redondos::numeric / b.n_facturas > 0.60
+                               and b.n_clientes <= v_p75
                           then 'montos_redondos' else 'benford' end,
            'resumen', format(
              '%s de %s facturas (%s) tienen monto múltiplo de 1,000 y el primer dígito se desvía '
@@ -886,10 +945,22 @@ begin
          forense.huella_pista('D3', b.rfc, v_corte)
     from base b join chi c on c.rfc = b.rfc
    where b.n_facturas >= p_min_facturas
-     and (b.n_redondos::numeric / b.n_facturas > 0.60 or c.chi2 > 20.09)
+     and ((b.n_redondos::numeric / b.n_facturas > 0.60 and b.n_clientes <= v_p75)
+          or (v_benford and c.chi2 > 20.09))
   on conflict (corrida_id, codigo, rfc, huella) do nothing;
 
   get diagnostics n = row_count;
+
+  -- Regla 2: si la pierna de Benford no se evaluó, el paso deja rastro.
+  if not v_benford then
+    perform forense.log(null, 'sistema', 'pista_cargada',
+      jsonb_build_object('evento_real', 'D3_benford_no_evaluable',
+        'motivo', 'la población de la corrida no se ajusta a Benford: '
+                  || v_sobre || ' de ' || v_pobl || ' emisores comparables ya superan '
+                  || 'el umbral, el desvío describe al dataset y no al contribuyente',
+        'poblacion_comparable', v_pobl, 'sobre_umbral', v_sobre),
+      null, null, null, null, null, null, null, p_corrida);
+  end if;
   return n;
 end $$;
 
@@ -1014,8 +1085,6 @@ begin
            count(*) as n_pagos,
            count(*) filter (where p.pagador is distinct from p.receptor_rfc) as n_tercero,
            coalesce(sum(p.total) filter (where p.pagador is distinct from p.receptor_rfc), 0) as monto_tercero,
-           (array_agg('MOV:' || p.mov_id order by p.total desc)
-              filter (where p.pagador is distinct from p.receptor_rfc))[1:20] as refs_mov,
            (array_agg(distinct p.pagador)
               filter (where p.pagador is distinct from p.receptor_rfc)) as terceros
       from pagos p group by p.emisor_rfc
@@ -1045,7 +1114,18 @@ begin
              a.n_tercero, a.n_pagos,
              to_char(round(100 * a.n_tercero::numeric / nullif(a.n_pagos, 0), 1), 'FM990.0%'),
              a.monto_tercero),
-           'referencias', to_jsonb(coalesce(a.refs_mov, '{}'::text[])),
+           -- Un mismo movimiento puede saldar dos facturas: se agrupa por
+           -- mov_id para que `referencias` no repita un ID (contrato v1:
+           -- uniqueItems). Orden determinista por monto y luego por id.
+           'referencias', to_jsonb(coalesce((
+             select array_agg(x.ref order by x.t desc, x.ref)
+               from (select 'MOV:' || p2.mov_id as ref, max(p2.total) as t
+                       from pagos p2
+                      where p2.emisor_rfc = a.rfc
+                        and p2.pagador is distinct from p2.receptor_rfc
+                      group by p2.mov_id
+                      order by max(p2.total) desc, 'MOV:' || p2.mov_id
+                      limit 20) x), '{}'::text[])),
            'comprobacion', 'F3',
            'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
          forense.huella_pista('F3', a.rfc, v_corte)
@@ -1260,13 +1340,40 @@ end $$;
 --     diciembre con el que comparar.
 -- Trampa: estacionalidad real del giro; el detalle publica la estacionalidad
 -- de los pares y si el RFC tiene diciembres anteriores.
+--
+-- La pierna (a) EXIGE hora de timbrado. Medido sobre gen-v1: sus 8081 CFDI
+-- comparten una sola hora del día, así que «en menos de 6 horas» equivale a
+-- «el mismo día» y la regla marcaba 88 de 100 RFC con 3 de 17 fraudes —
+-- menos que la tasa base. Sin resolución intradía la pierna queda NO
+-- EVALUABLE con su motivo en bitácora (regla 2), en vez de emitir una
+-- señal que no informa. La pierna (b) no depende de la hora y sigue viva.
+--
+-- Además la pista es por RFC, no por ruta: antes una misma cadena emitía
+-- una fila por cada RFC y por cada subruta (3861 filas sobre gen-v1). Se
+-- conserva la cadena más apretada de cada RFC y se cuenta el resto.
 -- ---------------------------------------------------------------------
 create or replace function forense.pista_t2(p_corrida uuid) returns int
 language plpgsql set search_path = '' as $$
-declare n int := 0; m int; v_corte timestamptz;
+declare n int := 0; m int; v_corte timestamptz; v_horas int;
 begin
   select fecha_corte into v_corte from forense.corridas where id = p_corrida;
 
+  -- ¿Hay resolución intradía? Sin ella «menos de 6 horas» no distingue
+  -- nada: dos facturas del mismo día distan cero minutos.
+  select count(distinct f.fecha::time) into v_horas
+    from forense.cfdi f
+   where f.corrida_id = p_corrida and f.tipo = 'I' and not f.cancelado
+     and f.fecha <= v_corte and f.fecha > v_corte - interval '12 months';
+
+  if v_horas < 2 then
+    perform forense.log(null, 'sistema', 'pista_cargada',
+      jsonb_build_object('evento_real', 'T2_sincronia_no_evaluable',
+        'motivo', 'los CFDI de la corrida no tienen hora de timbrado ('
+                  || v_horas || ' hora distinta en la ventana): la sincronía '
+                  || 'de menos de 6 horas no es comprobable',
+        'horas_distintas', v_horas),
+      null, null, null, null, null, null, null, p_corrida);
+  else
   -- (a) sincronía: cadena de ≥3 facturas en menos de 6 horas
   insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)
   with recursive f as (
@@ -1297,12 +1404,21 @@ begin
       from camino c
      where c.saltos >= 3
      order by md5(array_to_string(ruta, '>')), c.f_ini
+  ),
+  -- Una fila por RFC: la cadena más apretada en la que participa.
+  por_rfc as (
+    select distinct on (r.rfc) r.rfc, c.*,
+           (select count(*) from cadenas c2
+             where r.rfc = any(c2.ruta)) as n_cadenas
+      from cadenas c cross join lateral unnest(c.ruta) as r(rfc)
+     order by r.rfc, c.saltos desc, (c.f_act - c.f_ini), c.clave
   )
   select p_corrida, 'T2', 'T', r.rfc,
          least(1.0, 0.55 + 0.1 * c.saltos)::numeric,
          jsonb_build_object(
            'motivo', 'sincronia',
            'saltos', c.saltos,
+           'n_cadenas', c.n_cadenas,
            'ruta', to_jsonb(c.ruta),
            'uuids', (select coalesce(jsonb_agg(u::text), '[]'::jsonb) from unnest(c.uuids) u),
            'minutos', round(extract(epoch from c.f_act - c.f_ini) / 60.0, 1),
@@ -1315,11 +1431,12 @@ begin
                              from unnest(c.uuids) u(uuid)),
            'comprobacion', 'T2',
            'cobertura', jsonb_build_object('ventana_horas', 6, 'profundidad_max', 4)),
-         forense.huella_pista('T2', r.rfc, v_corte, 'sincronia|' || c.clave)
-    from cadenas c
-    cross join lateral unnest(c.ruta) as r(rfc)
+         forense.huella_pista('T2', r.rfc, v_corte, 'sincronia')
+    from por_rfc c
+    cross join lateral (select c.rfc) as r(rfc)
   on conflict (corrida_id, codigo, rfc, huella) do nothing;
   get diagnostics n = row_count;
+  end if;
 
   -- (b) pico de diciembre sin histórico previo
   insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella)

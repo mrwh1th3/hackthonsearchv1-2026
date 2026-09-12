@@ -35,8 +35,17 @@ begin
   perform pruebas.assert('correr_pistas evalúa las 5 familias de la corrida',
     (r ? 'D2') and (r ? 'F1') and (r ? 'F2') and (r ? 'R1') and (r ? 'R2') and (r ? 'T1') and (r ? 'E1'),
     r::text);
-  perform pruebas.assert('correr_pistas declara las pistas de la segunda entrega como pendientes',
-    jsonb_array_length(r->'pendientes_segunda_entrega') = 7, (r->'pendientes_segunda_entrega')::text);
+  -- Segunda entrega ya implementada: ninguna de las 14 puede faltar del
+  -- informe. O trae conteo, o queda declarada en `no_evaluables` con su
+  -- motivo (regla: evidencia insuficiente no sube el nivel, se declara).
+  perform pruebas.assert('correr_pistas reporta las 14 pistas: con conteo o declaradas no evaluables',
+    (select bool_and((r ? c) or (r->'no_evaluables' @> to_jsonb(c)))
+       from unnest(array['D1','D2','D3','D4','F1','F2','F3','F4',
+                         'R1','R2','R3','T1','T2','E1']) c),
+    r::text);
+  perform pruebas.assert('las 7 pistas de la segunda entrega están cableadas en correr_pistas',
+    (select count(*) from unnest(array['D1','D3','D4','F3','F4','R3','T2']) c
+      where (r ? c) or (r->'no_evaluables' @> to_jsonb(c))) = 7, r::text);
   perform pruebas.assert('la corrida queda reclamada en procesando',
     (select estado from forense.corridas where id = v) = 'procesando', '');
 
