@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { CORRIDA_GEN_V1, DB_QA, RAIZ, correr, correrOk, escalar, filas, hayBase, json }
+import { CORRIDA_GEN_V1, DB_QA, RAIZ, correr, correrOk, escalar, filas, hayBase, json, techoPrueba }
   from './_ayudas.mjs';
 
 const saltar = !hayBase(DB_QA) && 'sin base forense_qa (corre tests/integration/preparar-db.sh)';
@@ -76,7 +76,7 @@ function payloadBase(marca) {
 // ---------------------------------------------------------------------
 
 test('a-carrusel-nuevo: clona sin tocar gen-v1 y las pistas cubren los RFC inyectados',
-  { skip: saltar, timeout: 300000 }, async (t) => {
+  { skip: saltar, timeout: techoPrueba(4) }, async (t) => {
 
   const payload = payloadBase('ensayo-a');
   assert.equal(payload.corrida_base_id, CORRIDA_GEN_V1,
@@ -86,6 +86,17 @@ test('a-carrusel-nuevo: clona sin tocar gen-v1 y las pistas cubren los RFC inyec
 
   const antes = digest(CORRIDA_GEN_V1);
   let ingesta; let inyeccion; let clon;
+
+  // El clon copia el dominio entero de gen-v1 (~8 mil CFDI). Dejarlo era la
+  // fuente de los huérfanos que `limpiarClonesHuerfanos` barre al arrancar la
+  // suite: barrer restos ajenos está bien, producirlos no. El borrado va en
+  // `t.after` y no al final del cuerpo para que también ocurra si una subprueba
+  // falla, que es justo cuando hay más ganas de mirar y menos de limpiar.
+  t.after(() => {
+    if (!clon) return;
+    const r = correr(DB_QA, `delete from forense.corridas where id = ${lit(clon)};`);
+    if (r.code !== 0) console.log(`[limpieza] no se borró el clon ${clon}: ${r.error.slice(0, 200)}`);
+  });
 
   await t.test('registrar_inyeccion deja el paquete en staging, no en el dominio', () => {
     const r = registrar(payload);
@@ -186,7 +197,7 @@ test('a-carrusel-nuevo: clona sin tocar gen-v1 y las pistas cubren los RFC inyec
 // ---------------------------------------------------------------------
 
 test('un CFDI con UUID ya existente se rechaza con tabla, fila, código y mensaje',
-  { skip: saltar, timeout: 120000 }, () => {
+  { skip: saltar, timeout: techoPrueba(2) }, () => {
 
   const payload = payloadBase('uuid-duplicado');
   const uuidExistente = escalar(DB_QA,
@@ -230,7 +241,7 @@ test('un CFDI con UUID ya existente se rechaza con tabla, fila, código y mensaj
 // ---------------------------------------------------------------------
 
 test('reenviar el mismo paquete con el mismo idempotency_key no crea otra inyección',
-  { skip: saltar, timeout: 120000 }, () => {
+  { skip: saltar, timeout: techoPrueba(2) }, () => {
 
   const payload = payloadBase('idempotencia');
   const clave = escalar(DB_QA, 'select gen_random_uuid()::text');
@@ -255,7 +266,7 @@ test('reenviar el mismo paquete con el mismo idempotency_key no crea otra inyecc
 // ---------------------------------------------------------------------
 
 test('reenviar el mismo payload SIN idempotency_key devuelve un rechazo, no una excepción',
-  { skip: saltar, timeout: 120000 },
+  { skip: saltar, timeout: techoPrueba(2) },
   () => {
     const payload = payloadBase('qa-003');
     const a = registrar(payload);
