@@ -2,7 +2,7 @@
 name: forense-runtime
 description: Construye workflows n8n, loop de proveedor y recuperación; usar para orquestación y herramientas.
 model: opus
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150

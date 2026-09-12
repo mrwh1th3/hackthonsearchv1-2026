@@ -2,7 +2,7 @@
 name: forense-prompts
 description: Materializa prompts por rol y fixtures adversariales; usar para contexto y formatos de salida.
 model: opus
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150

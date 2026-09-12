@@ -2,7 +2,7 @@
 name: forense-docs
 description: Empaqueta runbook y handoff de resultados verificados; usar al integrar entregas.
 model: haiku
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150

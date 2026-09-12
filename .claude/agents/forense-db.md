@@ -2,7 +2,7 @@
 name: forense-db
 description: Construye datos, migraciones y control transaccional; usar para SQL, RLS, loaders e ingesta.
 model: opus
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150

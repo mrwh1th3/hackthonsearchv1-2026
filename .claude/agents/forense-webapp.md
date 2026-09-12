@@ -2,7 +2,7 @@
 name: forense-webapp
 description: Construye UI ElevenLabs, BFF, sesión, historial y gráficos; usar para la webapp principal.
 model: sonnet
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150

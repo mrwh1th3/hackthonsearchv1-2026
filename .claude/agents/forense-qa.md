@@ -2,7 +2,7 @@
 name: forense-qa
 description: Valida contratos, seguridad, integración y regresiones; usar desde el primer corte.
 model: opus
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150

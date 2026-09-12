@@ -2,7 +2,7 @@
 name: forense-editor
 description: Construye editor de reportes tipo Docs, chat, versiones y exportación.
 model: opus
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150

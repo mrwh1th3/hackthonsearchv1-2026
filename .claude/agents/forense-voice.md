@@ -2,7 +2,7 @@
 name: forense-voice
 description: Construye adaptador ElevenLabs de aviso, validación de callback y tests sin llamadas automáticas.
 model: sonnet
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, StructuredOutput
 permissionMode: default
 isolation: worktree
 maxTurns: 150
