@@ -325,6 +325,17 @@ end $$;""".format(s=stg, id=sql_lit(corrida)))
         null, null, null, null, null, null, null, {id}::uuid);""".format(
         s=stg, id=sql_lit(corrida), ds=sql_lit(man["dataset"]),
         h=sql_lit(man["dataset_hash"]), c=sql_lit(corte)))
+    # Estadísticas antes de publicar: sin ANALYZE, el primer barrido de pistas
+    # sobre el snapshot recién cargado planea con estadísticas vacías. Medido en
+    # la base local: 35 s la primera vez, 0.9 s con ANALYZE. La inyección en
+    # vivo (docs/21) no puede pagar esa diferencia.
+    a("analyze forense.contribuyentes;")
+    a("analyze forense.cuentas;")
+    a("analyze forense.cfdi;")
+    a("analyze forense.complementos_pago;")
+    a("analyze forense.movimientos;")
+    a("analyze forense.atributos_entidad;")
+    a("analyze forense.listas_sat;")
     a("update forense.corridas set estado = 'lista' where id = %s::uuid;" % sql_lit(corrida))
 
     # informe de calidad (docs/19 §Calidad): se imprime siempre, antes de cerrar

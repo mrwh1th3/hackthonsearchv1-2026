@@ -44,4 +44,28 @@ remotos ni la base compartida.
 ## Base local compartida
 
 `forense` (Postgres 17 local) queda con **001 + 002 + 003 + seed_fake** aplicados para que
-runtime y webapp integren contra datos reales del fixture.
+runtime y webapp integren contra datos reales del fixture, más la corrida **`gen-v1`**
+del generador propio (`generator/gen.py --seed 42 --n 100` cargada con
+`loaders/load_gen.py`): 100 contribuyentes, 8,081 CFDI, 6,006 movimientos,
+`dataset_hash` 17a3e1ce…, con el barrido de pistas ya ejecutado.
+
+| corrida | estado | para qué |
+|---|---|---|
+| `Fixture UI — no es evaluación` | `completada` | contratos y UI; no participa en métricas |
+| `gen-v1` | `procesando` | pistas ya corridas (ver abajo); base de 004/005 y de evaluación |
+
+`gen-v1` queda en `procesando` porque `correr_pistas` la reclamó: una corrida con
+pistas calculadas no puede volver a anunciarse como `lista` sin mentir sobre su
+estado. Para una corrida limpia, recargarla con
+`python3 loaders/load_gen.py --in data/gen/ --nombre gen-v2`.
+
+### Barrido de pistas sobre `gen-v1` (medido)
+
+`select forense.correr_pistas(<gen-v1>)` → **1,101 ms**: D2 3, F1 5, F2 2, R1 49,
+R2 38, T1 17, E1 26; 16 candidatos de `score_entidad`.
+
+Contra el ground truth (que las pistas no leen): **16 de 17 entidades de fraude
+sembradas** entran por el selector de dos familias, **0 de 15 trampas legítimas**
+y **0 del fondo**. La que falta es el eslabón final de la cadena de `capas`: sólo
+recibe facturas y nunca emite, así que deja familia R y ninguna más; entra por el
+cluster (004) o por `/investigar`, no por el selector.
