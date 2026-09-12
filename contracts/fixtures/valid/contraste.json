@@ -1,0 +1,12 @@
+{
+  "caso_id": "4f3b2a10-0000-4000-8000-00000000c001",
+  "rfc_comparable": "DEMO:ENTIDAD-7",
+  "giro_compartido": "comercio al por mayor de abarrotes",
+  "pistas_solapadas": [
+    "R1",
+    "F2"
+  ],
+  "resultado_comparable": "anomalia_explicada",
+  "razon_tipificada": "defensa_aceptada",
+  "explicacion": "DEMO:ENTIDAD-7 comparte el giro y disparó R1 y F2, pero su defensa descartó 2 de 2 pistas evaluables y cerró en anomalia_explicada."
+}

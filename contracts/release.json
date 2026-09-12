@@ -1,6 +1,6 @@
 {
-  "version": "1.3.1",
-  "schema_fingerprint_sha256": "a8a893ec93dcd555353392614b4df47884826019c2875603bdd9979ddd132e33",
+  "version": "1.4.0",
+  "schema_fingerprint_sha256": "1079c5c8ea7f032fa8bf5294c7f7726b3a0f9e6b37f39b1311e48f96f998f4fb",
   "definitions": [
     "agents.argumento",
     "agents.auditor",
@@ -53,6 +53,7 @@
     "ingesta.mapper",
     "ingesta.mapping",
     "ingesta.transform",
+    "product.contraste",
     "product.evento_completa",
     "product.evento_forense",
     "product.investigacion",

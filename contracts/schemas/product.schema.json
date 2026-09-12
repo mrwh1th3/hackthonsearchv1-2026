@@ -1201,6 +1201,60 @@
           }
         }
       ]
+    },
+    "contraste": {
+      "type": "object",
+      "description": "Panel Contraste (21 §'Por qué esta sí y aquella no'): el RFC comparable más cercano con resultado DISTINTO y la razón tipificada. DTO de lectura; lo calcula SQL, no un modelo (regla 4). Cero filas cuando no hay comparable en la corrida: la UI lo trata como ausencia de contraste, nunca rellena uno.",
+      "properties": {
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "rfc_comparable": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+        },
+        "giro_compartido": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "pistas_solapadas": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/pista_codigo"
+          },
+          "minItems": 1,
+          "maxItems": 14,
+          "uniqueItems": true
+        },
+        "resultado_comparable": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/nivel"
+        },
+        "razon_tipificada": {
+          "type": "string",
+          "enum": [
+            "defensa_aceptada",
+            "familia_faltante",
+            "cobertura_insuficiente"
+          ],
+          "description": "defensa_aceptada: el comparable tiene alguna pista descartada en casos.evaluacion_pistas. familia_faltante: menos familias en familias_confirmadas. cobertura_insuficiente: cobertura_completa=false."
+        },
+        "explicacion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600,
+          "description": "Frase derivada de datos: RFC, códigos de pista, conteos y niveles. Nunca texto escrito por el contribuyente (regla 6)."
+        }
+      },
+      "required": [
+        "caso_id",
+        "rfc_comparable",
+        "giro_compartido",
+        "pistas_solapadas",
+        "resultado_comparable",
+        "razon_tipificada",
+        "explicacion"
+      ],
+      "additionalProperties": false
     }
   }
 }
