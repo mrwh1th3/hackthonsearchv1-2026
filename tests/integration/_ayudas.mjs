@@ -18,6 +18,13 @@ export const PSQL = path.join(PGBIN, 'psql');
 export const DB_QA = process.env.DB_QA || 'forense_qa';
 export const DB_COMPARTIDA = process.env.DB_COMPARTIDA || 'forense';
 
+/**
+ * Techo de una consulta del banco. 300 s, no 120: `correr_pistas` sobre gen-v1
+ * tarda decenas de segundos y bastante más si la máquina está cargada. El
+ * servidor se detiene 20 s ANTES que el cliente (ver `correr`).
+ */
+export const TIMEOUT_MS = Number(process.env.QA_TIMEOUT_MS || 300000);
+
 const ENTORNO_PG = {
   ...process.env,
   PGHOST: process.env.PGHOST || 'localhost',
@@ -48,17 +55,22 @@ export function hayBase(db) {
  * @returns {{code:number, salida:string, error:string}}
  */
 export function correr(db, sql, { rol = null, detener = false } = {}) {
+  // `statement_timeout` un poco por debajo del timeout del cliente. Sin él,
+  // matar el psql deja VIVO el backend del servidor: la consulta sigue
+  // corriendo, se queda con el lock de `v_pares_giro` (correr_pistas la
+  // refresca) y la siguiente prueba del banco se bloquea detrás de un proceso
+  // que ya nadie está mirando. Con él, el servidor cancela primero y el error
+  // viaja en stderr con motivo.
   const cuerpo = (detener ? '\\set ON_ERROR_STOP on\n' : '') +
+    `set statement_timeout = ${TIMEOUT_MS - 20000};\n` +
     (rol ? `set role ${rol};\n` : '') + sql + '\n';
   const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qa-sql-')), 'q.sql');
   fs.writeFileSync(tmp, cuerpo, 'utf8');
   try {
     const r = spawnSync(PSQL, ['-d', db, '-X', '-q', '-t', '-A', '-f', tmp], {
-      // 300 s, no 120: `correr_pistas` sobre gen-v1 tarda ~30 s con la base recién
-      // preparada y bastante más cuando la suite completa ha dejado varios clones de
-      // inyección en la misma base. Un timeout corto se ve como `psql exit -1` sin
-      // stderr, que es el peor diagnóstico posible.
-      env: ENTORNO_PG, encoding: 'utf8', timeout: 300000,
+      // Un timeout corto se ve como `psql exit -1` sin stderr, que es el peor
+      // diagnóstico posible; por eso el servidor corta primero (statement_timeout).
+      env: ENTORNO_PG, encoding: 'utf8', timeout: TIMEOUT_MS,
     });
     return { code: r.status ?? -1, salida: (r.stdout ?? '').trim(), error: (r.stderr ?? '').trim() };
   } finally {
