@@ -12,7 +12,7 @@
   "targets": {
     "account_hint": "victorinbm2006",
     "account_service": "n8n",
-    "n8n_url": null,
+    "n8n_url": "https://n8n.srv1550651.hstgr.cloud",
     "n8n_version": null,
     "supabase_project_ref": null,
     "vercel_project": null,
@@ -22,7 +22,8 @@
     "n8n_project_id": "n0vtYcnvIW4LpWOE",
     "n8n_workflow_prefix": "FORENSE_",
     "supabase_org_id": "nkirnwgqrjvicdniszlk",
-    "vercel_team_id": "team_btOOK1ypsV2lyPljQaC0r3Ui"
+    "vercel_team_id": "team_btOOK1ypsV2lyPljQaC0r3Ui",
+    "n8n_url_note": "Host detectado en campo no secreto (triggerInfo) el 2026-09-11; versión de n8n aún sin confirmar; typeVersions observados: code 2, postgres 2.7, httpRequest 4.2, respondToWebhook 1.5, webhook 2.1, if 2.3, switch 3.4"
   },
   "reported_connections": {
     "n8n_mcp": true,
