@@ -119,13 +119,46 @@ test('Réplica, Redactor y Editor no tienen herramientas', () => {
   assert.deepEqual(toolsPorRol('mapper', 1), [], 'el mapper de ingesta tampoco toca la base');
 });
 
-test('Auditor y Defensor no escriben señales; sólo el Auditor registra evidencia', () => {
+test('Auditor y Defensor no escriben señales; el Defensor tampoco registra evidencia', () => {
   for (const rol of ['auditor', 'defensor']) {
     assert.ok(!toolsPorRol(rol, 1).includes('forense_escribir_senal'), rol);
     assert.ok(toolsPorRol(rol, 1).includes('forense_leer_senal'), `${rol}: lee el detalle de señales de su caso`);
   }
   assert.ok(toolsPorRol('auditor', 1).includes('forense_registrar_evidencia'));
+  // El Defensor argumenta; no aporta piezas al expediente (06 §11 herramientas).
   assert.ok(!toolsPorRol('defensor', 1).includes('forense_registrar_evidencia'));
+});
+
+test('registrar_evidencia la tienen el Auditor y los cinco especialistas (06, decisión H3)', () => {
+  // 06 §"Las 11 herramientas" asigna `forense_registrar_evidencia` a «auditor, especialistas»;
+  // 03 sólo lista las "principales" de cada familia y por eso no la menciona.
+  const fila = DOC_06.split('\n').find(l => l.includes('`forense_registrar_evidencia`'));
+  assert.ok(fila, '06 ya no lista forense_registrar_evidencia');
+  assert.ok(/auditor/.test(fila) && /especialistas/.test(fila), `06 cambió el ACL: ${fila}`);
+
+  for (const rol of [...ROLES_ESPECIALISTA, 'auditor']) {
+    for (const ronda of [1, 2]) {
+      assert.ok(
+        toolsPorRol(rol, ronda).includes('forense_registrar_evidencia'),
+        `${rol} r${ronda}: falta forense_registrar_evidencia`,
+      );
+    }
+  }
+  for (const rol of ['defensor', 'replica', 'redactor', 'editor', 'mapper']) {
+    assert.ok(!toolsPorRol(rol, 1).includes('forense_registrar_evidencia'), rol);
+  }
+
+  // Registrar no es validar: ningún prompt de especialista puede sugerir que él valida.
+  // `forense_validar_evidencia` es herramienta de sistema y sigue fuera de toda allowlist.
+  for (const rol of ROLES_ESPECIALISTA) {
+    const r = ensamblar(rol, contextoEspecialista(rol));
+    assert.ok(r.system.includes('- forense_registrar_evidencia'), `${rol}: no la ofrece en el system`);
+    assert.ok(!r.tools_permitidas.includes('forense_validar_evidencia'), rol);
+    assert.ok(
+      /Registrar no es validar/.test(r.system),
+      `${rol}: el system debe decir que registrar no es validar (regla 4)`,
+    );
+  }
 });
 
 test('la allowlist del system coincide exactamente con tools_permitidas', () => {

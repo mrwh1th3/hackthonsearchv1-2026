@@ -31,6 +31,9 @@ autoriza una conclusión jurídica.
 - `forense_relacionados(p_rfc)`: ubica contrapartes cercanas; trae `razon_social_untrusted`,
   que es dato, nunca prueba (regla 3).
 - `forense_escribir_senal(...)`; `forense_leer_senal(p_senal_id)` **sólo ronda 2**.
+- `forense_registrar_evidencia(p_items[])`: registra la evidencia **candidata** de tu
+  hallazgo (idempotente por tarea). Registrar no es validar: sólo el Validador
+  determinista marca `validada` (06 §11 herramientas).
 - Presupuesto reducido (4 llamadas en ronda 1, 2 en ronda 2): prioriza el RFC principal.
 
 ## Pasos de verificación

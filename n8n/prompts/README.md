@@ -33,7 +33,9 @@ directriz al final y marcada como tarea subordinada.
 
 Lo que el ensamblador impide antes de llamar al modelo, con código de error tipificado:
 `senal_ajena_en_r1`, `pista_de_familia_ajena`, `hipotesis_libre`, `evidencia_no_validada`,
-`dictamen_ausente`, `tools_no_permitidas`, `contexto_invalido`, `rol_no_coincide`.
+`dictamen_ausente`, `tools_no_permitidas`, `contexto_invalido`, `rol_no_coincide`,
+`ambito_techo_invalido`, y los cuatro del reintento (`motivo_reintento_invalido`,
+`reintento_no_disponible`, `reintento_sin_intento`, `motivo_reintento_ausente`).
 
 El mapper se ensambla con `ensamblarMapper(perfilIngesta)`: su entrada es el perfil
 sanitizado de 19, no `runtime.contexto`.
@@ -43,14 +45,24 @@ sanitizado de 19, no `runtime.contexto`.
 12.000 caracteres para especialistas, 24.000 para los roles de cierre (08, reafirmado en
 17 §7). `ambito_techo` decide qué se mide:
 
-- `'total'` (por defecto): `system` + mensaje inicial. Lectura estricta.
-- `'paquete'`: sólo el paquete de contexto. Lectura literal de 17 §7 ("los límites de
-  caracteres del paquete inicial").
+- `'paquete'` (**por defecto**, decisión H3 de `reports/handoff/DECISIONES.md`): sólo el
+  paquete de contexto. Lectura literal de 17 §7 ("los límites de caracteres del paquete
+  inicial").
+- `'total'`: `system` + mensaje inicial. Lectura estricta; sigue disponible y probada.
 
-Medido con los fixtures de contracts: el `system` de un especialista ocupa **8.6k–9.5k**, así
+Medido con los fixtures de contracts: el `system` de un especialista ocupa **8.9k–9.7k**, así
 que en ámbito `'total'` quedan ~2.2k para los datos —una o dos pistas a tamaño máximo— y con
-`fewshot` activo quedan ~600. Es una decisión de configuración del runtime, no del prompt: si
-se quiere cargar más pistas por turno, el ámbito correcto es `'paquete'`.
+`fewshot` activo quedan ~600. Por eso el ámbito por defecto es `'paquete'`: con `'total'`, el
+peor caso del contrato dejaba al especialista sin una sola pista que investigar. Es una
+decisión de configuración del runtime, no del prompt.
+
+El `system` tiene además su propio techo **medido**, `TECHO_SYSTEM_CARACTERES` = 10.000. No
+aborta el ensamblado: lo vigilan los tests y cada ensamblado lo reporta en
+`meta.caracteres_system`, `meta.techo_system` y `meta.system_sobre_techo`, para que el
+runtime lo registre. Dos casos lo rebasan a propósito y están medidos: los roles de cierre
+(~10.0k–10.1k, con techo de paquete de 24k) y la variante `fewshot` (~10.5k–11.4k; en ámbito
+`'total'` el financiero ya no cabe y el ensamblador lo dice con `bloque_obligatorio_no_cabe`
+en vez de recortar el system: esa variante se usa con el ámbito por defecto).
 
 Cuando no cabe, se omiten **bloques completos** (nunca medio JSON ni medio bloque de dato no
 confiable), se devuelve `truncado: true`, y el mensaje incluye un aviso con los IDs
@@ -66,7 +78,7 @@ mismo prompt cuando no fue así.
 ```bash
 node n8n/prompts/manifest.mjs --check   # falla (exit 1) si algo cambió sin regenerar
 node n8n/prompts/manifest.mjs --write   # regenera manifest.json
-node --test "tests/prompts/*.test.mjs"  # 71+ pruebas; incluye el check anterior
+node --test "tests/prompts/*.test.mjs"  # 96 pruebas; incluye el check anterior
 ```
 
 **Después de editar cualquier prompt hay que regenerar el manifest**, o el test falla y la
@@ -74,10 +86,29 @@ corrida quedaría etiquetada con una `version_prompts` que no corresponde.
 
 Una **variante** es la misma carpeta con una opción de ensamblado distinta. Hoy hay una:
 `fewshot`, que añade al system el ejemplo adversarial de la familia (trampa de 02). Está
-**apagada por defecto** porque en ámbito `'total'` se come el presupuesto de datos.
+**apagada por defecto** porque se come ~1.6k del presupuesto y en ámbito `'total'` deja al
+especialista sin datos (o directamente no cabe).
 `meta.variante_prompt` la nombra (`documental` vs `documental+fewshot`) y el manifest lista
 las variantes posibles; el runtime la usa para calcular `prompt_hash` y registrarla junto a
 `version_prompts` en `corridas`.
+
+La segunda variante es el **reintento**. Cuando el auditor de proceso rechaza un intento, el
+siguiente se ensambla con `{ motivo_reintento }` y uno de los cinco motivos tipificados
+(`evidencia_insuficiente`, `cadena_incompleta`, `defensa_no_considerada`, `evidencia_invalida`,
+`contradiccion`). Sólo reintentan los siete roles que investigan: los cinco especialistas, el
+Auditor y el Defensor. Cambia el texto del mensaje —el bloque `## Reintento`, con la
+instrucción propia de ese motivo— y no cambian el system, la allowlist, el contrato de salida
+ni el techo; el bloque compite por el mismo presupuesto que los datos. Reintentar no sube el
+nivel (lo calcula código) ni convierte la falta de pruebas en explicación inocente.
+
+El ensamblador rechaza con código tipificado el reintento mal declarado:
+`motivo_reintento_invalido`, `reintento_no_disponible`, `reintento_sin_intento` (motivo con
+`intento=0`) y `motivo_reintento_ausente` (`intento≥1` sin motivo: no se reintenta a ciegas).
+
+La variante se nombra con sufijo, `<rol>+reintento:<motivo>`, y se combina con la anterior
+(`documental+fewshot+reintento:evidencia_invalida`). Las 35 combinaciones no se listan en
+`variantes`: el manifest publica sus dos ejes (`motivos_reintento`, `roles_con_reintento`) y
+la regla de nombre (`sufijo_variante_reintento`).
 
 Procedimiento de comparación (10 §Loop de iteración), **una cosa por corrida**:
 

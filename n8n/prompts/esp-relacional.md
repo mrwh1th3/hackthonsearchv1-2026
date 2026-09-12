@@ -28,6 +28,9 @@ antes de concluir.
   quedaron fuera del tope.
 - `forense_facturas(...)`: ≤50 por página.
 - `forense_escribir_senal(...)`; `forense_leer_senal(p_senal_id)` **sólo ronda 2**.
+- `forense_registrar_evidencia(p_items[])`: registra la evidencia **candidata** de tu
+  hallazgo (idempotente por tarea). Registrar no es validar: sólo el Validador
+  determinista marca `validada` (06 §11 herramientas).
 
 ## Pasos de verificación
 

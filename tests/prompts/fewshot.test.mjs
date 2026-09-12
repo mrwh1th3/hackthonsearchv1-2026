@@ -105,11 +105,34 @@ test('la variante no existe para los roles de cierre y se rechaza explícitament
 
 test('con la variante activa se siguen respetando los techos en los dos ámbitos', () => {
   for (const rol of ROLES_ESPECIALISTA) {
-    for (const ambito of AMBITOS_TECHO) {
-      const r = ensamblar(rol, contextoEspecialista(rol), { fewshot: true, ambito_techo: ambito });
-      const usado = ambito === 'total' ? r.meta.caracteres : r.meta.caracteres_paquete;
-      assert.ok(usado <= TECHO_CARACTERES[rol], `${rol}/${ambito}: ${usado} > ${TECHO_CARACTERES[rol]}`);
+    // Ámbito por defecto ('paquete', decisión H3): la variante siempre ensambla y el
+    // paquete cabe en el techo del rol.
+    const r = ensamblar(rol, contextoEspecialista(rol), { fewshot: true, ambito_techo: 'paquete' });
+    assert.ok(
+      r.meta.caracteres_paquete <= TECHO_CARACTERES[rol],
+      `${rol}/paquete: ${r.meta.caracteres_paquete} > ${TECHO_CARACTERES[rol]}`,
+    );
+
+    // En ámbito 'total' el system con ejemplo adversarial ocupa 10.5k–11.4k de los 12k: la
+    // variante puede no caber. Lo que nunca pasa es que se rebase el techo en silencio o
+    // que se recorte el system: o cabe, o falla con un código tipificado.
+    let excedido = null;
+    try {
+      const estricto = ensamblar(rol, contextoEspecialista(rol), { fewshot: true, ambito_techo: 'total' });
+      assert.ok(
+        estricto.meta.caracteres <= TECHO_CARACTERES[rol],
+        `${rol}/total: ${estricto.meta.caracteres} > ${TECHO_CARACTERES[rol]}`,
+      );
+    } catch (error) {
+      assert.ok(error instanceof ErrorEnsamblado, `${rol}/total: ${error.message}`);
+      assert.ok(
+        ['prompt_base_excede_techo', 'bloque_obligatorio_no_cabe'].includes(error.codigo),
+        `${rol}/total: código inesperado ${error.codigo}`,
+      );
+      excedido = error.codigo;
     }
+    // Y si no cabe en 'total', el ámbito por defecto sigue dándole datos que investigar.
+    if (excedido) assert.ok(r.meta.bloques_incluidos > 0, `${rol}: sin bloques en 'paquete'`);
   }
 });
 
