@@ -323,6 +323,210 @@ async function construirDiff(
 }
 
 // ---------------------------------------------------------------------------
+// Runtime de agentes (`ejecuciones_agente`/`llm_solicitudes`/`tool_ejecuciones`,
+// 001_schema §"Control de runtime"): sin política de SELECT (docs/17, nota
+// del coordinador de este corte) — únicamente por aquí, nunca por el
+// DataSource público ni por `useCanalForense` (esas tablas no tienen
+// realtime). El canvas de análisis las sondea vía `/api/analisis/[casoId]`
+// (BFF con sesión, regla 3), nunca las lee directo.
+//
+// Lectura TOLERANTE a columnas ausentes (nota del coordinador de este corte:
+// "lee tolerante a columnas faltantes"): cada mapper distingue tres casos —
+// valor real, cero persistido, y columna/fila ausente (`null`). Un `null`
+// se pinta en la UI como "no disponible todavía", nunca como `0` — pintar
+// cero cuando el sistema nunca produjo el dato sería fingir progreso
+// (CLAUDE.md regla 2/"no simules éxito").
+// ---------------------------------------------------------------------------
+
+export interface FilaEjecucionAgente {
+  id: string;
+  corrida_id: string | null;
+  caso_id: string | null;
+  tarea_id: string | null;
+  editor_operacion_id: string | null;
+  rol: string;
+  estado_interno: string;
+  paso: number;
+  revision: number;
+  checkpoint_json: Record<string, unknown> | null;
+  model_id: string | null;
+  cancelada: boolean;
+  creado: string;
+  actualizado: string;
+}
+
+export interface FilaLlmSolicitud {
+  request_id: string;
+  ejecucion_id: string;
+  paso: number | null;
+  estado: string;
+  bolsa: string;
+  modelo: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  duracion_ms: number | null;
+  error: string | null;
+  creado: string;
+}
+
+export interface FilaToolEjecucion {
+  id: number;
+  ejecucion_id: string;
+  request_id: string;
+  tool_use_id: string;
+  nombre: string | null;
+  args_hash: string | null;
+  estado: string;
+  resultado_ref: Record<string, unknown> | null;
+  duracion_ms: number | null;
+  creado: string;
+  terminado: string | null;
+}
+
+/** `null` = la columna o el dato todavía no existen; nunca se rellena con 0. */
+export interface EjecucionAgenteInfo {
+  id: string;
+  caso_id: string | null;
+  tarea_id: string | null;
+  rol: string;
+  estado_interno: string;
+  paso: number;
+  model_id: string | null;
+  cancelada: boolean;
+  creado: string;
+  actualizado: string;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  /** No hay columna `costo` en `llm_solicitudes`/`ejecuciones_agente` todavía — ver solicitudes_coordinador de este corte. */
+  costo: number | null;
+  duracion_ms: number | null;
+  toolEnCurso: { nombre: string | null; desde: string } | null;
+  tools: Array<{
+    id: string;
+    nombre: string | null;
+    estado: string;
+    args_hash: string | null;
+    resultado_resumen: string | null;
+    duracion_ms: number | null;
+    creado: string;
+    terminado: string | null;
+  }>;
+}
+
+export interface EjecucionesCaso {
+  ejecuciones: EjecucionAgenteInfo[];
+  /** Suma real de `llm_solicitudes.tokens_in/out` de este caso; `null` si no hay ninguna solicitud registrada todavía. */
+  tokensTotales: { in: number; out: number } | null;
+  costoTotal: number | null;
+}
+
+function resumenResultado(ref: Record<string, unknown> | null): string | null {
+  if (!ref) return null;
+  try {
+    const texto = JSON.stringify(ref);
+    return texto.length > 160 ? `${texto.slice(0, 157)}...` : texto;
+  } catch {
+    return null;
+  }
+}
+
+export function mapEjecucionAgente(
+  fila: FilaEjecucionAgente,
+  solicitudes: FilaLlmSolicitud[],
+  tools: FilaToolEjecucion[],
+): EjecucionAgenteInfo {
+  const tokensIn = solicitudes.length > 0 ? solicitudes.reduce((s, r) => s + (r.tokens_in ?? 0), 0) : null;
+  const tokensOut = solicitudes.length > 0 ? solicitudes.reduce((s, r) => s + (r.tokens_out ?? 0), 0) : null;
+  const duracion = solicitudes.some((r) => r.duracion_ms != null)
+    ? solicitudes.reduce((s, r) => s + (r.duracion_ms ?? 0), 0)
+    : null;
+  const enCurso = tools.find((t) => t.estado === "ejecutando");
+  return {
+    id: fila.id,
+    caso_id: fila.caso_id,
+    tarea_id: fila.tarea_id,
+    rol: fila.rol,
+    estado_interno: fila.estado_interno,
+    paso: fila.paso,
+    model_id: fila.model_id ?? null,
+    cancelada: Boolean(fila.cancelada),
+    creado: fila.creado,
+    actualizado: fila.actualizado,
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    // `llm_solicitudes`/`ejecuciones_agente` no tienen columna de costo (ver EjecucionAgenteInfo.costo).
+    costo: null,
+    duracion_ms: duracion,
+    toolEnCurso: enCurso ? { nombre: enCurso.nombre ?? null, desde: enCurso.creado } : null,
+    tools: tools
+      .slice()
+      .sort((a, b) => (a.creado < b.creado ? -1 : a.creado > b.creado ? 1 : 0))
+      .map((t) => ({
+        id: String(t.id),
+        nombre: t.nombre ?? null,
+        estado: t.estado,
+        args_hash: t.args_hash ?? null,
+        resultado_resumen: resumenResultado(t.resultado_ref),
+        duracion_ms: t.duracion_ms ?? null,
+        creado: t.creado,
+        terminado: t.terminado,
+      })),
+  };
+}
+
+export async function leerEjecucionesCaso(casoId: string): Promise<EjecucionesCaso> {
+  const client = clientePrivilegiado();
+  const { data: ejecucionesData, error: errEjec } = await client
+    .from("ejecuciones_agente")
+    .select("id,corrida_id,caso_id,tarea_id,editor_operacion_id,rol,estado_interno,paso,revision,checkpoint_json,model_id,cancelada,creado,actualizado")
+    .eq("caso_id", casoId)
+    .order("creado", { ascending: true });
+  if (errEjec) throw new Error(`leerEjecucionesCaso: ${errEjec.message}`);
+  const filasEjecucion = (ejecucionesData ?? []) as FilaEjecucionAgente[];
+  const ids = filasEjecucion.map((e) => e.id);
+  if (ids.length === 0) return { ejecuciones: [], tokensTotales: null, costoTotal: null };
+
+  const [{ data: solicitudesData, error: errSol }, { data: toolsData, error: errTool }] = await Promise.all([
+    client
+      .from("llm_solicitudes")
+      .select("request_id,ejecucion_id,paso,estado,bolsa,modelo,tokens_in,tokens_out,duracion_ms,error,creado")
+      .in("ejecucion_id", ids),
+    client
+      .from("tool_ejecuciones")
+      .select("id,ejecucion_id,request_id,tool_use_id,nombre,args_hash,estado,resultado_ref,duracion_ms,creado,terminado")
+      .in("ejecucion_id", ids),
+  ]);
+  if (errSol) throw new Error(`leerEjecucionesCaso: llm_solicitudes: ${errSol.message}`);
+  if (errTool) throw new Error(`leerEjecucionesCaso: tool_ejecuciones: ${errTool.message}`);
+  const filasSolicitud = (solicitudesData ?? []) as FilaLlmSolicitud[];
+  const filasTool = (toolsData ?? []) as FilaToolEjecucion[];
+
+  const solicitudesPorEjecucion = new Map<string, FilaLlmSolicitud[]>();
+  for (const s of filasSolicitud) {
+    if (!solicitudesPorEjecucion.has(s.ejecucion_id)) solicitudesPorEjecucion.set(s.ejecucion_id, []);
+    solicitudesPorEjecucion.get(s.ejecucion_id)!.push(s);
+  }
+  const toolsPorEjecucion = new Map<string, FilaToolEjecucion[]>();
+  for (const t of filasTool) {
+    if (!toolsPorEjecucion.has(t.ejecucion_id)) toolsPorEjecucion.set(t.ejecucion_id, []);
+    toolsPorEjecucion.get(t.ejecucion_id)!.push(t);
+  }
+
+  const ejecuciones = filasEjecucion.map((e) =>
+    mapEjecucionAgente(e, solicitudesPorEjecucion.get(e.id) ?? [], toolsPorEjecucion.get(e.id) ?? []),
+  );
+  const tokensTotales =
+    filasSolicitud.length > 0
+      ? {
+          in: filasSolicitud.reduce((s, r) => s + (r.tokens_in ?? 0), 0),
+          out: filasSolicitud.reduce((s, r) => s + (r.tokens_out ?? 0), 0),
+        }
+      : null;
+
+  return { ejecuciones, tokensTotales, costoTotal: null };
+}
+
+// ---------------------------------------------------------------------------
 // API pública del módulo — consumida únicamente por `./privado.ts`
 // ---------------------------------------------------------------------------
 

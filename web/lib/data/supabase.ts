@@ -187,6 +187,7 @@ export function mapSenal(row: Fila): Senal {
     frontera: aArreglo<string>(row.frontera),
     confianza: (row.confianza as Senal["confianza"]) ?? "baja",
     refuta: Boolean(row.refuta),
+    creado: (row.creado as string | null) ?? "",
   };
 }
 

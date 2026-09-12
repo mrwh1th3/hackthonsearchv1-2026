@@ -7,7 +7,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CanvasHeader } from "@/components/shared/canvas-header";
-import type { Caso, EventoForense, Tarea } from "@/lib/data";
+import type { Caso, EventoForense, Senal, Tarea } from "@/lib/data";
+import { mapSenal } from "@/lib/data/supabase";
+import { useCanalForense } from "@/lib/realtime/usar-canal";
 import {
   construirArbol,
   duracion,
@@ -19,11 +21,20 @@ import {
 } from "@/lib/analisis/arbol";
 import { fechaHora } from "@/lib/date/formato";
 import { cn } from "@/lib/utils";
+import type { EjecucionAgenteInfo } from "@/lib/data/privado";
 
 export interface EstadoAnalisis {
   caso: Caso | null;
   tareas: Tarea[];
   eventos: EventoForense[];
+  /**
+   * Runtime real de agentes (BFF privado, `/api/analisis/[casoId]`):
+   * `undefined` en el estado inicial pasado por Server Components que no lo
+   * cargaron todavía (se trata igual que "sin ejecuciones"), nunca inventado.
+   */
+  runtime?: { ejecuciones: EjecucionAgenteInfo[]; tokensTotales: { in: number; out: number } | null; costoTotal: number | null };
+  /** Pizarrón (`forense.senales`, pública + realtime): sembrado por el poll, mantenido en vivo por `useCanalForense`. */
+  senales?: Senal[];
 }
 
 const INTERVALO_MS = 3000;
@@ -105,15 +116,24 @@ function Flecha({ alto = 22 }: { alto?: number }) {
   );
 }
 
+/** `costo` no existe en `llm_solicitudes` todavía (ver `EjecucionAgenteInfo.costo`): "no disp." en vez de "$0.00". */
+function formatoCosto(n: number | null): string {
+  return n == null ? "costo no disp." : `$${n.toFixed(2)}`;
+}
+
 function TarjetaAgente({ nodo, ahora, onAbrir }: { nodo: NodoAgente; ahora: number; onAbrir: () => void }) {
   const e = ESTADO_NODO[nodo.estado];
   const fin = nodo.detenido ? new Date(nodo.detenido).getTime() : ahora;
+  const rt = nodo.runtime;
+  // Tokens reales de `llm_solicitudes` si el runtime ya instrumentó esta
+  // tarea; si no, se cae al conteo de bitácora (`nodo.tokens`) que ya existía.
+  const tokensMostrados = rt && (rt.tokens_in != null || rt.tokens_out != null) ? (rt.tokens_in ?? 0) + (rt.tokens_out ?? 0) : nodo.tokens;
   return (
     <button
       type="button"
       onClick={onAbrir}
       className={cn(
-        "insp-focus-ring flex w-[168px] flex-col gap-1 rounded-[13px] border bg-surface px-3 py-2.5 text-left transition-colors duration-150 hover:border-border-stronger hover:bg-surface-hover",
+        "insp-focus-ring flex w-[176px] flex-col gap-1 rounded-[13px] border bg-surface px-3 py-2.5 text-left transition-colors duration-150 hover:border-border-stronger hover:bg-surface-hover",
         nodo.estado === "ejecutando" ? "border-border-strong shadow-[0_1px_3px_rgba(20,20,19,.06)]" : "border-border",
       )}
     >
@@ -126,8 +146,14 @@ function TarjetaAgente({ nodo, ahora, onAbrir }: { nodo: NodoAgente; ahora: numb
         {nodo.intento > 0 ? ` · intento ${nodo.intento + 1}` : ""}
       </span>
       <span className="text-[11px] text-text-subtle">
-        {duracion(nodo.iniciado, fin)} · {formatoTokens(nodo.tokens)} tokens
+        {duracion(nodo.iniciado, fin)} · {formatoTokens(tokensMostrados)} tokens
       </span>
+      {rt?.toolEnCurso && (
+        <span className="flex items-center gap-1 text-[10.5px] text-live-fg">
+          <span className="h-1 w-1 flex-none animate-pulse rounded-full bg-live-dot" aria-hidden />
+          herramienta: {rt.toolEnCurso.nombre ?? "en curso"}
+        </span>
+      )}
     </button>
   );
 }
@@ -234,7 +260,44 @@ function ModalAgente({
                 <p className="m-0 text-[12px] text-text-subtle">
                   {duracion(nodo.iniciado, fin)} en ejecución · {formatoTokens(nodo.tokens)} tokens consumidos
                 </p>
+                {nodo.runtime && (
+                  <p className="m-0 text-[11.5px] text-text-subtle">
+                    Runtime: paso {nodo.runtime.paso} · {nodo.runtime.estado_interno.replaceAll("_", " ")} ·{" "}
+                    {nodo.runtime.tokens_in != null || nodo.runtime.tokens_out != null
+                      ? `${formatoTokens(nodo.runtime.tokens_in ?? 0)} in / ${formatoTokens(nodo.runtime.tokens_out ?? 0)} out`
+                      : "tokens no disp."}{" "}
+                    · {formatoCosto(nodo.runtime.costo)}
+                  </p>
+                )}
               </div>
+
+              {nodo.runtime && nodo.runtime.tools.length > 0 && (
+                <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+                  <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">
+                    Herramientas ({nodo.runtime.tools.length})
+                  </span>
+                  <ul className="m-0 flex max-h-[140px] list-none flex-col gap-1.5 overflow-y-auto p-0">
+                    {nodo.runtime.tools.map((t) => (
+                      <li key={t.id} className="flex flex-col gap-0.5 rounded-[8px] border border-border bg-surface-raised px-2 py-1.5">
+                        <span className="flex items-center gap-1.5 text-[12px] text-text">
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 flex-none rounded-full",
+                              t.estado === "ejecutando" ? "bg-live-dot animate-pulse" : t.estado === "error" ? "bg-error" : "bg-border-stronger",
+                            )}
+                          />
+                          {t.nombre ?? "herramienta"}
+                          {t.args_hash && <span className="font-mono text-[10px] text-text-subtle">#{t.args_hash.slice(0, 8)}</span>}
+                        </span>
+                        <span className="text-[10.5px] text-text-subtle">
+                          {t.duracion_ms != null ? `${t.duracion_ms} ms` : "en curso"}
+                          {t.resultado_resumen ? ` · ${t.resultado_resumen}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <ol className="m-0 flex min-h-0 list-none flex-col gap-2.5 overflow-y-auto border-t border-border p-0 pt-3.5">
                 {nodo.logs.length === 0 && <li className="text-[12.5px] text-text-subtle">Sin pasos registrados en la bitácora todavía.</li>}
@@ -294,6 +357,42 @@ function ModalAgente({
 }
 
 /**
+ * Pizarrón del cluster, en orden temporal (`forense.senales.creado`): cada
+ * anotación que escribió un especialista, con su agente y de qué ronda/
+ * intento salió. Pública + realtime (regla 3) — a diferencia del resto del
+ * canvas, esto SÍ puede suscribirse directo, igual que en `resultados.tsx`.
+ */
+function Pizarron({ senales }: { senales: Senal[] }) {
+  const ordenadas = [...senales].sort((a, b) => (a.creado || "").localeCompare(b.creado || ""));
+  if (ordenadas.length === 0) {
+    return (
+      <div className="flex w-full flex-col gap-1.5 rounded-[13px] border border-dashed border-border-dashed px-3.5 py-3 text-center">
+        <span className="text-[11px] uppercase tracking-[.05em] text-placeholder">Pizarrón</span>
+        <span className="text-[11.5px] text-placeholder">Todavía no hay anotaciones de agentes en esta investigación.</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex w-full flex-col gap-2 rounded-[13px] border border-border bg-surface px-3.5 py-3">
+      <span className="text-[11px] uppercase tracking-[.05em] text-text-subtle">Pizarrón ({ordenadas.length})</span>
+      <ol className="m-0 flex max-h-[220px] list-none flex-col gap-1.5 overflow-y-auto p-0">
+        {ordenadas.map((s) => (
+          <li key={s.id} className="flex flex-col gap-0.5 rounded-[8px] border border-border bg-surface-raised px-2.5 py-1.5">
+            <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-text">
+              <span className="font-medium capitalize">{nombreAgente(s.agente)}</span>
+              <span className="text-text-subtle">ronda {s.ronda} · intento {s.intento + 1}</span>
+              {s.refuta && <span className="rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle">descarta</span>}
+              {s.creado && <span className="ml-auto text-[10.5px] text-text-subtle">{fechaHora(s.creado)}</span>}
+            </span>
+            <span className="text-[12px] leading-snug text-text-muted">{s.titular}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/**
  * Canvas "Análisis en proceso" (pedido del usuario, 2026-09-12) dentro del
  * lienzo punteado del bloque `boardOpen` del diseño: encabezado con los tres
  * puntos, tiempo y tokens; "Árbol de trabajo:" con la etapa actual; el árbol
@@ -312,7 +411,10 @@ export function AnalisisCanvas({
   inicial: EstadoAnalisis;
 }) {
   const { estado, terminadoRef } = useEstadoAnalisis(casoId, inicial);
-  const arbol = useMemo(() => construirArbol(estado.caso, estado.tareas, estado.eventos), [estado]);
+  const arbol = useMemo(
+    () => construirArbol(estado.caso, estado.tareas, estado.eventos, estado.runtime?.ejecuciones ?? []),
+    [estado],
+  );
   useEffect(() => {
     terminadoRef.current = arbol.terminado;
   }, [arbol.terminado, terminadoRef]);
@@ -322,6 +424,21 @@ export function AnalisisCanvas({
 
   const caso = estado.caso;
   const fin = caso?.terminado ? new Date(caso.terminado).getTime() : ahora;
+
+  // Pizarrón en vivo: sembrado por el poll (`estado.senales`), luego
+  // suscrito directo a `forense.senales` filtrado por cluster (regla 12: una
+  // inyección con el sistema corriendo debe verse sin recargar).
+  const [senales, setSenales] = useState<Senal[]>(estado.senales ?? []);
+  useEffect(() => setSenales(estado.senales ?? []), [estado.senales]);
+  useCanalForense({
+    tabla: "senales",
+    filtro: caso?.cluster_id ? `cluster_id=eq.${caso.cluster_id}` : undefined,
+    onCambio: (payload) => {
+      if (payload.eventType !== "INSERT" && payload.eventType !== "UPDATE") return;
+      const senal = mapSenal(payload.new as Record<string, unknown>);
+      setSenales((actual) => [...actual.filter((s) => s.id !== senal.id), senal]);
+    },
+  });
 
   // Auditoría de un estate: al dictaminarse, todo se muestra en su investigación
   // (hallazgos, descartes, reporte), en el mismo lugar que el resto de investigaciones.
@@ -382,7 +499,11 @@ export function AnalisisCanvas({
               )}
             </h1>
             <p className="m-0 text-[12.5px] text-text-subtle">
-              {duracion(caso?.creado, fin)} de ejecución · {formatoTokens(arbol.tokens)} tokens consumidos
+              {duracion(caso?.creado, fin)} de ejecución ·{" "}
+              {arbol.tokensRuntime
+                ? `${formatoTokens(arbol.tokensRuntime.in + arbol.tokensRuntime.out)} tokens (${formatoTokens(arbol.tokensRuntime.in)} in / ${formatoTokens(arbol.tokensRuntime.out)} out)`
+                : `${formatoTokens(arbol.tokens)} tokens consumidos`}{" "}
+              · {formatoCosto(arbol.costoRuntime)}
             </p>
           </header>
 
@@ -411,6 +532,8 @@ export function AnalisisCanvas({
               <Etapa key={etapa.id} etapa={etapa} ahora={ahora} ultima={i === arbol.etapas.length - 1} onAbrir={(n) => setAbiertoId(n.id)} />
             ))}
           </div>
+
+          <Pizarron senales={senales} />
 
           {!arbol.terminado && (
             <div className="flex items-center gap-2">
