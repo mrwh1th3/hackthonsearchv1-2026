@@ -39,19 +39,35 @@ quedan en modo test hasta que el smoke pase.
 
 | # | Archivo | Nodos | Por qué va aquí |
 |---|---|---|---|
-| 1 | `FORENSE_ejecutar_agente.json` | 31 | Todos los demás lo referencian. |
+| 1 | `FORENSE_ejecutar_agente.json` | 32 | Todos los demás lo referencian. |
 | 2 | `FORENSE_reintento.json` | 16 | Lo llama la investigación. |
 | 3 | `FORENSE_editar_expediente.json` | 10 | Solo depende del worker. |
 | 4 | `FORENSE_investigar_cluster.json` | 38 | Necesita 1 y 2. |
 | 5 | `FORENSE_corrida.json` | 16 | Necesita 4. |
-| 6 | `FORENSE_inyectar.json` | 13 | 21 §3; necesita 4 y 5. Va **entre 5 y 6** del orden de 17, que es anterior a 21. |
+| 6 | `FORENSE_inyectar.json` | 14 | 21 §3; necesita 4 y 5. Va **entre 5 y 6** del orden de 17, que es anterior a 21. |
 | 7 | `FORENSE_notificar_completada.json` | 10 | La llama 4 al cerrar el caso. |
 | 8 | `FORENSE_resultado_llamada.json` | 6 | Callback de 7. |
 | 9 | `FORENSE_reconciliador.json` | 8 | Necesita 1 y 7. |
 | 10 | `FORENSE_errores.json` | 5 | Error Trigger; no referencia a nadie. |
 
-Total: 153 nodos. Ninguno lleva `id`, `versionId`, `meta`, `pinData` ni
+Total: 155 nodos. Ninguno lleva `id`, `versionId`, `meta`, `pinData` ni
 `staticData`: n8n los regenera al importar.
+
+**Vía de importación (H10).** No se importa a mano: el coordinador ejecuta
+`node scripts/n8n-import.mjs` (dueño: coordinador; este worktree no lo toca).
+
+```bash
+node scripts/n8n-import.mjs --dry-run          # qué haría, sin tocar n8n
+node scripts/n8n-import.mjs                    # crea o actualiza los diez
+node scripts/n8n-import.mjs --only FORENSE_inyectar,FORENSE_corrida
+```
+
+Qué hace, según su cabecera: usa la API pública de n8n 2.33.7 con `N8N_BASE` y
+`N8N_API_KEY` de `.env`, respeta el orden de la tabla de arriba, **nunca activa
+workflows**, resuelve los `PENDIENTE_FORENSE_*` de §2 por nombre → ID real y
+`BASE_REST` desde `SUPABASE_URL`, y escribe el manifest de IDs reales en
+`reports/handoff/n8n-ids.json`. Es decir: §2 y la mitad de §3.2 las resuelve el
+script, no una persona pegando IDs.
 
 ---
 
@@ -137,13 +153,26 @@ uno a uno; el resumen:
    prefiere no ampliar el enum, el cambio alternativo es de una línea por nodo
    (`p_tipo => 'razonamiento'` con el evento real en el payload), pero entonces
    la UI no puede distinguir el paso en cola del razonamiento.
-3. **Funciones de 004–008.** Estado medido el 2026-09-12 H5 con
-   `node n8n/tests/preparar-sql.mjs <base>` sobre una base con 001–008:
-   **ok=45, pendiente=28, falla=0** (antes del recableado: ok=42, pendiente=31).
+3. **Funciones de 004–011.** Estado medido el 2026-09-12 **H10** con
+   `node n8n/tests/preparar-sql.mjs forense_rt` sobre una base con 001–011:
+   **ok=74, pendiente=1, falla=0**. El único pendiente es
+   `forense.asegurar_clusters_inyectados` (db/012). Histórico: H5 daba ok=45,
+   pendiente=28; H9 daba ok=73 con la lista de pendientes ya caducada.
    Para cada nodo que las usa, `CONTRATOS_NODOS` en
    `n8n/runtime/generar-workflows.mjs` declara **qué columnas debe devolver** y
    `FORMA_PENDIENTE` lista los nodos cuya forma sigue sin verificar. Detalle en
    §3.5.
+
+   **H10 — `FORMA_PENDIENTE.FORENSE_inyectar` quedó vacío.** Sus cuatro
+   consultas dejaron de ser `SELECT *` y nombran las columnas de la firma real.
+   Al hacerlo aparecieron dos fallos que `PREPARE` no ve y el grafo sí:
+   `Validar filas` llamaba a `forense.validar_inyeccion` con el `inyeccion_id`
+   cuando la función toma la **ingesta** y devuelve `jsonb` escalar (la columna
+   `validada` volvía `undefined` y el IF se iba **siempre** por la rama de
+   rechazo), y `Clonar corrida` leía `corrida_nueva_id` de una función que
+   devuelve `uuid` escalar. Los demás workflows siguen con nodos en la lista:
+   se resuelven igual, nombrando columnas y verificando con
+   `node n8n/tests/verificar-forma-nodos.mjs <base>`.
 
    **Aviso importante sobre `PREPARE`:** analiza tipos, no la forma de la
    salida. Casi todas las funciones de 004–008 devuelven **`jsonb` escalar**, así
@@ -156,10 +185,25 @@ uno a uno; el resumen:
    nodo recableado dentro de BEGIN/ROLLBACK y falla si una columna declarada en
    `CONTRATOS_NODOS` vuelve NULL) y `node n8n/tests/e2e-camino-worker.mjs <base>`.
 
-### 3.5 Funciones que faltan en 001–008 (petición a forense-db)
+### 3.5 Funciones que faltan (petición a forense-db) — **revisado H10**
 
-Verificado contra `pg_proc` de una base con 001–008 aplicadas, no supuesto.
-Dos grupos distintos:
+**Estado al 2026-09-12 H10, verificado contra `pg_proc` de `forense_rt` con
+001–011 aplicadas.** Las tablas de abajo son historia: de las ~25 funciones que
+esta sección pedía en H5, **todas existen ya** en 010/011 (`abrir_corrida`,
+`cargar_o_clonar_snapshot`, `estado_corrida`, `cerrar_ronda`,
+`paquete_auditor_final`, `guardar_dictamen`, `cerrar_caso`, la familia de voz de
+007 y `clusters_por_prioridad_inyeccion` incluidas). `n8n/tests/preparar-sql.mjs`
+se podó en consecuencia y mide **ok=74, pendiente=1, falla=0**.
+
+Queda **una** dependencia viva y **una** petición nueva:
+
+| Pedido | Quién lo usa | Estado |
+|---|---|---|
+| `forense.asegurar_clusters_inyectados(p_corrida uuid, p_inyeccion uuid)` → `table(cluster_id uuid, rfc text, creado boolean)` | `FORENSE_inyectar` / «Asegurar clusters inyectados» | **db/012, en curso.** El nodo ya está cableado a esta firma. Respaldo mientras tanto: `forense.armar_cluster_para` por RFC afectado (lo usa `n8n/tests/e2e-inyeccion.mjs`, marcado `PENDIENTE_DB_012`). |
+| Alguien tiene que poner `forense.casos.cobertura_completa = true` | `dictaminar()` la EXIGE para pasar de `no_concluyente` | **Bloqueante para el demo.** En 001–011 la única escritura a `true` es `guardar_dictamen`, que la copia del propio dictamen: es circular y hoy **ningún caso puede alcanzar `presuncion`**. Medido con `node n8n/tests/e2e-inyeccion.mjs forense_rt --ensayo a`: familias R y T sustentadas, 2/2 evidencias válidas, `pendientes=[]`, y aun así `no_concluyente`. Debe fijarla el cierre de la última ronda o la validación de evidencia; el runtime no puede inventarla (regla 4). |
+
+Lo que sigue es el registro de H5, conservado porque documenta los contratos de
+cada nodo (`CONTRATOS_NODOS`) aunque las funciones ya existan:
 
 **(a) Ausentes: escrituras transaccionales que pertenecen a la migración.** El
 nodo no puede inlinearlas sin duplicar invariantes (atomicidad, evento de
@@ -440,12 +484,30 @@ descartan (17 §6).
 
 ### Paso 6 — inyección en vivo (21 §3.5, gate propio)
 
-Solo con `008` aplicado. `POST /webhook/forense/inyectar` con el paquete (a) de
-`eval/inyecciones/`.
+Solo con `008` aplicado (y `012` para la garantía de cluster; ver §3.5).
+`POST /webhook/forense/inyectar` con el paquete (a) de `eval/inyecciones/`.
+
+**Ensayo en seco antes de tocar n8n** — mismo camino, sin HTTP al proveedor y
+leyendo la SQL de los nodos exportados:
+
+```bash
+node n8n/tests/e2e-inyeccion.mjs forense_rt --ensayo c    # trampa legítima
+node n8n/tests/e2e-inyeccion.mjs forense_rt --ensayo a    # carrusel nuevo
+node n8n/tests/e2e-inyeccion.mjs forense_rt --json        # tiempos por etapa
+```
+
+Medido en `forense_rt` (H10): clonar ~210 ms, `correr_pistas`+`armar_clusters`
+~28–69 s (es la etapa cara), `armar_cluster_para` ~370 ms por RFC afectado, el
+resto <30 ms. (c) termina `no_concluyente` — cumple: la trampa no sube a
+presunción. (a) termina `no_concluyente` **por `cobertura_completa=false`**, no
+por las pistas: ver la petición bloqueante de §3.5.
 
 - La corrida base **no cambia**: mismo `dataset_hash`, mismas pistas.
 - La corrida nueva tiene `corrida_origen_id` = base y `dataset_hash` distinto.
-- Los clusters con RFC inyectados se despachan **primero**.
+- Los clusters con RFC inyectados se despachan **primero**, incluidos los que
+  el selector de dos familias dejó fuera: «Asegurar clusters inyectados»
+  garantiza uno por RFC y «Priorizar afectados» los ordena
+  `creado → garantizado → afectado → resto` (QA-004).
 - Cada transición deja evento con `tipo_evento='inyeccion'`: sin evento
   persistido, `/inyecciones/[id]` no puede animar nada.
 - Medir la latencia recibida→dictamen y anotarla en ESTADO.md.
