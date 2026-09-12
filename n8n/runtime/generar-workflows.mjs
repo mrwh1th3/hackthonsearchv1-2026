@@ -674,8 +674,15 @@ export function investigarCluster() {
 
   add(sql(
     'Resolver y reclamar cluster',
-    'SELECT * FROM forense.reclamar_cluster($1::uuid, $2::uuid, $3::text, $4::text, $5::text)',
-    '={{ $json.corrida_id }}, ={{ $json.cluster_id }}, ={{ $json.origen }}, ={{ $json.valor_untrusted }}, ={{ $json.idempotency_key }}',
+    [
+      'SELECT r.ok, r.estado, r.caso_id, r.cluster_id, r.corrida_id,',
+      '       $6::uuid AS investigacion_id, $5::text AS idempotency_key,',
+      '       r.owner AS lease_owner, r.motivo',
+      '  FROM jsonb_to_record(forense.reclamar_cluster($1::uuid, $2::uuid, $3::text, $4::text, $5::text))',
+      '    AS r(ok boolean, estado text, caso_id uuid, cluster_id uuid, corrida_id uuid,',
+      '         owner text, motivo text)',
+    ].join('\n'),
+    '={{ $json.corrida_id }}, ={{ $json.cluster_id }}, ={{ $json.origen }}, ={{ $json.valor_untrusted }}, ={{ $json.idempotency_key }}, ={{ $json.investigacion_id }}',
     'Primero resuelve/arma el cluster en el snapshot y DESPUÉS lo reclama (07 §2). Ocupado → en_cola, sin duplicar caso.',
   ));
 
@@ -689,22 +696,52 @@ export function investigarCluster() {
   fila = 0; columna = 4;
   add(sql(
     'Crear caso',
-    'SELECT * FROM forense.crear_caso($1::uuid, $2::uuid, $3::text, $4::text)',
-    '={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $execution.id }}, ={{ $json.idempotency_key }}',
+    [
+      'SELECT c.caso_id, c.cluster_id, c.corrida_id,',
+      '       $6::uuid AS investigacion_id, $4::text AS idempotency_key,',
+      '       0 AS intento',
+      '  FROM jsonb_to_record(forense.crear_caso($1::uuid, $2::uuid, $7::text, $3::text,',
+      '                                          $4::text, $5::text))',
+      '    AS c(ok boolean, creado boolean, caso_id uuid, cluster_id uuid, corrida_id uuid)',
+    ].join('\n'),
+    "={{ $json.corrida_id }}, ={{ $json.cluster_id }}, ={{ $('Normalizar entrada').first().json.valor_untrusted }}, ={{ $json.idempotency_key }}, ={{ $execution.id }}, ={{ $json.investigacion_id }}, ={{ $('Normalizar entrada').first().json.origen }}",
     'Una sola vez, con n8n_execution_id e intento=0. Emite caso_creado, cluster_armado y pista_cargada en bitacora.',
   ));
 
   add(sql(
     'Contexto ronda 1',
-    'SELECT * FROM forense.preparar_contexto_ronda1($1::uuid)',
-    '={{ $json.caso_id }}',
+    [
+      'SELECT x.caso_id, $2::uuid AS cluster_id, $3::uuid AS corrida_id,',
+      '       $4::uuid AS investigacion_id, x.context_hash,',
+      '       coalesce(k.version_contexto, 1) AS version_contexto,',
+      "       ARRAY(SELECT forense.rol_de_familia(f) FROM unnest(x.familias_evaluables) f)",
+      '         AS roles_evaluables,',
+      '       x.familias_evaluables',
+      '  FROM jsonb_to_record(forense.preparar_contexto_ronda1($1::uuid))',
+      '    AS x(ok boolean, caso_id uuid, context_hash text, familias_evaluables text[])',
+      '  LEFT JOIN forense.clusters k ON k.id = $2::uuid',
+    ].join('\n'),
+    '={{ $json.caso_id }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}',
     'Resumen ≤40 RFC y pistas POR FAMILIA. R1 no recibe señales ajenas (17 §7); persiste ronda1 y ronda_inicio.',
   ));
 
   add(sql(
     'Crear tareas R1',
-    'SELECT * FROM forense.crear_tareas_ronda($1::uuid, 1, 0, $2::text[])',
-    '={{ $json.caso_id }}, ={{ JSON.stringify($json.roles_evaluables) }}',
+    [
+      'SELECT t.caso_id, $3::uuid AS cluster_id, $4::uuid AS corrida_id,',
+      '       $5::uuid AS investigacion_id,',
+      "       (x.value #>> '{}')::uuid AS tarea_id,",
+      "       ARRAY(SELECT (e.value #>> '{}')::uuid",
+      '               FROM jsonb_array_elements(t.tareas) e) AS tarea_ids,',
+      "       '{}'::bigint[] AS snapshot_senales,",
+      "       (now() + interval '15 minutes') AS deadline, t.version_contexto",
+      '  FROM jsonb_to_record(forense.crear_tareas_ronda($1::uuid, 1,',
+      "         ARRAY(SELECT jsonb_array_elements_text($2::jsonb))::text[], 0))",
+      '    AS t(ok boolean, caso_id uuid, ronda int, intento int, tareas jsonb,',
+      '         version_contexto int)',
+      '  LEFT JOIN LATERAL jsonb_array_elements(t.tareas) AS x ON true',
+    ].join('\n'),
+    '={{ $json.caso_id }}, ={{ JSON.stringify($json.roles_evaluables) }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}',
     'Omite familias no evaluables con resultado.motivo_omision = no_evaluable. Devuelve el conjunto exacto de tarea_id.',
   ));
 
@@ -732,8 +769,17 @@ export function investigarCluster() {
 
   add(sql(
     'Esperar barrera R1',
-    "SELECT * FROM forense.estado_barrera($1::uuid, 'ronda1')",
-    '={{ $json.caso_id }}',
+    [
+      'SELECT $1::uuid AS caso_id, $2::uuid AS cluster_id, $3::uuid AS corrida_id,',
+      '       $4::uuid AS investigacion_id, b.paso, b.completa, b.faltantes, b.vencida,',
+      "       coalesce(b.estado, '{}'::jsonb) AS resultados,",
+      "       CASE WHEN b.vencida THEN jsonb_build_array('barrera_vencida')",
+      "            ELSE '[]'::jsonb END AS limitaciones",
+      "  FROM jsonb_to_record(forense.estado_barrera($1::uuid, 'ronda1'))",
+      '    AS b(ok boolean, existe boolean, paso text, completa boolean, faltantes jsonb,',
+      '         vencida boolean, estado jsonb)',
+    ].join('\n'),
+    '={{ $json.caso_id }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}',
     'Conexión corta: {completa, faltantes, vencida}. Nunca un bucle SQL bloqueante esperando al modelo (17 §2).',
   ));
 
@@ -756,8 +802,23 @@ export function investigarCluster() {
   fila = 1; columna = 13;
   add(sql(
     'Expandir y crear tareas R2',
-    'SELECT * FROM forense.expandir_y_crear_tareas_r2($1::uuid, $2::text[], $3::jsonb)',
-    '={{ $json.caso_id }}, ={{ JSON.stringify($json.despertados) }}, ={{ JSON.stringify($json.frontera) }}',
+    [
+      'SELECT $1::uuid AS caso_id, $4::uuid AS cluster_id, $5::uuid AS corrida_id,',
+      '       $6::uuid AS investigacion_id,',
+      "       (x.value #>> '{}')::uuid AS tarea_id,",
+      "       ARRAY(SELECT (e.value #>> '{}')::uuid",
+      '               FROM jsonb_array_elements(v.tareas) e) AS tarea_ids,',
+      "       coalesce((v.r->'ronda2'->>'version_contexto')::int, 1) AS version_contexto,",
+      "       (now() + interval '15 minutes') AS deadline",
+      '  FROM (SELECT forense.expandir_y_crear_tareas_r2($1::uuid,',
+      "                 ARRAY(SELECT jsonb_array_elements_text($2::jsonb))::text[],",
+      "                 ARRAY(SELECT jsonb_array_elements_text($3::jsonb))::text[]) AS r) v0",
+      '  CROSS JOIN LATERAL (SELECT v0.r AS r,',
+      "                             coalesce(v0.r->'ronda2'->'tareas', v0.r->'tareas',",
+      "                                      '[]'::jsonb) AS tareas) v",
+      '  LEFT JOIN LATERAL jsonb_array_elements(v.tareas) AS x ON true',
+    ].join('\n'),
+    '={{ $json.caso_id }}, ={{ JSON.stringify($json.despertados) }}, ={{ JSON.stringify($json.frontera) }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}',
     'La expansión usa la ÚNICA cuota del cluster e incrementa version_contexto; no vuelve a ronda 1 (07 §2.6–2.8).',
   ));
   add(subworkflow('Despachar R2', 'FORENSE_ejecutar_agente', {
@@ -766,16 +827,26 @@ export function investigarCluster() {
   }, { esperar: false, modo: 'each' }));
   add(sql(
     'Barrera R2',
-    "SELECT * FROM forense.estado_barrera($1::uuid, 'ronda2')",
-    '={{ $json.caso_id }}',
+    [
+      'SELECT $1::uuid AS caso_id, $2::uuid AS cluster_id, $3::uuid AS corrida_id,',
+      '       $4::uuid AS investigacion_id, b.paso, b.completa, b.faltantes, b.vencida',
+      "  FROM jsonb_to_record(forense.estado_barrera($1::uuid, 'ronda2'))",
+      '    AS b(ok boolean, paso text, completa boolean, faltantes jsonb, vencida boolean)',
+    ].join('\n'),
+    '={{ $json.caso_id }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}',
     'Dos tareas despertadas NO esperan cinco.',
   ));
 
   fila = 0; columna = 13;
   add(sql(
     'Auditoría',
-    'SELECT * FROM forense.abrir_tarea_cierre($1::uuid, $2::text)',
-    "={{ $json.caso_id }}, ={{ 'auditor' }}",
+    [
+      'SELECT a.caso_id, $3::uuid AS cluster_id, $4::uuid AS corrida_id,',
+      '       $5::uuid AS investigacion_id, a.tarea_id, a.rol',
+      '  FROM jsonb_to_record(forense.abrir_tarea_cierre($1::uuid, $2::text))',
+      '    AS a(ok boolean, caso_id uuid, rol text, tarea_id uuid, ejecucion_id uuid)',
+    ].join('\n'),
+    "={{ $json.caso_id }}, ={{ 'auditor' }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}",
     'Auditor y Defensor TAMBIÉN crean tarea: necesitan p_tarea válido y consumen la cuota global (07).',
   ));
   add(subworkflow('Ejecutar auditor', 'FORENSE_ejecutar_agente', {
@@ -787,16 +858,23 @@ export function investigarCluster() {
     [
       'SELECT $1::uuid AS caso_id, $2::uuid AS tarea_id,',
       "       (v.resultado->>'validadas')::int AS validadas,",
-      "       (v.resultado->>'descartadas')::int AS descartadas",
-      '  FROM (SELECT public.forense_validar_evidencia($1::uuid, $2::uuid) AS resultado) v',
+      "       (v.resultado->>'descartadas')::int AS descartadas,",
+      '       $3::uuid AS cluster_id, $4::uuid AS corrida_id, $5::uuid AS investigacion_id',
+      '  FROM (SELECT public.forense_validar_evidencia($1::uuid) AS resultado) v',
     ].join('\n'),
-    '={{ $json.caso_id }}, ={{ $json.tarea_id }}',
+    "={{ $json.caso_id }}, ={{ $json.tarea_id }}, ={{ $('Auditoría').first().json.cluster_id }}, ={{ $('Auditoría').first().json.corrida_id }}, ={{ $('Auditoría').first().json.investigacion_id }}",
     'Pertenencia, valores y soporte resueltos desde DB: un ID existente no demuestra la hipótesis.',
   ));
   add(sql(
     'Defensa',
-    'SELECT * FROM forense.abrir_tarea_cierre($1::uuid, $2::text)',
-    "={{ $json.caso_id }}, ={{ 'defensor' }}",
+    [
+      'SELECT a.caso_id, $3::uuid AS cluster_id, $4::uuid AS corrida_id,',
+      '       $5::uuid AS investigacion_id, a.tarea_id, a.rol,',
+      '       a.tarea_id AS tarea_replica_id',
+      '  FROM jsonb_to_record(forense.abrir_tarea_cierre($1::uuid, $2::text))',
+      '    AS a(ok boolean, caso_id uuid, rol text, tarea_id uuid, ejecucion_id uuid)',
+    ].join('\n'),
+    "={{ $json.caso_id }}, ={{ 'defensor' }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}",
     'Persiste defendiendo y emite defensa_inicio. Hasta 15 herramientas.',
   ));
   add(subworkflow('Ejecutar defensor', 'FORENSE_ejecutar_agente', {
@@ -850,8 +928,13 @@ export function investigarCluster() {
   ));
   add(sql(
     'Redacción',
-    'SELECT * FROM forense.abrir_tarea_cierre($1::uuid, $2::text)',
-    "={{ $json.caso_id }}, ={{ 'redactor' }}",
+    [
+      'SELECT a.caso_id, $3::uuid AS cluster_id, $4::uuid AS corrida_id,',
+      '       $5::uuid AS investigacion_id, a.tarea_id, a.rol, 1 AS version',
+      '  FROM jsonb_to_record(forense.abrir_tarea_cierre($1::uuid, $2::text))',
+      '    AS a(ok boolean, caso_id uuid, rol text, tarea_id uuid, ejecucion_id uuid)',
+    ].join('\n'),
+    "={{ $json.caso_id }}, ={{ 'redactor' }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}",
     'Sin tools. Incluye las secciones fijas Trayectoria y Cadena de explicación (21 §2 y §4).',
   ));
   add(subworkflow('Ejecutar redactor', 'FORENSE_ejecutar_agente', {
@@ -2014,7 +2097,8 @@ export const CONTRATOS_NODOS = Object.freeze({
       'completa', 'faltantes', 'vencida'],
     'Auditoría': ['caso_id', 'cluster_id', 'corrida_id', 'investigacion_id', 'tarea_id', 'rol'],
     'Ejecutar auditor': ['caso_id', 'tarea_id', 'estado_interno'],
-    'Validar evidencia propuesta': ['caso_id', 'tarea_id', 'validadas', 'descartadas'],
+    'Validar evidencia propuesta': ['caso_id', 'tarea_id', 'validadas', 'descartadas',
+      'cluster_id', 'corrida_id', 'investigacion_id'],
     'Defensa': ['caso_id', 'cluster_id', 'corrida_id', 'investigacion_id', 'tarea_id', 'rol',
       'tarea_replica_id'],
     'Ejecutar defensor': ['caso_id', 'tarea_id', 'tarea_replica_id', 'estado_interno'],
@@ -2143,10 +2227,8 @@ export const FORMA_PENDIENTE = Object.freeze({
   FORENSE_ejecutar_agente: Object.freeze([]),
   FORENSE_errores: Object.freeze([]),
   FORENSE_investigar_cluster: Object.freeze([
-    'Aplicar resolución', 'Auditoría', 'Barrera R2', 'Cerrar caso', 'Contexto ronda 1',
-    'Crear caso', 'Crear tareas R1', 'Defensa', 'Esperar barrera R1',
-    'Expandir y crear tareas R2', 'Guardar dictamen', 'Paquete auditor final',
-    'Redacción', 'Resolver y reclamar cluster', 'Ronda fin R1', 'Validar citas',
+    'Aplicar resolución', 'Cerrar caso', 'Guardar dictamen', 'Paquete auditor final',
+    'Ronda fin R1', 'Validar citas',
   ]),
   FORENSE_reintento: Object.freeze([
     'Barrera reintento', 'Crear tareas de revisión', 'Expandir para reintento',
