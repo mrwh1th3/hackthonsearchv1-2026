@@ -12,7 +12,7 @@
 // que miden CRITERIO y no sólo mecánica:
 //
 //   (b) retorno hacia un EFOS que ya existe. Lo checable no es el nivel —por
-//       diseño E1 con estatus definitivo a 0 saltos puede llegar a
+//       diseño E1 con estatus 69-B firme del SAT a 0 saltos puede llegar a
 //       presuncion_alta— sino el DELTA: `F2` aparece en ASE250301Z86 en el
 //       clon y no estaba en la corrida base. Es lo que muestra la pantalla de
 //       diff, y es una afirmación que se puede probar sin modelo.
@@ -89,18 +89,24 @@ function inyectar(archivo, marca) {
     : filas(DB_QA, `select unnest(rfcs_afectados) from forense.inyecciones
                      where id = ${lit(reg.inyeccion_id)}`).map((x) => x[0]);
 
-  // `armar_clusters` reconstruye el selector sobre TODO el snapshot y se
-  // queda con los mejores egos: sobre gen-v1 (64 candidatos → 3 clusters) los
-  // RFC recién inyectados, que traen dos o tres familias pero poco volumen,
-  // quedan fuera. El camino de la inyección es `armar_cluster_para` por cada
-  // RFC afectado: es lo que hace que exista el cluster que
-  // `clusters_afectados` tiene que despachar primero (21 §3.2).
-  // Ver QA-004 en reports/qa/INFORME-oleada3.md.
-  for (const rfc of rfcs) {
-    correrOk(DB_QA, `select forense.armar_cluster_para(${lit(nueva)}::uuid, ${lit(rfc)});`);
-  }
+  // QA-004, cerrada en la oleada 4 (db/012_inyeccion_clusters.sql).
+  //
+  // `armar_clusters` reconstruye el selector sobre TODO el snapshot y se queda
+  // con los mejores egos: sobre gen-v1 (64 candidatos → 3 clusters) los RFC
+  // recién inyectados, que traen dos o tres familias pero poco volumen, quedan
+  // fuera. Hasta la oleada 3 esta prueba tapaba el hueco llamando a
+  // `armar_cluster_para` RFC por RFC, o sea reimplementando en el banco la
+  // garantía que el sistema no daba: verde aquí, agujero en producción.
+  //
+  // Ahora se llama a la MISMA función que llama FORENSE_inyectar,
+  // `forense.asegurar_clusters_inyectados(corrida_nueva, inyeccion_id)`. Ojo
+  // con los dos ids: clonar toma `ingesta_id` y esta toma `inyeccion_id`.
+  const garantias = filas(DB_QA, `
+    select coalesce(cluster_id::text, ''), rfc, creado
+      from forense.asegurar_clusters_inyectados(${lit(nueva)}::uuid, ${lit(reg.inyeccion_id)}::uuid)
+     order by rfc`).map(([cluster, rfc, creado]) => ({ cluster: cluster || null, rfc, creado: creado === 't' }));
 
-  return { inyeccion: reg.inyeccion_id, ingesta: reg.ingesta_id, corrida: nueva, rfcs };
+  return { inyeccion: reg.inyeccion_id, ingesta: reg.ingesta_id, corrida: nueva, rfcs, garantias };
 }
 
 /**
@@ -121,6 +127,87 @@ function codigos(corrida, rfc) {
      where corrida_id = ${lit(corrida)} and rfc = ${lit(rfc)} order by codigo`).map((x) => x[0]);
 }
 
+/**
+ * QA-004 cerrada: la garantía de cluster por RFC inyectado la da el SISTEMA.
+ *
+ * Se comprueba sobre el resultado de `asegurar_clusters_inyectados`, no sobre
+ * una reconstrucción de la prueba: cluster no nulo para cada RFC afectado,
+ * pertenencia real en `forense.clusters`, rastro en bitácora de lo que se creó
+ * (regla 2), idempotencia al repetir la llamada, y la cola que lee
+ * FORENSE_inyectar poniendo los garantizados delante.
+ */
+async function comprobarGarantiaDeClusters(t, r) {
+  await t.test('QA-004: cada RFC inyectado tiene cluster en la corrida nueva', () => {
+    assert.ok(r.rfcs.length > 0, 'la inyección no declaró rfcs_afectados');
+    const porRfc = Object.fromEntries(r.garantias.map((g) => [g.rfc, g]));
+    for (const rfc of r.rfcs) {
+      const g = porRfc[rfc];
+      assert.ok(g, `asegurar_clusters_inyectados no devolvió fila para ${rfc}`);
+      assert.ok(g.cluster,
+        `${rfc} quedó SIN cluster (cluster_id null): es exactamente QA-004, ` +
+        'el RFC inyectado que el selector de dos familias deja fuera y nadie despacha');
+      const pertenece = Number(escalar(DB_QA, `
+        select count(*) from forense.clusters
+         where corrida_id = ${lit(r.corrida)} and id = ${lit(g.cluster)}
+           and ${lit(rfc)} = any(coalesce(rfcs, '{}'::text[]))`));
+      assert.equal(pertenece, 1,
+        `el cluster ${g.cluster} de ${rfc} no lo contiene: "cubierto" y "afectado" discreparían`);
+    }
+  });
+
+  await t.test('QA-004: lo garantizado dejó evento en la bitácora (regla 2)', () => {
+    const creados = r.garantias.filter((g) => g.creado);
+    const eventos = filas(DB_QA, `
+      select payload->>'rfc', payload->>'cluster_id' from forense.bitacora
+       where corrida_id = ${lit(r.corrida)} and tipo_evento = 'inyeccion'
+         and payload->>'evento_real' = 'cluster_garantizado'
+         and payload->>'inyeccion_id' = ${lit(r.inyeccion)}`);
+    for (const g of creados) {
+      const ev = eventos.find(([rfc]) => rfc === g.rfc);
+      assert.ok(ev, `se creó el cluster de ${g.rfc} sin evento cluster_garantizado: sin evento el paso no existió`);
+      assert.equal(ev[1], g.cluster, `el evento de ${g.rfc} apunta a otro cluster`);
+    }
+    if (creados.length) {
+      const resumen = Number(escalar(DB_QA, `
+        select count(*) from forense.bitacora
+         where corrida_id = ${lit(r.corrida)} and tipo_evento = 'inyeccion'
+           and payload->>'evento_real' = 'clusters_garantizados'
+           and payload->>'inyeccion_id' = ${lit(r.inyeccion)}`));
+      assert.equal(resumen, 1, 'falta (o sobra) el evento resumen clusters_garantizados');
+    }
+    console.log(`[garantia] ${r.garantias.length} RFC afectados, ${creados.length} clusters creados por la garantía`);
+  });
+
+  await t.test('QA-004: repetir la garantía no duplica clusters (idempotente)', () => {
+    const antes = Number(escalar(DB_QA,
+      `select count(*) from forense.clusters where corrida_id = ${lit(r.corrida)}`));
+    const otra = filas(DB_QA, `
+      select coalesce(cluster_id::text, ''), rfc, creado
+        from forense.asegurar_clusters_inyectados(${lit(r.corrida)}::uuid, ${lit(r.inyeccion)}::uuid)
+       order by rfc`);
+    const despues = Number(escalar(DB_QA,
+      `select count(*) from forense.clusters where corrida_id = ${lit(r.corrida)}`));
+    assert.equal(despues, antes, 'la segunda llamada creó clusters nuevos');
+    for (const [, rfc, creado] of otra) {
+      assert.equal(creado, 'f', `${rfc} volvió a marcarse como creado en la segunda pasada`);
+    }
+  });
+
+  await t.test('QA-004: la cola de la inyección despacha primero lo garantizado', () => {
+    const creados = new Set(r.garantias.filter((g) => g.creado).map((g) => g.cluster));
+    const cola = filas(DB_QA, `
+      select cluster_id::text, afectado from forense.clusters_por_prioridad_inyeccion(
+        ${lit(r.corrida)}::uuid, ${lit(r.inyeccion)}::uuid)`).map((x) => x[0]);
+    assert.ok(cola.length > 0, 'clusters_por_prioridad_inyeccion devolvió la cola vacía');
+    const cabeza = new Set(cola.slice(0, creados.size));
+    for (const c of creados) {
+      assert.ok(cabeza.has(c),
+        `el cluster garantizado ${c} no está en las primeras ${creados.size} posiciones de la cola: ` +
+        `${cola.slice(0, Math.max(creados.size, 3)).join(', ')}`);
+    }
+  });
+}
+
 // ---------------------------------------------------------------------
 // (b) retorno hacia un EFOS existente: el DELTA frente a la corrida base
 // ---------------------------------------------------------------------
@@ -134,6 +221,8 @@ test('(b) retorno-efos: la base queda intacta y F2 aparece en el EFOS sólo en e
 
     const r = inyectar('b-retorno-efos-existente.json', 'b');
 
+    await comprobarGarantiaDeClusters(t, r);
+
     await t.test('gen-v1 no cambió ni una fila (regla 10)', () => {
       assert.deepEqual(digest(CORRIDA_GEN_V1), antes,
         'la inyección modificó la corrida base: el juez perdería su corrida de referencia');
@@ -141,7 +230,7 @@ test('(b) retorno-efos: la base queda intacta y F2 aparece en el EFOS sólo en e
 
     await t.test('la entidad nueva dispara E1 y T1: dos familias, entra al selector', () => {
       const c = codigos(r.corrida, NUEVA);
-      assert.ok(c.includes('E1'), `${NUEVA} no disparó E1 (contraparte con estatus definitivo a 1 salto): ${c}`);
+      assert.ok(c.includes('E1'), `${NUEVA} no disparó E1 (contraparte con estatus 69-B firme del SAT a 1 salto): ${c}`);
       assert.ok(c.includes('T1'), `${NUEVA} no disparó T1: ${c}`);
       const familias = new Set(c.map((x) => x[0]));
       assert.ok(familias.size >= 2, `${NUEVA} sólo tiene la familia ${[...familias]}: no entraría al selector`);
@@ -188,6 +277,8 @@ test('(c) trampa-comercializadora: entra al selector y el dictamen determinista 
 
     let cluster = null;
     t.after(() => limpiar(r.corrida));
+
+    await comprobarGarantiaDeClusters(t, r);
 
     await t.test('dispara R1 y F1 — dos familias — y por eso SÍ entra al selector', () => {
       const porRfc = Object.fromEntries(TRB.map((rfc) => [rfc, codigos(r.corrida, rfc)]));
