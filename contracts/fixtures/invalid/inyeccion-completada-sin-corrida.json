@@ -1,0 +1,41 @@
+{
+  "id": "3f1a2b3c-4d5e-4f60-8172-839405a6b7c8",
+  "ingesta_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+  "corrida_base_id": "00000000-0000-4000-8000-000000000001",
+  "corrida_nueva_id": null,
+  "perfil_id": "00000000-0000-4000-8000-000000000900",
+  "origen": "ensayo",
+  "hash_payload": "c5682641cfe570f0e150549f8bb9acee2dad3141482cb995c9614debfa1a68df",
+  "filas_por_tabla": {
+    "contribuyentes": 1,
+    "cfdi": 1
+  },
+  "rfcs_afectados": [
+    "DEMO:INY-001",
+    "DEMO:EDOS-001"
+  ],
+  "estado": "completada",
+  "diagnostico": {
+    "aceptadas": 2,
+    "rechazadas": 0,
+    "errores": [],
+    "advertencias": [
+      "DEMO:INY-001 sin nómina ni cuentas: cobertura parcial declarada"
+    ]
+  },
+  "latencias_ms": {
+    "validacion": 420,
+    "snapshot": 1850,
+    "pistas": 2300,
+    "clusters": 900,
+    "investigacion": 184000
+  },
+  "resumen_diff": {
+    "pistas_nuevas": 3,
+    "clusters_afectados": 1,
+    "casos_nuevos": 1,
+    "rfcs_con_cambio_de_nivel": 1
+  },
+  "creado": "2026-09-12T02:10:00Z",
+  "terminado": "2026-09-12T02:13:10Z"
+}

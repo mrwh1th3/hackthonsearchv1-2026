@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "purpose": "synthetic_contract_fixtures_not_evaluation",
   "contains_real_personal_data": false,
   "external_calls_allowed": false,
@@ -228,6 +228,14 @@
     {
       "file": "valid/mapper.json",
       "schema": "ingesta.mapper"
+    },
+    {
+      "file": "valid/inyectar.json",
+      "schema": "product.inyectar"
+    },
+    {
+      "file": "valid/inyeccion.json",
+      "schema": "product.inyeccion"
     }
   ],
   "invalid": [
@@ -342,6 +350,18 @@
     {
       "file": "invalid/nodo-html.json",
       "schema": "editor.documento"
+    },
+    {
+      "file": "invalid/inyectar-vacio.json",
+      "schema": "product.inyectar"
+    },
+    {
+      "file": "invalid/inyeccion-completada-sin-corrida.json",
+      "schema": "product.inyeccion"
+    },
+    {
+      "file": "invalid/inyeccion-estado-desconocido.json",
+      "schema": "product.inyeccion"
     }
   ]
 }

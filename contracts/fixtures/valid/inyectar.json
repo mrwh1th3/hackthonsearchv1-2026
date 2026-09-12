@@ -1,0 +1,33 @@
+{
+  "corrida_base_id": "00000000-0000-4000-8000-000000000001",
+  "origen": "ensayo",
+  "tablas": {
+    "contribuyentes": [
+      {
+        "rfc": "DEMO:INY-001",
+        "razon_social": "Comercializadora Inyectada SA de CV",
+        "giro": "comercializadora",
+        "tipo_persona": "moral",
+        "fecha_alta": "2025-11-03"
+      }
+    ],
+    "cfdi": [
+      {
+        "uuid": "0f2c1d4a-6b7e-4c8d-9e0f-1a2b3c4d5e6f",
+        "tipo": "I",
+        "emisor_rfc": "DEMO:INY-001",
+        "receptor_rfc": "DEMO:EDOS-001",
+        "fecha": "2026-01-15T16:02:00Z",
+        "subtotal": "1000000.00",
+        "iva": "160000.00",
+        "total": "1160000.00",
+        "moneda": "MXN",
+        "metodo_pago": "PUE",
+        "clave_prod_serv": "80101500",
+        "descripcion": "Servicios de consultoria"
+      }
+    ]
+  },
+  "nota": "Paquete de ensayo (a): carrusel nuevo. Datos sintéticos.",
+  "idempotency_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+}

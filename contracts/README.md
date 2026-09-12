@@ -63,3 +63,7 @@ Son **datos sintéticos de contrato, NO ground truth ni evaluación de detecció
 - Resoluciones de Réplica sin duplicados por defensa_id y cobertura exacta de argumentos; rango from/to; orden de fechas; completitud de todas las entregas: son comprobaciones cruzadas posteriores. El gate de esquema es necesario, no suficiente.
 
 Esto materializa los contratos mínimos compartidos del arranque. La lógica que los hace cumplir frente a datos reales sigue reservada para la implementación autorizada del hackathon.
+
+## Cambios
+
+- **1.1.0 (2026-09-11, H0):** añade `product.inyectar` (solicitud de inyección en vivo: corrida base, filas por tabla canónica o archivos, idempotencia) y `product.inyeccion` (estado persistido con diagnóstico, latencias medidas, resumen del diff y condiciones: estados posteriores al snapshot exigen `corrida_nueva_id`; terminales exigen `terminado`). Aditivo, sin cambios en definiciones v1.0.0. Contrato de `21-criterios-juez-e-inyeccion-en-vivo.md` §3. Fixtures nuevas son sintéticas; el paquete de ensayo (a) es ilustrativo, no un dataset.

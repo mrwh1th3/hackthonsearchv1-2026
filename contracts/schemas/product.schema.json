@@ -668,6 +668,535 @@
         "payload"
       ],
       "additionalProperties": false
+    },
+    "inyectar": {
+      "type": "object",
+      "description": "Solicitud de inyección en vivo (21 §3.1). El backend resuelve perfil y sesión; nunca muta el snapshot base: crea una corrida nueva clonada.",
+      "properties": {
+        "corrida_base_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "origen": {
+          "type": "string",
+          "enum": [
+            "ui",
+            "api",
+            "ensayo"
+          ]
+        },
+        "tablas": {
+          "type": "object",
+          "properties": {
+            "contribuyentes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 60
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            },
+            "cuentas": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 60
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            },
+            "cfdi": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 60
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            },
+            "complementos_pago": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 60
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            },
+            "movimientos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 60
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            },
+            "atributos_entidad": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 60
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            },
+            "listas_sat": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 60
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            }
+          },
+          "additionalProperties": false
+        },
+        "archivos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "nombre": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "sha256": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 52428800
+              },
+              "tabla": {
+                "type": "string",
+                "enum": [
+                  "contribuyentes",
+                  "cuentas",
+                  "cfdi",
+                  "complementos_pago",
+                  "movimientos",
+                  "atributos_entidad",
+                  "listas_sat"
+                ]
+              }
+            },
+            "required": [
+              "file_id",
+              "nombre",
+              "sha256",
+              "bytes",
+              "tabla"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 7
+        },
+        "nota": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "idempotency_key": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "corrida_base_id",
+        "origen",
+        "tablas",
+        "idempotency_key"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "properties": {
+            "tablas": {
+              "type": "object",
+              "minProperties": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "archivos": {
+              "type": "array",
+              "minItems": 1
+            }
+          },
+          "required": [
+            "archivos"
+          ]
+        }
+      ]
+    },
+    "inyeccion": {
+      "type": "object",
+      "description": "Estado persistido de una inyección (forense.inyecciones, 21 §3.2). DTO de UI; latencias y diff se rellenan solo con eventos persistidos.",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "ingesta_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "corrida_base_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "corrida_nueva_id": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "perfil_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "origen": {
+          "type": "string",
+          "enum": [
+            "ui",
+            "api",
+            "ensayo"
+          ]
+        },
+        "hash_payload": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+        },
+        "filas_por_tabla": {
+          "type": "object",
+          "properties": {
+            "contribuyentes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "cuentas": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "cfdi": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "complementos_pago": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "movimientos": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "atributos_entidad": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "listas_sat": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            }
+          },
+          "additionalProperties": false
+        },
+        "rfcs_afectados": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "recibida",
+            "validada",
+            "rechazada",
+            "snapshot_creado",
+            "pistas_recalculadas",
+            "investigando",
+            "completada",
+            "error"
+          ]
+        },
+        "diagnostico": {
+          "type": "object",
+          "properties": {
+            "aceptadas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rechazadas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "errores": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tabla": {
+                    "type": "string",
+                    "enum": [
+                      "contribuyentes",
+                      "cuentas",
+                      "cfdi",
+                      "complementos_pago",
+                      "movimientos",
+                      "atributos_entidad",
+                      "listas_sat"
+                    ]
+                  },
+                  "fila": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "codigo": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "mensaje": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "tabla",
+                  "fila",
+                  "codigo",
+                  "mensaje"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 200
+            },
+            "advertencias": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "maxItems": 50
+            }
+          },
+          "required": [
+            "aceptadas",
+            "rechazadas",
+            "errores",
+            "advertencias"
+          ],
+          "additionalProperties": false
+        },
+        "latencias_ms": {
+          "type": "object",
+          "properties": {
+            "validacion": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "snapshot": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "pistas": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "clusters": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "investigacion": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "validacion",
+            "snapshot",
+            "pistas",
+            "clusters",
+            "investigacion"
+          ],
+          "additionalProperties": false
+        },
+        "resumen_diff": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "pistas_nuevas": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "clusters_afectados": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "casos_nuevos": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "rfcs_con_cambio_de_nivel": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "pistas_nuevas",
+                "clusters_afectados",
+                "casos_nuevos",
+                "rfcs_con_cambio_de_nivel"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "creado": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "terminado": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "ingesta_id",
+        "corrida_base_id",
+        "corrida_nueva_id",
+        "perfil_id",
+        "origen",
+        "hash_payload",
+        "filas_por_tabla",
+        "rfcs_afectados",
+        "estado",
+        "diagnostico",
+        "latencias_ms",
+        "resumen_diff",
+        "creado",
+        "terminado"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "estado": {
+                "enum": [
+                  "snapshot_creado",
+                  "pistas_recalculadas",
+                  "investigando",
+                  "completada"
+                ]
+              }
+            },
+            "required": [
+              "estado"
+            ]
+          },
+          "then": {
+            "properties": {
+              "corrida_nueva_id": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "estado": {
+                "enum": [
+                  "completada",
+                  "rechazada",
+                  "error"
+                ]
+              }
+            },
+            "required": [
+              "estado"
+            ]
+          },
+          "then": {
+            "properties": {
+              "terminado": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }
