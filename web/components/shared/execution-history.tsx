@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { Investigacion } from "@/lib/data";
 import { fechaHora } from "@/lib/date/formato";
 
-const ESTADO_LABEL: Record<Investigacion["estado"], string> = {
+export const ESTADO_LABEL: Record<Investigacion["estado"], string> = {
   en_cola: "En cola",
   investigando: "Investigando",
   generando_reporte: "Generando reporte",
