@@ -28,27 +28,48 @@ cuenta de cliente); nada de `finalize_plan` ni `write_files` contra ese id.
 
 `Login.dc.html` existe en el mismo proyecto y **no** entra en este corte.
 
-## El diseño no tiene rutas, y no se copia esa forma
+## La UI del diseño ES la navegación principal, y va exacta
+
+**Corrección del usuario (2026-09-12), y manda sobre lo que decía antes este
+documento.** `Agents.dc.html` no es una piel que se le pone a la webapp
+existente: **es la navegación principal**. Se implementa **idéntica** — mismo
+layout, mismos espaciados, mismos radios, mismas transiciones, mismo panel
+izquierdo deslizante como navegación, mismos estados de `:hover` y `:focus`— y
+lo del dominio se añade **encima de esa UI**, en su propio lenguaje visual.
+
+Lo que NO se hace: conservar el `AppShell` actual y repintarlo. El shell del
+diseño **sustituye** al actual. Una barra lateral fija de 18 rutas al lado del
+panel deslizante del diseño serían dos navegaciones compitiendo, y eso ya no es
+la UI que se pidió.
+
+### Ser idéntico y tener URLs no son cosas opuestas
 
 En el original cada pantalla es un booleano de `this.state` (`panel`, `board`,
-`results`, `doc`, `manage`, `ask`, `connect`). Portar eso daría una sola página
-y rompería el enlace profundo, del que dependen el e2e, el modelo de sesión del
-BFF y los requisitos por caso de 21. Los **estados** se reparten sobre las rutas
-que ya existen:
+`results`, `doc`, `manage`, `ask`, `connect`). Copiar **esa** parte daría una
+sola página sin enlace profundo, y de eso dependen el e2e, la sesión del BFF y
+los requisitos por caso de 21.
 
-| Estado del diseño | Ruta | Dato real |
+No hace falta elegir: cada estado del diseño **empuja una URL** y se ve
+exactamente igual. El usuario ve las transiciones del diseño; el navegador
+tiene una dirección que se puede compartir, recargar y enlazar. Si la
+transición se nota distinta por hacerlo con rutas, gana el diseño: `router`
+suave, sin recarga completa, sin parpadeo del shell.
+
+| Estado del diseño | URL que empuja | Dato real |
 |---|---|---|
-| hero + picker de datasets | `/` | `listCorridas()` |
-| selección + composer | `/` | `getCorrida(id)` |
-| board (Canvas + Timeline) | `/corridas/[id]` | Canvas: `getClusterGrafo()`. Timeline: `getBitacoraCorrida()` |
+| hero + picker | `/` | `listCorridas()` |
+| dataset seleccionado + composer | `/` (estado en la URL) | `getCorrida(id)` |
+| board (Canvas + Timeline) | `/corridas/[id]` | `getClusterGrafo()`, `getBitacoraCorrida()` |
 | results (stats + findings) | `/casos/[id]` | `getEstadisticas()`, `listCasos()`, `getCasoDetalle()` |
-| doc | `/casos/[id]/expediente` | editor ya existente |
-| panel izquierdo "Investigations" | (overlay en todas) | `listInvestigaciones()` → `/investigaciones/[id]` |
+| doc | `/casos/[id]/expediente` | editor existente |
+| panel izquierdo (navegación) | overlay sobre cualquiera | `listInvestigaciones()` |
 | manage data | `/datos` | ingesta existente |
 
-Es un **re-skin de `(app)`** más un composer nuevo. Se conserva el `AppShell`
-como único shell —no se bifurca en dos— y se conserva el `try/catch` del layout
-verificado en H11-h.
+Las rutas que el diseño no contempla (`/perfil`, `/notificaciones`,
+`/historial`, `/estadisticas`, `/metodo`, `/entidades/[rfc]`, `/inyecciones`)
+**siguen existiendo** y se alcanzan desde el panel izquierdo, que es donde el
+diseño pone la navegación. Se repintan con sus tokens para que no canten, pero
+no se les inventa una barra lateral nueva.
 
 ## Lo que el diseño NO tiene y aquí es obligatorio
 
@@ -188,7 +209,7 @@ original.
 ## Corte 1 (lo que se entrega ahora)
 
 1. Tokens, tipografía y CSS de `:hover`/`:focus` del diseño en el sistema actual.
-2. `AppShell` re-skineado: wordmark, panel izquierdo con investigaciones reales.
+2. Shell **del diseño** sustituyendo al `AppShell` actual: wordmark, panel izquierdo deslizante como navegación única, con investigaciones reales.
 3. `/` — hero + picker de corridas reales, búsqueda, orden, estado y badge de
    inyección.
 4. Composer en `/` con contexto, rango de fechas de la corrida y alcance de

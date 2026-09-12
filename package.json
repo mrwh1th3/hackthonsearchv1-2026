@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web run start",
+    "web:test": "npm --prefix web run test",
     "check": "node scripts/launch.mjs --check",
     "test:contracts": "npm test --prefix contracts",
     "test:scripts": "node --test \"scripts/*.test.mjs\"",
