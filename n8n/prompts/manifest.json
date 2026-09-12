@@ -1,6 +1,6 @@
 {
   "version_manifest": "prompts.v1",
-  "contracts_version": "1.2.0",
+  "contracts_version": "1.2.1",
   "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
   "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
   "version_prompts": "e4a2f861e988",
