@@ -32,12 +32,13 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 | webapp + editor | 20 rutas, Supabase real, privado por perfil_id, realtime, inyección con diff, editor persistente (propuestas en DB, revertir por RPC, bitácora) | typecheck OK, lint 0, build OK, 272/272 |
 | voice | adaptador ElevenLabs con firma t=,v0=, callback post_call_transcription, dedupe por tipo | 67/67 |
 | qa | 131 integración (forense_qa 001–011) + 7 e2e; informes oleadas 2–3 | 131/131, 7/7 |
-Contratos **1.3.1**: 110/110. Supabase remoto: **001–011 + 003 recalibrada + seeds aplicadas** (versiones hasta 20260912094346; 32/32 cuerpos de 010/011 idénticos; 126 funciones en `forense`, ninguna con EXECUTE público; `v_metricas_corrida` completa). Datos remotos: solo fixture; gen-v1 pendiente de `SUPABASE_DB_URL`.
+Oleada 4 integrada (H11): db 001–013 (381 aserciones sin gen; 012/013), runtime 337 tests y 155 nodos, QA 149 pruebas (gate de rendimiento rojo hasta 014), RUNBOOK/RESUMEN-H10. Contratos **1.3.1**: 110/110. Supabase remoto: **001–011 + 003 recalibrada + seeds aplicadas** (versiones hasta 20260912094346; 32/32 cuerpos de 010/011 idénticos; 126 funciones en `forense`, ninguna con EXECUTE público; `v_metricas_corrida` completa). Datos remotos: solo fixture; gen-v1 pendiente de `SUPABASE_DB_URL`.
 
-## Abierto (oleada 4 en curso)
-- QA-004: garantizar cluster por RFC inyectado en FORENSE_inyectar (armar_cluster_para) y estado_corrida con clusters pendientes (db + runtime).
-- Rendimiento: correr_pistas ≈46 s sobre 8 081 CFDI en el e2e del runtime (domina la latencia de inyección); revisar planes/índices (db).
-- Runtime: prompt_hash por variante y aviso de reintento en bitácora.
+## Abierto (hotfix H11 en curso: db6 ∥ runtime6 → qa5)
+- ANALYZE tras clonar (014) → gate de inyección <5 s; cobertura_completa calculada en código; FORENSE_corrida redespacha hasta vaciar la cola; e2e de corrida completa.
+- ~~QA-004~~ resuelto en 012 (asegurar_clusters_inyectados) y cableado en FORENSE_inyectar.
+- Rendimiento: causa real = estadísticas rancias tras clonar (F1 42 s → 0.24 s con ANALYZE); 013 añade índices y F1 equivalente; 014 (hotfix) añade el ANALYZE en el clonado.
+- ~~Runtime: prompt_hash por variante y aviso de reintento~~ hecho en runtime5 (orden del nodo de aviso se corrige en hotfix).
 - Bloqueado por .env: credenciales n8n, importación de workflows, carga remota de gen-v1, smoke H4 y gate H8–10 (primer expediente real con API).
 
 ## Acciones pendientes del usuario
