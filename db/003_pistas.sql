@@ -1048,11 +1048,17 @@ end $$;
 
 -- ---------------------------------------------------------------------
 -- F3 — Tercero pagador
--- >30% de los pagos identificados provienen de una cuenta cuyo titular no
--- es el receptor del CFDI. Se atribuye al EMISOR, que es quien cobra de un
--- tercero; el detalle nombra al tercero y al receptor para investigarlos.
--- Trampa: tesorería centralizada de grupo o factoraje con contrato; el
--- detalle publica si el tercero comparte atributos con el receptor.
+-- >30% de los pagos identificados llegan desde una cuenta cuyo titular no
+-- es el receptor del CFDI, Y esos pagos se CONCENTRAN en un tercero (≥50%
+-- de los pagos de tercero vienen del mismo titular).
+--
+-- La concentración es el discriminador de la trampa, no un adorno: la
+-- tesorería centralizada y el factoraje pagan desde muchas cuentas del
+-- grupo o del factor, repartidas. Medido sobre gen-v1: las 9 trampas
+-- legítimas reciben de 4 a 23 pagadores distintos (2 pagos cada uno) y los
+-- 2 fraudes de uno solo. Sin esta condición F3 marcaba 9 trampas y 2
+-- fraudes, es decir señalaba lo legítimo. El detalle publica el tercero
+-- principal, su cuota y la lista completa para poder refutarla.
 -- ---------------------------------------------------------------------
 create or replace function forense.pista_f3(p_corrida uuid) returns int
 language plpgsql set search_path = '' as $$
@@ -1088,6 +1094,20 @@ begin
            (array_agg(distinct p.pagador)
               filter (where p.pagador is distinct from p.receptor_rfc)) as terceros
       from pagos p group by p.emisor_rfc
+  ),
+  -- Tercero principal y su cuota sobre los pagos de tercero.
+  concentracion as (
+    select emisor_rfc as rfc, pagador as tercero_principal, n_del_tercero,
+           n_del_tercero::numeric / nullif(total_tercero, 0) as cuota
+      from (
+        select p.emisor_rfc, p.pagador, count(*) as n_del_tercero,
+               sum(count(*)) over (partition by p.emisor_rfc) as total_tercero,
+               row_number() over (partition by p.emisor_rfc
+                                  order by count(*) desc, p.pagador) as rn
+          from pagos p
+         where p.pagador is distinct from p.receptor_rfc
+         group by p.emisor_rfc, p.pagador) z
+     where rn = 1
   )
   select p_corrida, 'F3', 'F', a.rfc,
          least(1.0, 0.4 + 0.6 * (a.n_tercero::numeric / nullif(a.n_pagos, 0)))::numeric,
@@ -1097,6 +1117,10 @@ begin
            'pct_tercero', round(a.n_tercero::numeric / nullif(a.n_pagos, 0), 4),
            'monto_pagado_por_tercero', a.monto_tercero::text,
            'terceros', to_jsonb(coalesce(a.terceros, '{}'::text[])),
+           'n_terceros', coalesce(array_length(a.terceros, 1), 0),
+           'tercero_principal', k.tercero_principal,
+           'pagos_del_tercero_principal', k.n_del_tercero,
+           'concentracion_tercero', round(k.cuota, 4),
            -- Discriminador de la trampa: tesorería de grupo comparte atributos
            'terceros_con_atributo_compartido', (
              select count(*) from unnest(coalesce(a.terceros, '{}'::text[])) t
@@ -1113,7 +1137,9 @@ begin
              'receptor de la factura, por %s en total.',
              a.n_tercero, a.n_pagos,
              to_char(round(100 * a.n_tercero::numeric / nullif(a.n_pagos, 0), 1), 'FM990.0%'),
-             a.monto_tercero),
+             a.monto_tercero)
+             || format(' %s de esos %s pagos salieron de la misma cuenta titular.',
+                       k.n_del_tercero, a.n_tercero),
            -- Un mismo movimiento puede saldar dos facturas: se agrupa por
            -- mov_id para que `referencias` no repita un ID (contrato v1:
            -- uniqueItems). Orden determinista por monto y luego por id.
@@ -1129,9 +1155,10 @@ begin
            'comprobacion', 'F3',
            'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
          forense.huella_pista('F3', a.rfc, v_corte)
-    from agg a
+    from agg a join concentracion k on k.rfc = a.rfc
    where a.n_pagos >= 3
      and a.n_tercero::numeric / nullif(a.n_pagos, 0) > 0.30
+     and k.cuota >= 0.50
   on conflict (corrida_id, codigo, rfc, huella) do nothing;
 
   get diagnostics n = row_count;
