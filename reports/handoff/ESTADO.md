@@ -33,7 +33,7 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 | editor | DocumentWorkspace + chat + BFF /api/reportes con modos fixture/supabase/n8n, selección verificada por texto_hash, bitácora | hallazgo alto abierto: previsualización de propuesta en memoria en modo supabase (oleada 3) |
 | voice | integrations/elevenlabs (payload, HMAC, dedupe, estados, callback) | 52/52; sin llamadas reales |
 | qa | 67 integración (forense_qa, 001–009) + 6 e2e + informe | 64 pass / 2 todo (QA-003 db) tras corregir un comentario; e2e 4/6: la prueba de propuesta manda un texto_hash que el editor rechaza con 409 (alinear en QA, oleada 3) |
-Contratos **1.3.0** (schemas del editor): 110/110. Supabase remoto: 001–008 + seeds aplicadas; 009 + 003 recalibrada en aplicación (agente). Oleada 3 en curso (db4 → runtime4 → qa3; editor3, webapp3, voice2, prompts3).
+Contratos **1.3.0** (schemas del editor): 110/110. Supabase remoto: **001–009 + 003 recalibrada + seeds aplicadas** (20/20 funciones de pistas idénticas byte a byte; check de bitácora con 31 valores; 96 funciones en `forense` con ACL explícita: 93 solo service_role y 3 de lectura UI para anon: v_grafo, v_trayectoria_rfc, v_metricas_corrida). Oleada 3 en curso (db4 → runtime4 → qa3; editor3, webapp3, voice2, prompts3).
 
 ## Acciones pendientes del usuario
 - Rellenar `.env` (raíz, gitignored): `N8N_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`. Con eso el coordinador ejecuta `node scripts/n8n-credentials.mjs`, `node scripts/n8n-import.mjs`, carga gen-v1 en remoto y corre el smoke H4.
