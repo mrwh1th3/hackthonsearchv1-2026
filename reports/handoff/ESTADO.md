@@ -10,7 +10,7 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 | Destino | Estado |
 |---|---|
 | GitHub | origin `mrwh1th3/hackthonsearchv1-2026`, **privado** desde 2026-09-11 (petición del usuario). |
-| Supabase | proyecto `hackthon2026` (ref `wplsldwzpyocmwzeyarj`). **Aplicadas 001_schema, 002_views, 003_pistas (versiones 20260912050501/050846/051124) y seed_fake** (corrida fixture con 3 casos, 30 eventos). RLS 29/29, 22 policies de lectura, 7 tablas privadas sin policy (diseño), realtime en bitacora/casos/clusters/expedientes/pistas/senales. Advisors: solo INFO/WARN de plataforma. **Aplicadas también 014–017 (hotfix H11) el 2026-09-12, verificadas cuerpo a cuerpo.** **Pendiente del usuario: exponer el schema `forense` en Project Settings → API → Exposed schemas.** |
+| Supabase | proyecto `hackthon2026` (ref `wplsldwzpyocmwzeyarj`). **Aplicadas 001_schema, 002_views, 003_pistas (versiones 20260912050501/050846/051124) y seed_fake** (corrida fixture con 3 casos, 30 eventos). RLS 29/29, 22 policies de lectura, 7 tablas privadas sin policy (diseño), realtime en bitacora/casos/clusters/expedientes/pistas/senales. Advisors: solo INFO/WARN de plataforma. **Aplicadas también 014–018 el 2026-09-12, verificadas cuerpo a cuerpo** (018: `md5(prosrc)` `cf534c8a…`, 5 332 caracteres, idéntico al archivo; `security invoker` como su hermana `v_trayectoria_rfc`; ACL `{postgres, service_role, anon, authenticated}` sin PUBLIC). **Pendiente del usuario: exponer el schema `forense` en Project Settings → API → Exposed schemas.** |
 | n8n | proyecto personal `n0vtYcnvIW4LpWOE` en `n8n.srv1550651.hstgr.cloud`; prefijo `FORENSE_`; **n8n 2.33.7** confirmado por el usuario (instance id ce6b6b06…). **Smoke OK** `FORENSE_smoke_anthropic` (ejecución 283972): `claude-sonnet-5` → `tool_use` forense_perfil, 645/45 tokens, 1.1 s. |
 | Vercel | equipo `team_btOOK1ypsV2lyPljQaC0r3Ui` (hobby). **403 al crear el proyecto vía MCP** ("You don't have permission to create the project"): el usuario lo crea desde el dashboard importando `mrwh1th3/hackthonsearchv1-2026` con Root Directory `web`, o da permiso al MCP. Variables de entorno de 11 se cargan en el dashboard. |
 | ElevenLabs | 0 números salientes al leer la cuenta; el usuario indica que el número se configura desde la UI de ElevenLabs. Hasta que exista, el adaptador se entrega con tests y la UI muestra `omitida` con motivo; ninguna llamada real sin número y consentimiento. |
@@ -124,11 +124,22 @@ permiten, y el techo es bajo. Medido sobre los clusters reales de `gen-v1`:
 el lado más grave del par puede consultarlo: **1 de 4 casos obtiene
 contraste**. El límite es la densidad de casos por giro, no el SQL.
 
-Consecuencia para el demo: contra Supabase con gen-v1, el panel que responde
-la pregunta literal del juez no aparece en 3 de cada 4 casos. En modo fixture
-sí aparece, porque `web/lib/data/fixture.ts` trae un contraste sembrado — pero
-enseñar el fixture cuando se anunció producción es justo lo que 13 §Reglas
-prohíbe sin identificarlo.
+Y medido **en el remoto** tras aplicar 018 (2026-09-12): sobre la corrida
+fixture cargada en Supabase, los tres casos devuelven **cero filas**, porque
+`DEMO:ENTIDAD-0/1/2` están en tres giros distintos (`comercio_mayoreo`,
+`servicios_contables`, `ferreteria`). La función responde bien —cero filas, sin
+error— pero esa corrida no puede enseñar el panel jamás.
+
+Consecuencia para el demo: contra Supabase, el panel que responde la pregunta
+literal del juez no aparece en ninguno de los casos del fixture, y en gen-v1
+aparece en 1 de 4. En la webapp en modo fixture sí aparece, porque
+`web/lib/data/fixture.ts` trae un contraste sembrado — pero enseñar eso cuando
+se anunció producción es justo lo que 13 §Reglas prohíbe sin identificarlo.
+
+**Decidido no tocar `db/seeds/seed_fake.sql`** para forzarlo: añadir un cuarto
+caso del mismo giro cambiaría conteos de fixture en aserciones de varios dueños
+y en el remoto ya cargado, y sólo arreglaría la ruta de respaldo. La ruta del
+demo es gen-v2.
 
 Dos salidas, y son excluyentes:
 1. **Más densidad por giro en gen-v2** (pedido a forense-db en esta oleada): que haya varios clusters del mismo giro con solape de pistas y resultados distintos. Es la salida limpia: no cambia ninguna regla.
