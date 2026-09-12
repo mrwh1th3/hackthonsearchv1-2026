@@ -148,9 +148,11 @@ if [ "$DATOS" = "clon" ]; then
 else
   echo "== datos: semillas =="
   aplicar "db/seeds/seed_fake.sql" obligatoria
-  # seed_producto.sql exige 006+007 aplicadas (db/seeds/README.md).
-  aplicar "db/seeds/seed_producto.sql" condicional
 fi
+
+# seed_producto.sql (perfiles, investigaciones, propuestas) exige 006+007 y es
+# independiente del origen de los datos de dominio: hace falta en los dos modos.
+aplicar "db/seeds/seed_producto.sql" condicional
 
 echo "== comprobación de grants (si esto sale vacío, las pruebas de RLS no valen) =="
 cat >"$TMP/grants.sql" <<'SQL'
