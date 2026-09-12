@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { validateContract } from "@/lib/contracts/validate";
-import { borradorActual } from "@/lib/document/almacen-demo";
 import { indexarBloques } from "@/lib/document/documento";
 import { verificarSeleccion } from "@/lib/document/seleccion";
 import { construirPropuesta, salidaEditorDemostracion } from "@/lib/document/propuesta";
@@ -64,9 +63,10 @@ export async function POST(req: Request) {
   // no. Sin esto, un bloque escrito en esta sesión (id `blk-n…`, ausente de la
   // versión guardada) no podría seleccionarse —409 `seleccion_desplazada`— y
   // Aplicar descartaría en silencio la edición manual del borrador.
-  const borrador = borradorActual(solicitud.caso_id);
-  const documento =
-    borrador && borrador.version_base === solicitud.version_base ? borrador.documento : caso.versionActual.contenido_json;
+  // `repo.borrador()` decide por modo: fixture mira su almacén; supabase
+  // devuelve null porque el autoguardado ya vive en la versión vigente.
+  const borrador = await repo.borrador(solicitud.caso_id, solicitud.version_base);
+  const documento = borrador ? borrador.documento : caso.versionActual.contenido_json;
 
   // La selección se verifica contra la versión base: si los bloques ya no
   // existen, se pide reconfirmar la selección actual (07 §4 paso 3).

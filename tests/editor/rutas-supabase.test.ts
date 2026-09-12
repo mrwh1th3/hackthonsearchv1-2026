@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import redactorFixture from "@contracts/fixtures/valid/redactor.json";
 import { signSession } from "@/lib/auth/session";
-import { reiniciarAlmacen } from "@/lib/document/almacen-demo";
+import { guardarBorrador, reiniciarAlmacen, sembrarCaso } from "@/lib/document/almacen-demo";
 import { aMarkdown } from "@/lib/document/markdown";
 import { hashTexto } from "@/lib/document/documento";
 import { desdeMarkdown } from "@/lib/document/markdown";
@@ -216,6 +216,27 @@ describe("BFF del editor en modo supabase (repositorio inyectado)", () => {
     expect((await res.json()).version_actual).toBe(1);
     expect(db.expedientes).toHaveLength(1);
     expect(db.propuestas_edicion[0].estado).toBe("propuesta");
+  });
+
+  /**
+   * Hallazgo: `borradorActual()` era una lectura del almacén EN MEMORIA que la
+   * ruta hacía en los dos modos. En supabase el autoguardado vive en
+   * `expedientes.contenido_json` de la versión vigente, así que un borrador en
+   * memoria —de otra corrida de pruebas, de otro proceso, del modo fixture—
+   * no puede colarse en la propuesta.
+   */
+  it("en supabase la propuesta ignora el borrador en memoria del proceso", async () => {
+    const db = montar();
+    const contaminado = structuredClone(documentoBase);
+    contaminado.content[1].content = [{ type: "text", text: "CONTAMINADO por memoria ajena." }];
+    sembrarCaso(CASO, documentoBase);
+    guardarBorrador(CASO, { version_base: 1, documento: contaminado });
+
+    const { res, json } = await pedirPropuesta("00000000-0000-4000-8000-000000000470");
+    expect(res.status).toBe(200);
+    // La selección se verifica contra lo persistido, no contra la memoria.
+    expect(json.seleccion_verificada).toBe(true);
+    expect(JSON.stringify(db.propuestas_edicion[0].patch)).not.toContain("CONTAMINADO");
   });
 
   it("dos peticiones con el mismo idempotency_key no crean dos propuestas", async () => {

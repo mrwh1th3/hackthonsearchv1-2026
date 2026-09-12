@@ -35,6 +35,7 @@ import {
   descartarPropuestaGuardada,
   guardarBorrador as guardarBorradorDemo,
   hashContenido,
+  borradorActual as borradorActualDemo,
   obtenerVersion as obtenerVersionDemo,
   registrarPropuesta as registrarPropuestaDemo,
   revertirAVersion,
@@ -98,6 +99,12 @@ export interface RepositorioExpediente {
     casoId: string,
     args: { version_base: number; documento: Documento },
   ): Promise<ResultadoEscritura<Borrador>>;
+  /**
+   * Borrador autoguardado vigente para `versionBase`, o `null`. Cada modo
+   * sabe DÓNDE vive el suyo; ninguna ruta consulta el almacén en memoria por
+   * su cuenta (era la última lectura de memoria que quedaba en modo supabase).
+   */
+  borrador(casoId: string, versionBase: number): Promise<Borrador | null>;
   aplicar(
     casoId: string,
     args: { propuesta_id: string; version_base: number; idempotency_key: string },
@@ -143,6 +150,10 @@ export const repositorioFixture: RepositorioExpediente = {
   },
   async guardarBorrador(casoId, args) {
     return guardarBorradorDemo(casoId, args);
+  },
+  async borrador(casoId, versionBase) {
+    const b = borradorActualDemo(casoId);
+    return b && b.version_base === versionBase ? b : null;
   },
   async aplicar(casoId, args) {
     return aplicarPropuestaGuardada(casoId, args);
@@ -317,6 +328,17 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
           guardado: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
         },
       };
+    },
+
+    /**
+     * En supabase NO hay borrador aparte: el autoguardado escribe sobre
+     * `contenido_json` de la versión vigente (ver `guardarBorrador`), así que
+     * lo que la ruta ya leyó como `versionActual` **es** el borrador. Devolver
+     * `null` es la respuesta correcta, y además impide que una petición lea el
+     * borrador en memoria de otro proceso (que además sería el de otro modo).
+     */
+    async borrador() {
+      return null;
     },
 
     /**
