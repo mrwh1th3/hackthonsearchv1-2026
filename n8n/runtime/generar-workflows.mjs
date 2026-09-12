@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import {
   ARCHIVO_POR_ROL, ROLES_LLM, SCHEMA_SALIDA_POR_ROL, TECHO_CARACTERES,
   renderContratoCompacto, toolsPorRol,
+  MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, VARIANTE_REINTENTO_SIN_MOTIVO, FEWSHOT_POR_ROL,
 } from '../prompts/ensamblar.mjs';
 import { MAX_TOKENS_SALIDA } from './config.mjs';
 // Voz: el endpoint y las variables permitidas son de forense-voice
@@ -410,7 +411,45 @@ export function workerEjecutarAgente() {
     ['CATALOGO_PROMPTS', catalogoPrompts(),
       'Prompts de n8n/prompts sellados con version_prompts y el sha256 del manifest (17 §8).'],
     ['MAX_TOKENS_SALIDA', { ...MAX_TOKENS_SALIDA }, 'Techo de salida por rol (17 §7).'],
+    ['MOTIVOS_REINTENTO', [...MOTIVOS_REINTENTO],
+      'Motivos tipificados de reintento (07 §3). Cualquier otro valor NO es motivo.'],
+    ['ROLES_CON_REINTENTO', [...ROLES_CON_REINTENTO],
+      'Sólo estos roles degradan a reintento sin motivo; Réplica/Redactor/Editor no reintentan.'],
+    ['VARIANTE_REINTENTO_SIN_MOTIVO', VARIANTE_REINTENTO_SIN_MOTIVO,
+      'Sufijo de la variante degradada (decisión H9 07:33). No es un motivo.'],
+    ['ROLES_FEWSHOT', Object.keys(FEWSHOT_POR_ROL),
+      'Roles con ejemplo adversarial: fuera de esta lista `fewshot` no cambia la variante.'],
   ]));
+  // Rama hoja: el hueco declarado por el ensamblado deja evento ANTES de que la
+  // respuesta del modelo exista. Va aparte del camino principal para que un fallo
+  // de escritura del aviso no impida la llamada, pero el evento no es opcional
+  // (regla 2): sin él, la corrida no puede explicar por qué el prompt cambió.
+  fila = 1; columna = 8;
+  add(sql(
+    'Registrar aviso de reintento',
+    [
+      'WITH ev AS (',
+      '  INSERT INTO forense.bitacora (corrida_id, caso_id, tarea_id, ronda, intento, agente, tipo_evento, payload)',
+      "  SELECT $2::uuid, $3::uuid, $4::uuid, $5::int, $6::int, $7::text, 'razonamiento',",
+      "         jsonb_build_object('evento_real', 'aviso_reintento', 'aviso', $1::text,",
+      "                            'variante_prompt', $8::text, 'prompt_hash', $9::text)",
+      "   WHERE $1::text IS NOT NULL AND $1::text <> '' AND $1::text <> 'null'",
+      '  RETURNING id',
+      ')',
+      'SELECT $3::uuid AS caso_id, $4::uuid AS tarea_id, $8::text AS variante_prompt,',
+      "       'razonamiento'::text AS tipo_evento, 'aviso_reintento'::text AS evento_real,",
+      '       (SELECT count(*) FROM ev) > 0 AS registrado',
+    ].join('\n'),
+    [
+      '={{ $json.aviso_reintento ?? \'\' }}', `${ID('corrida_id')}`, `${ID('caso_id')}`, `${ID('tarea_id')}`,
+      "={{ $('Cargar ejecución').first().json.ronda ?? 1 }}",
+      '={{ $json.intento ?? 0 }}', `${ID('rol')}`,
+      '={{ $json.variante_prompt }}', '={{ $json.prompt_hash }}',
+    ].join(', '),
+    "El enum de bitacora ya admite 'reintento_inicio', pero ese evento es del bucle de reintento (07 §3) y lo cuenta 10: reusarlo aquí inflaría los reintentos. El aviso viaja como 'razonamiento' con payload.evento_real='aviso_reintento'. La consulta devuelve SIEMPRE una fila: sin aviso, registrado=false.",
+  ));
+
+  fila = 0; columna = 8;
   add(nodo(
     'POST /v1/messages',
     'n8n-nodes-base.httpRequest',
@@ -642,7 +681,7 @@ export function workerEjecutarAgente() {
     ['Ruta del paso', 'Expandir cola de tools', 1],
     ['Ruta del paso', 'Guardar checkpoint', 2],
     ['Reservar request', 'Construir cuerpo Messages'],
-    ['Construir cuerpo Messages', 'POST /v1/messages'],
+    ['Construir cuerpo Messages', ['POST /v1/messages', 'Registrar aviso de reintento']],
     ['POST /v1/messages', 'Clasificar transporte'],
     ['Clasificar transporte', 'Ruta de transporte'],
     ['Ruta de transporte', 'Interpretar respuesta', 0],
@@ -2140,7 +2179,10 @@ export const CONTRATOS_NODOS = Object.freeze({
       'estado_interno', 'estado_tarea', 'reparaciones_json', 'pending_tool_use_ids', 'checkpoint'],
     'Reservar request': ['ok', 'error', 'duplicado', 'request_id', 'bolsa', 'restante', 'intento_transporte'],
     'Construir cuerpo Messages': [...IDENTIDAD_PASO, 'modelo', 'cuerpo', 'system', 'herramientas_enviadas',
-      'version_prompts', 'prompt_hash', 'ambito_techo', 'caracteres_system', 'caracteres_paquete'],
+      'version_prompts', 'prompt_hash', 'variante_prompt', 'intento', 'motivo_reintento',
+      'aviso_reintento', 'ambito_techo', 'caracteres_system', 'caracteres_paquete'],
+    'Registrar aviso de reintento': ['caso_id', 'tarea_id', 'variante_prompt', 'tipo_evento',
+      'evento_real', 'registrado'],
     'POST /v1/messages': ['statusCode', 'headers', 'body'],
     'Clasificar transporte': ['clase', 'ruta', 'espera_ms', 'intento', 'reintentar',
       'retry_after_respetado', 'motivo'],
