@@ -118,7 +118,7 @@ function clasificar(linea, ventana) {
   // a) estatus publicado por la autoridad (art. 69-B): el único uso legítimo del término.
   if (/estatus|listas_sat|lista_sat|lista 69-b|69-b|efos|publicad|e1|desvirtuado|sentencia_favorable|definitivos/.test(l)) return true;
   // b) guarda, aserción o comentario que prohíbe usarlo como nivel (puede estar arriba).
-  if (/nunca|ningun|ningún|no es un nivel|no un nivel|prohib|rechaza|not\.?equal|nottobe|assert|expect|regla 7|término del sat|term del sat/.test(v)) return true;
+  if (/nunca|ningun|ningún|no es un nivel|no un nivel|prohib|rechaza|check_violation|not\.?equal|nottobe|assert|expect|regla 7|término del sat|term del sat/.test(v)) return true;
   // c) comentario de diseño del dataset (separación de grafo trampa→definitivo).
   if (/^\s*(--|\/\/|#|\*)/.test(linea) && /salto|grafo|dataset|trampa|distancia/.test(v)) return true;
   // d) identificador del generador que nombra la LISTA de RFC con estatus definitivo.
@@ -147,16 +147,39 @@ test('ninguna función expuesta al agente referencia ground_truth (pg_proc.prosr
      where n.nspname in ('forense','public') and p.prosrc ilike '%ground_truth%'
      order by 1;`).map((x) => x[0]).filter(Boolean);
 
-  // Excepciones nombradas, ambas de EVALUACIÓN y ninguna en la superficie del agente:
+  // Excepciones nombradas, todas de EVALUACIÓN/INGESTA y ninguna en la superficie del
+  // agente (se comprueba abajo que ninguna es una tool del contrato ni es ejecutable
+  // por anon/authenticated):
   //  - forense.clonar_corrida copia la tabla al clonar un snapshot (10, 21 §3);
-  //  - forense.v_metricas_corrida calcula precisión/recall contra el ground truth (10).
-  const permitidas = new Set(['forense.clonar_corrida', 'forense.v_metricas_corrida']);
+  //  - forense.v_metricas_corrida calcula precisión/recall contra el ground truth (10);
+  //  - forense.clonar_corrida_con_inyeccion arrastra las etiquetas del snapshot base
+  //    (008:524) sin etiquetar las filas inyectadas: es justo lo que hace honesta la
+  //    inyección en vivo de 21 §3;
+  //  - forense.validar_inyeccion RECHAZA payloads que traigan ground_truth (008:281),
+  //    o sea que menciona la tabla para impedir que el juez se autoetiquete.
+  const permitidas = new Set([
+    'forense.clonar_corrida', 'forense.v_metricas_corrida',
+    'forense.clonar_corrida_con_inyeccion', 'forense.validar_inyeccion',
+  ]);
   const sorpresas = tocan.filter((f) => !permitidas.has(f));
   assert.deepEqual(sorpresas, [],
     `funciones nuevas que leen ground_truth: si alguna es una herramienta del agente, es un fallo de diseño: ${sorpresas.join(', ')}`);
 
-  // Ninguna de las permitidas está en la superficie public.forense_* del agente.
+  // Ninguna de las permitidas está en la superficie public.forense_* del agente...
   for (const f of permitidas) assert.ok(!f.startsWith('public.forense_'), f);
+  // ...ni es invocable por los roles con los que la UI llega a la base. Sin esto, la
+  // lista de excepciones sería una puerta trasera documentada.
+  const alcanzables = filas(DB_QA, `
+    select n.nspname || '.' || p.proname || ' → ' || r.rolname
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      cross join (values ('anon'),('authenticated')) as r(rolname)
+     where n.nspname || '.' || p.proname in (${[...permitidas].map((f) => `'${f}'`).join(',')})
+       and exists (select 1 from pg_roles where rolname = r.rolname)
+       and has_function_privilege(r.rolname, p.oid, 'execute')
+     order by 1;`).map((x) => x[0]).filter(Boolean);
+  assert.deepEqual(alcanzables, [],
+    `funciones que leen ground_truth y son ejecutables desde la UI: ${alcanzables.join(', ')}`);
 });
 
 test('las 11 herramientas public.forense_* aún no existen: la aserción anterior es parcial', { skip: saltar }, () => {

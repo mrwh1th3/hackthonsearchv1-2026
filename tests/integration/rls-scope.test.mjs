@@ -135,15 +135,34 @@ test('service_role sí escribe (es quien opera el pipeline)', { skip: saltar }, 
 });
 
 test('ninguna función del schema forense queda ejecutable por PUBLIC', { skip: saltar }, () => {
-  // Guarda de regresión: 002 y 003 terminan con `revoke execute ... from public`.
-  // Si 004/005 añaden funciones sin repetir el revoke, esta prueba las nombra.
-  const f = filas(DB_QA, `
+  // Guarda de regresión: 002-006 terminan con `revoke execute ... from public`.
+  // Si una migración nueva añade funciones sin repetir el revoke, esta prueba las nombra.
+  //
+  // Las funciones que devuelven `trigger` se excluyen del veredicto porque Postgres las
+  // rechaza en cualquier invocación directa («trigger functions can only be called as
+  // triggers»), y se comprueba abajo que sigue siendo así. 007 dejó
+  // forense.trg_investigacion_completa sin revoke: QA-002, cosmético, dueño forense-db.
+  const expuestas = filas(DB_QA, `
     select p.proname
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'forense'
+       and p.prorettype <> 'trigger'::regtype
        and has_function_privilege('public', p.oid, 'execute')
-     order by 1;`);
-  const expuestas = f.map((x) => x[0]).filter(Boolean);
+     order by 1;`).map((x) => x[0]).filter(Boolean);
   assert.deepEqual(expuestas, [],
     `funciones de forense ejecutables por PUBLIC (falta un revoke al final de la migración): ${expuestas.join(', ')}`);
+
+  // Y las de trigger que quedaron con execute a PUBLIC, que no se puedan llamar.
+  const triggers = filas(DB_QA, `
+    select p.proname
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'forense' and p.prorettype = 'trigger'::regtype
+       and has_function_privilege('public', p.oid, 'execute')
+     order by 1;`).map((x) => x[0]).filter(Boolean);
+  for (const t of triggers) {
+    const r = correr(DB_QA, `select forense.${t}();`, { detener: true });
+    assert.notEqual(r.code, 0, `forense.${t}() se dejó invocar directamente por PUBLIC`);
+    assert.match(r.error, /trigger functions can only be called as triggers/,
+      `forense.${t}() falló por otro motivo: ${r.error}`);
+  }
 });

@@ -2,7 +2,8 @@
 # =====================================================================
 # tests/integration/preparar-db.sh — base propia de QA (forense_qa).
 #
-#   bash tests/integration/preparar-db.sh
+#   bash tests/integration/preparar-db.sh                  # 001-009 + semillas
+#   DATOS=clon bash tests/integration/preparar-db.sh       # 001-009 + datos de 'forense'
 #   DB=forense_qa PGBIN=/otra/ruta/bin bash tests/integration/preparar-db.sh
 #
 # Dueño: forense-qa. NO toca la base compartida 'forense' ni ningún servicio
@@ -82,34 +83,73 @@ fi
 
 echo "== migraciones =="
 fallos=0
-for f in 001_schema.sql 002_views.sql 003_pistas.sql; do
-  if [ ! -f "$RAIZ/db/$f" ]; then
-    echo "  omitida $f (no existe en este HEAD)"
-    continue
-  fi
-  if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$RAIZ/db/$f" >"$TMP/log" 2>&1; then
-    echo "  ok    db/$f"
-  else
-    echo "  FALLA db/$f"; grep -v NOTICE "$TMP/log" | head -20; fallos=$((fallos+1))
-  fi
-done
-# 004/005 aún no existen en este HEAD; se aplican solas cuando lleguen.
-for f in 004_clusters.sql 005_rpc.sql; do
-  if [ -f "$RAIZ/db/$f" ]; then
-    if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$RAIZ/db/$f" >"$TMP/log" 2>&1; then
-      echo "  ok    db/$f"
+
+# Aplica un .sql si existe. Las migraciones que aún no ha entregado forense-db
+# (009 en la oleada 2) se anuncian como ausentes y no cuentan como fallo: el
+# banco tiene que poder correr contra el HEAD de hoy y contra el de mañana.
+aplicar() { # $1 = ruta relativa a RAIZ, $2 = 'obligatoria'|'condicional'
+  local rel="$1" modo="${2:-obligatoria}"
+  if [ ! -f "$RAIZ/$rel" ]; then
+    if [ "$modo" = "condicional" ]; then
+      echo "  ausente $rel (pendiente de su dueño; no bloquea)"
     else
-      echo "  FALLA db/$f"; grep -v NOTICE "$TMP/log" | head -20; fallos=$((fallos+1))
+      echo "  FALTA  $rel (obligatoria en este HEAD)"; fallos=$((fallos+1))
     fi
-  else
-    echo "  ausente db/$f (pendiente de forense-db)"
+    return
   fi
+  if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$RAIZ/$rel" >"$TMP/log" 2>&1; then
+    echo "  ok    $rel"
+  else
+    echo "  FALLA $rel"; grep -v NOTICE "$TMP/log" | head -20; fallos=$((fallos+1))
+  fi
+}
+
+for f in 001_schema 002_views 003_pistas 004_clusters 005_rpc \
+         006_producto_ui 007_notificaciones_voz 008_ingesta; do
+  aplicar "db/$f.sql" obligatoria
+done
+# 009: la entrega forense-db en paralelo (oleada 2). Condicional a propósito.
+aplicar "db/009_editor.sql" condicional
+for f in "$RAIZ"/db/009_*.sql; do
+  [ -e "$f" ] || continue
+  base="$(basename "$f")"
+  [ "$base" = "009_editor.sql" ] && continue
+  aplicar "db/$base" condicional
 done
 
-if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -X -q -f "$RAIZ/db/seeds/seed_fake.sql" >"$TMP/log" 2>&1; then
-  echo "  ok    db/seeds/seed_fake.sql"
+# ---------------------------------------------------------------------
+# Datos. Dos modos:
+#   DATOS=seed   (por omisión) → seed_fake.sql + seed_producto.sql
+#   DATOS=clon   → copia los DATOS de la base compartida 'forense' (fixture +
+#                 gen-v1) con pg_dump --data-only. La base compartida se LEE,
+#                 nunca se altera. Excluyentes: clonar y sembrar a la vez da
+#                 conflictos de PK sobre las mismas filas del fixture.
+# ---------------------------------------------------------------------
+DATOS="${DATOS:-seed}"
+DB_ORIGEN="${DB_ORIGEN:-forense}"
+if [ "$DATOS" = "clon" ]; then
+  echo "== datos: clon de $DB_ORIGEN (solo lectura del origen) =="
+  # Las tablas de configuración las siembran las propias migraciones; volcarlas
+  # otra vez sólo produce choques de PK sobre filas idénticas.
+  if "$PGBIN/pg_dump" -d "$DB_ORIGEN" -n forense --data-only -Fc \
+       --exclude-table-data=forense.config_presupuesto \
+       --exclude-table-data=forense.limites_agente \
+       --exclude-table-data=forense.slots_runtime \
+       -f "$TMP/datos.dump" 2>"$TMP/log"; then
+    if "$PGBIN/pg_restore" --data-only --disable-triggers --no-owner \
+         -d "$DB" "$TMP/datos.dump" >"$TMP/log" 2>&1; then
+      echo "  ok    datos de $DB_ORIGEN (fixture + gen-v1)"
+    else
+      echo "  FALLA pg_restore"; grep -vi "^pg_restore: *processing" "$TMP/log" | head -20; fallos=$((fallos+1))
+    fi
+  else
+    echo "  FALLA pg_dump de $DB_ORIGEN"; head -10 "$TMP/log"; fallos=$((fallos+1))
+  fi
 else
-  echo "  FALLA db/seeds/seed_fake.sql"; grep -v NOTICE "$TMP/log" | head -20; fallos=$((fallos+1))
+  echo "== datos: semillas =="
+  aplicar "db/seeds/seed_fake.sql" obligatoria
+  # seed_producto.sql exige 006+007 aplicadas (db/seeds/README.md).
+  aplicar "db/seeds/seed_producto.sql" condicional
 fi
 
 echo "== comprobación de grants (si esto sale vacío, las pruebas de RLS no valen) =="
