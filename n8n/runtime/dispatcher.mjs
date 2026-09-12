@@ -11,7 +11,13 @@
 //   claim_tool(execution_id, fence, request_id, tool_use_id, args_hash)
 //   save_checkpoint(execution_id, fence, revision_expected, patch)
 //   finish_step(execution_id, fence, estado, resultado)
-//   advance_case_if_ready(caso_id, revision_expected)
+//   advance_case_if_ready(caso_id, paso, revision_expected)
+//     17 §4 la congelaba con dos argumentos, pero la barrera es POR PASO: un
+//     caso tiene ronda1, ronda2, reintento1… abiertos en momentos distintos y
+//     deducir «el paso abierto más reciente» dentro de la función es una
+//     carrera. Decisión del coordinador H3 01:35 (reports/handoff/DECISIONES.md):
+//     lleva `paso`. El JSON del worker y esta implementación la llaman así;
+//     db/002_views.sql todavía publica la de dos (ver IMPORT.md §3.3).
 //   recover_expired(now)
 //
 // Orden de locks FIJO: caso → ejecución → cuota/slot (17 §4). La implementación
@@ -327,7 +333,14 @@ export function crearDispatcher({ helpers, ejecutarPaso, ahora = () => Date.now(
 
     let barrera = null;
     if (paso.caso_id && paso.paso_pipeline) {
-      barrera = helpers.advance_case_if_ready({ caso_id: paso.caso_id, paso: paso.paso_pipeline, ahora: ahora() });
+      // CAS sobre la revisión del paso cuando el llamador la conoce: dos
+      // callbacks del mismo paso no pueden disparar dos auditores (17 §3).
+      barrera = helpers.advance_case_if_ready({
+        caso_id: paso.caso_id,
+        paso: paso.paso_pipeline,
+        revision_expected: paso.revision_barrera ?? null,
+        ahora: ahora(),
+      });
       if (barrera.avanza) registrar({ tipo_evento: 'barrera_avanza', payload: { caso_id: paso.caso_id, paso: paso.paso_pipeline } });
     }
     return { avanzo: true, terminal: true, revision: guardado.revision, estado_interno: paso.estado_interno, barrera, redespachar: false };
