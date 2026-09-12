@@ -23,6 +23,9 @@ import {
   renderContratoCompacto, toolsPorRol,
 } from '../prompts/ensamblar.mjs';
 import { MAX_TOKENS_SALIDA } from './config.mjs';
+// Voz: el endpoint y las variables permitidas son de forense-voice
+// (integrations/elevenlabs). El runtime los CONSUME, no los redefine.
+import { ENDPOINT_LLAMADA } from '../../integrations/elevenlabs/index.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ_N8N = path.resolve(AQUI, '..');
@@ -127,6 +130,33 @@ export function catalogoPrompts({ dir = DIR_PROMPTS } = {}) {
     techos: { ...TECHO_CARACTERES },
     roles,
   };
+}
+
+// Módulos de `integrations/` (dueño: forense-voice) embebidos VERBATIM en un
+// Code node. No se copia lógica a mano: se lee el archivo, se quitan los
+// `import`/`export` de ESM (n8n Code nodes no son módulos) y se declara el
+// `require` equivalente. Si forense-voice cambia el módulo, el JSON cambia y
+// `--check` lo detecta; lo que NO ocurre es que el workflow lleve una copia
+// vieja de la verificación de firma.
+const DIR_INTEGRACIONES = path.resolve(RAIZ_N8N, '..', 'integrations');
+
+export function embeberModulo(relativa, { requires = [] } = {}) {
+  const ruta = path.join(DIR_INTEGRACIONES, relativa);
+  const texto = fs.readFileSync(ruta, 'utf8');
+  const cuerpo = texto
+    .split('\n')
+    .filter((l) => !/^\s*import\s/.test(l))
+    .join('\n')
+    .replace(/^export\s+(const|function|class|let)\s/gm, '$1 ')
+    .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
+    .trimEnd();
+  return [
+    `// ===== EMBEBIDO VERBATIM de integrations/${relativa} (dueño: forense-voice).`,
+    '// Generado por n8n/runtime/generar-workflows.mjs — no editar aquí.',
+    ...requires.map((r) => `const { ${r.nombres.join(', ')} } = require('${r.modulo}');`),
+    cuerpo,
+    `// ===== fin de integrations/${relativa}`,
+  ].join('\n');
 }
 
 /** Constantes que el generador inyecta en el cuerpo de un Code node. */
@@ -1757,7 +1787,7 @@ export function notificarCompletada() {
     'n8n-nodes-base.httpRequest',
     {
       method: 'POST',
-      url: 'https://api.elevenlabs.io/v1/convai/twilio/outbound-call',
+      url: ENDPOINT_LLAMADA,
       authentication: 'genericCredentialType',
       genericAuthType: 'httpHeaderAuth',
       sendBody: true,
@@ -1831,20 +1861,34 @@ export function resultadoLlamada() {
     '// 16 §3: firma sobre el cuerpo CRUDO + ventana temporal. Firma inválida →',
     '// 401 sin escribir nada.',
     '//',
-    '// STUB MARCADO: el adaptador real es de forense-voice',
-    '// (integrations/elevenlabs), que todavía no existe. Este nodo declara la',
-    '// INTERFAZ que consumirá: {crudo, firma, tolerancia_s} → {valido, evento}.',
-    '// Mientras el adaptador no exista, VERIFICACION_DISPONIBLE=false y el nodo',
-    '// RECHAZA: nunca acepta un callback sin verificar.',
-    'const VERIFICACION_DISPONIBLE = false;',
-    'const TOLERANCIA_S = 300;',
+    '// El stub de la oleada 1 (VERIFICACION_DISPONIBLE=false) desapareció en H8:',
+    '// aquí va el verificador REAL de forense-voice, embebido verbatim por el',
+    '// generador. Se llama en su FORMA POSICIONAL',
+    '// verificarFirma(rawBody, headers, secreto, ahora_ms, opciones).',
+    '//',
+    '// REQUISITO DE DESPLIEGUE: n8n sólo expone `crypto` a los Code nodes si',
+    '// NODE_FUNCTION_ALLOW_BUILTIN incluye `crypto` (ver IMPORT.md §Variables).',
+    '// Sin eso este nodo lanza y el callback se RECHAZA, que es el lado seguro.',
+    embeberModulo('elevenlabs/hmac.mjs', {
+      requires: [{ modulo: 'crypto', nombres: ['createHmac', 'timingSafeEqual'] }],
+    }),
+    embeberModulo('elevenlabs/callback.mjs'),
+    '',
     'const x = $input.first().json;',
-    "const firma = (x.headers ?? {})['elevenlabs-signature'] ?? null;",
-    'if (!firma) throw new Error(\'callback sin cabecera de firma: 401\');',
-    'if (!VERIFICACION_DISPONIBLE) {',
-    "  throw new Error('verificador HMAC no instalado (integrations/elevenlabs, forense-voice): el callback se rechaza en vez de aceptarse sin verificar');",
+    '// El cuerpo CRUDO: sin él no hay firma que verificar (un JSON reserializado',
+    "// no reproduce los bytes firmados). El webhook va en modo 'raw body'.",
+    'const crudo = typeof x.body === \'string\' ? x.body : (x.rawBody ?? null);',
+    'if (typeof crudo !== \'string\') {',
+    "  throw new Error('el webhook no entregó el cuerpo crudo: no se puede verificar la firma (401)');",
     '}',
-    'const salida = { valido: false, tolerancia_s: TOLERANCIA_S, evento: null };',
+    'const secreto = $env.FORENSE_ELEVENLABS_WEBHOOK_SECRET ?? null;',
+    'const r = verificarFirma(crudo, x.headers ?? {}, secreto, Date.now(), {});',
+    'if (!r.valido) throw new Error(`callback rechazado (401): ${r.motivo}`);',
+    'const evento = JSON.parse(crudo);',
+    'const salida = Object.assign(',
+    '  { valido: true, tolerancia_s: TOLERANCIA_FIRMA_S, evento },',
+    '  estadoDesdeCallback(evento),',
+    ');',
     'return [{ json: salida }];',
   ].join('\n')));
 

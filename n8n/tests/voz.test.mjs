@@ -1,89 +1,106 @@
-// n8n/tests/voz.test.mjs — interfaz del adaptador de voz (16).
+// n8n/tests/voz.test.mjs — el runtime CONSUME integrations/elevenlabs (16).
 //
-// TODO SIMULADO. No hay llamada, ni credencial, ni número: la cuenta ElevenLabs
-// tiene cero números salientes (21 §5). Esto prueba el CONTRATO del lado del
-// runtime: qué se envía, qué nunca se envía, y que un callback sin verificador
-// se rechaza en vez de aceptarse.
+// Hasta H7 esto probaba un stub propio del runtime (`construirLlamada`,
+// `verificarFirma` que siempre decía que no). forense-voice entregó el módulo
+// real en la oleada 2b y `tests/voice/*.test.mjs` (dueño: forense-voice) ya
+// prueba payload, HMAC, estados, dedupe y callback. Aquí queda SÓLO lo que es
+// del runtime y nadie más comprueba:
+//
+//   1. `n8n/runtime/voz-adaptador.mjs` apunta al módulo real, no a un stub.
+//   2. La forma POSICIONAL de `verificarFirma` es la que usa el Code node.
+//   3. El JSON exportado lleva el verificador REAL embebido, no el stub, y no
+//      acepta un callback sin verificar.
+//   4. El endpoint del workflow es el del módulo, no una URL copiada a mano.
+//
+// Sigue sin haber llamada, credencial ni número: la cuenta ElevenLabs tiene
+// cero números salientes (21 §5).
 
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 import {
-  construirLlamada, verificarFirma, estadoDesdeCallback,
-  ESTADOS_LLAMADA, VARIABLES_PERMITIDAS, ErrorVoz,
+  verificarFirma, estadoDesdeCallback, construirPayload,
+  ENDPOINT_LLAMADA, TOLERANCIA_FIRMA_S, ESTADOS_LLAMADA, VARIABLES_PERMITIDAS, ErrorVoz,
 } from '../runtime/voz-adaptador.mjs';
 
-const base = {
-  agent_id: 'agent_x',
-  agent_phone_number_id: 'phone_x',
-  to_number: '+525512345678',
-};
+const RAIZ_N8N = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const wf = (nombre) => JSON.parse(
+  fs.readFileSync(path.join(RAIZ_N8N, 'workflows', `${nombre}.json`), 'utf8'));
+const nodo = (nombre, n) => wf(nombre).nodes.find((x) => x.name === n);
 
-test('[SIMULADO] el cuerpo de la llamada es el de 16 §3', () => {
-  const cuerpo = construirLlamada({
-    ...base,
-    variables: {
-      nombre_usuario: 'Víctor',
-      referencia_corta: 'INV-2026-0007',
-      ruta_reporte: 'Historial de investigaciones',
-      completion_event_id: '5f1c0a1e-0000-4000-8000-000000000001',
-    },
-  });
-  assert.equal(cuerpo.to_number, base.to_number);
-  assert.deepEqual(
-    Object.keys(cuerpo.conversation_initiation_client_data.dynamic_variables).sort(),
-    [...VARIABLES_PERMITIDAS].sort(),
-  );
+test('voz-adaptador re-exporta el módulo real de forense-voice, no un stub', () => {
+  // Si alguien reinstalara el stub, estas funciones volverían a no existir.
+  for (const f of [verificarFirma, estadoDesdeCallback, construirPayload]) {
+    assert.equal(typeof f, 'function');
+  }
+  assert.equal(ENDPOINT_LLAMADA, 'https://api.elevenlabs.io/v1/convai/twilio/outbound-call');
+  assert.equal(TOLERANCIA_FIRMA_S, 300);
+  assert.ok(ESTADOS_LLAMADA.includes('finalizada'));
+  assert.ok(VARIABLES_PERMITIDAS.length > 0);
+  assert.equal(typeof ErrorVoz, 'function');
 });
 
-test('[SIMULADO] el agente telefónico nunca recibe RFC, montos ni variables ajenas', () => {
-  assert.throws(
-    () => construirLlamada({ ...base, variables: { referencia_corta: 'AAA010101AAA' } }),
-    (e) => e instanceof ErrorVoz && e.codigo === 'fuga_rfc',
-  );
-  assert.throws(
-    () => construirLlamada({ ...base, variables: { referencia_corta: '$1,200,000 MXN' } }),
-    (e) => e instanceof ErrorVoz && e.codigo === 'fuga_monto',
-  );
-  assert.throws(
-    () => construirLlamada({ ...base, variables: { hipotesis: 'carrusel de facturas' } }),
-    (e) => e instanceof ErrorVoz && e.codigo === 'variable_no_permitida',
-  );
-});
+test('verificarFirma en forma POSICIONAL: acepta la firma buena y sólo esa', () => {
+  const secreto = 'secreto-de-prueba';
+  const crudo = '{"type":"post_call_transcription","conversation_id":"c1"}';
+  const t = 1_757_640_000;
+  const v0 = createHmac('sha256', secreto).update(`${t}.${crudo}`).digest('hex');
+  const headers = { 'elevenlabs-signature': `t=${t},v0=${v0}` };
+  const ahora = t * 1000;
 
-test('[SIMULADO] el teléfono debe venir del perfil en E.164', () => {
-  assert.throws(
-    () => construirLlamada({ ...base, to_number: '5512345678', variables: {} }),
-    (e) => e.codigo === 'telefono_invalido',
-  );
-});
+  const ok = verificarFirma(crudo, headers, secreto, ahora, {});
+  assert.equal(ok.valido, true, `la firma buena debió pasar: ${ok.motivo}`);
 
-test('[SIMULADO] sin verificador instalado, el callback se RECHAZA (no se acepta a ciegas)', () => {
-  // Firma dentro de la ventana: el rechazo NO es por la marca temporal.
-  const r = verificarFirma({ crudo: '{"type":"completed"}', firma: 't=1757640000,v0=abc', ahora_ms: 1757640000_000 });
-  assert.equal(r.valido, false);
-  assert.equal(r.implementado, false);
-  assert.equal(r.motivo, 'verificador_no_instalado');
-  // Cuerpo reserializado (no crudo) o sin firma: también rechaza.
-  assert.equal(verificarFirma({ crudo: { type: 'completed' }, firma: 'x' }).motivo, 'cuerpo_no_crudo');
-  assert.equal(verificarFirma({ crudo: '{}', firma: null }).motivo, 'sin_firma');
-  // Fuera de la ventana temporal.
+  // Cuerpo alterado en un byte → la firma ya no corresponde.
+  assert.equal(verificarFirma(`${crudo} `, headers, secreto, ahora, {}).valido, false);
+  // Fuera de la ventana temporal (replay).
   assert.equal(
-    verificarFirma({ crudo: '{}', firma: 't=1000,v0=abc', ahora_ms: 10_000_000_000 }).motivo,
+    verificarFirma(crudo, headers, secreto, ahora + (TOLERANCIA_FIRMA_S + 60) * 1000, {}).motivo,
     'fuera_de_ventana',
   );
+  // Sin secreto no se acepta nada: el lado seguro es rechazar.
+  assert.equal(verificarFirma(crudo, headers, null, ahora, {}).motivo, 'secreto_no_configurado');
+  // Sin cabecera de firma tampoco.
+  assert.equal(verificarFirma(crudo, {}, secreto, ahora, {}).motivo, 'sin_firma');
 });
 
-test('[SIMULADO] solo se mapean hechos recibidos: «finalizada» no es «aviso entregado»', () => {
-  assert.deepEqual(estadoDesdeCallback({ type: 'completed' }), { estado: 'finalizada', aviso_entregado: false });
-  assert.deepEqual(
-    estadoDesdeCallback({ type: 'completed', analysis: { aviso_confirmado: true } }),
-    { estado: 'finalizada', aviso_entregado: true },
-  );
-  assert.equal(estadoDesdeCallback({ type: 'no_answer' }).estado, 'sin_respuesta');
-  // Un tipo desconocido no se inventa: queda como resultado desconocido.
-  assert.equal(estadoDesdeCallback({ type: 'lo_que_sea' }).estado, 'resultado_desconocido');
-  for (const e of ['finalizada', 'sin_respuesta', 'resultado_desconocido']) {
-    assert.ok(ESTADOS_LLAMADA.includes(e));
-  }
+test('el Code node exportado lleva el verificador REAL embebido, no el stub', () => {
+  const js = nodo('FORENSE_resultado_llamada', 'Verificar HMAC').parameters.jsCode;
+  // Embebido verbatim desde integrations/, con su firma posicional.
+  assert.match(js, /EMBEBIDO VERBATIM de integrations\/elevenlabs\/hmac\.mjs/);
+  assert.match(js, /function verificarFirma\(a, b, c, d, e\)/);
+  assert.match(js, /function estadoDesdeCallback/);
+  // Llamado en forma posicional, con el cuerpo CRUDO y el secreto de entorno.
+  assert.match(js, /verificarFirma\(crudo, x\.headers \?\? \{\}, secreto, Date\.now\(\), \{\}\)/);
+  assert.match(js, /FORENSE_ELEVENLABS_WEBHOOK_SECRET/);
+  // El stub de la oleada 1 ya no puede estar activo.
+  assert.doesNotMatch(js, /const VERIFICACION_DISPONIBLE = false/);
+  // Y sigue sin haber camino que acepte un callback sin verificar.
+  assert.match(js, /if \(!r\.valido\) throw new Error/);
+});
+
+test('el Code node embebido es JavaScript válido y no reimplementa el HMAC', () => {
+  const js = nodo('FORENSE_resultado_llamada', 'Verificar HMAC').parameters.jsCode;
+  // `$input`/`$env` los inyecta n8n; para parsear basta con declararlos.
+  assert.doesNotThrow(() => new Function('$input', '$env', js));
+  // Una sola definición de la verificación: si alguien copiara la lógica a
+  // mano junto a la embebida, habría dos.
+  assert.equal((js.match(/function verificarFirma\b/g) ?? []).length, 1);
+});
+
+test('el endpoint de la llamada sale del módulo, no de una URL copiada', () => {
+  assert.equal(nodo('FORENSE_notificar_completada', 'POST outbound-call').parameters.url,
+    ENDPOINT_LLAMADA);
+});
+
+test('estadoDesdeCallback nunca inventa la entrega: sin análisis, aviso_entregado no es true', () => {
+  // 16 §2.7: `aviso_entregado` sólo se afirma si el análisis lo respalda. Sin
+  // análisis vuelve null (desconocido), NUNCA true.
+  const r = estadoDesdeCallback({ type: 'post_call_transcription' });
+  assert.notEqual(r.aviso_entregado, true);
+  assert.equal(r.estado, 'resultado_desconocido');
 });
