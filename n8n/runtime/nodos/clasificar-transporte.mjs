@@ -47,8 +47,16 @@ export function clasificarTransporteNodo(x) {
 
   const cabeEnDeadline = ahora + espera_ms < limite;
   const reintentar = clase === 'reintentable' && intento <= MAX_REINTENTOS && cabeEnDeadline;
+  // Ruta EXCLUYENTE para el switch del workflow: una respuesta correcta no
+  // puede caer además en la rama de «desconocido».
+  let ruta;
+  if (clase === 'ok') ruta = 'continuar';
+  else if (reintentar) ruta = 'reintentar';
+  else if (clase === 'ambiguo') ruta = 'desconocido';
+  else ruta = 'error';
   const salida = {
     clase,
+    ruta,
     espera_ms: reintentar ? espera_ms : 0,
     intento,
     reintentar,

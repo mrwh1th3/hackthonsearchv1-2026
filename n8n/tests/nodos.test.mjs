@@ -133,6 +133,24 @@ test('[SIMULADO] transporte: el timeout ambiguo no se reintenta', () => {
   assert.match(r.motivo, /no se reintenta automáticamente/);
 });
 
+test('[SIMULADO] transporte: la ruta es excluyente (una respuesta OK no cae también en desconocido)', () => {
+  const base = { ahora_ms: AHORA, deadline_at: DEADLINE, aleatorio: 0.5, intento: 1 };
+  const rutas = [
+    [{ status: 200 }, 'continuar'],
+    [{ status: 429, headers: { 'retry-after': '1' } }, 'reintentar'],
+    [{ tipo: 'timeout' }, 'desconocido'],
+    [{ status: 400 }, 'error'],
+    [{ status: 500, intento: 3 }, 'error'],
+  ];
+  const vistas = new Set();
+  for (const [caso, esperada] of rutas) {
+    const r = clasificarTransporteNodo({ ...base, ...caso });
+    assert.equal(r.ruta, esperada, `ruta incorrecta para ${JSON.stringify(caso)}`);
+    vistas.add(r.ruta);
+  }
+  assert.equal(vistas.size, 4, 'las cuatro rutas del switch deben ser alcanzables');
+});
+
 test('[SIMULADO] transporte: dos reintentos como máximo y nunca cruzando el deadline', () => {
   const tercero = clasificarTransporteNodo({ status: 500, intento: 3, ahora_ms: AHORA, deadline_at: DEADLINE, aleatorio: 0.5 });
   assert.equal(tercero.reintentar, false);

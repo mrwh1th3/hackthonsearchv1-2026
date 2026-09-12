@@ -1,0 +1,1098 @@
+{
+  "name": "FORENSE_ejecutar_agente",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Paso entrante"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 17 §4: claim_step devuelve {ok, fencing_token, revision, lease_expires_at}\nSELECT * FROM forense.claim_step($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $json.execution_id }}, ={{ $json.owner }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Reclamar paso",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        0
+      ],
+      "name": "¿Claim vigente?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// El slot es de otro owner con lease vigente. Una tarea sin slot queda\n// PENDIENTE, nunca fallida (17 §3). El reconciliador la retomará.\nconst x = $input.first().json;\nreturn [{ json: { estado: 'en_cola', motivo: x.error ?? 'slot ocupado' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        140
+      ],
+      "name": "Paso no reclamable"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- DEPENDE de forense-db (17 §4). Confirmar el nombre de la columna de enlace contexto↔ejecución.\nSELECT e.*, a.contenido AS contexto, t.caso_id, t.agente, t.ronda, t.intento\n  FROM forense.ejecuciones_agente e\n  JOIN forense.artefactos_contexto a ON a.hash = e.context_hash\n  LEFT JOIN forense.tareas_agente t ON t.id = e.tarea_id\n WHERE e.id = $1::uuid",
+        "options": {
+          "queryReplacement": "={{ $json.execution_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Cargar ejecución",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/decidir-paso.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Worker: traduce el checkpoint a la rama de ESTA ejecución (17 §3).\n\nconst x = $input.first().json;\nconst TERMINALES = ['terminado', 'error', 'timeout'];\nconst cp = x.checkpoint ?? {};\nconst estado = cp.estado_interno ?? 'preparar_contexto';\nconst maxReparaciones = Number(x.max_reparaciones ?? 1);\nconst reparaciones = Number(cp.reparaciones_json ?? 0);\nconst pendientes = Array.isArray(cp.pending_tool_use_ids) ? cp.pending_tool_use_ids : [];\nconst ahora = Number(x.ahora_ms ?? Date.parse(x.ahora ?? new Date().toISOString()));\nconst limite = cp.deadline_at ? Date.parse(cp.deadline_at) : Number.POSITIVE_INFINITY;\n\nconst cerrar = (evento, razon) => ({\n  accion: 'cerrar', evento, razon, motivo_request: null,\n  estado_interno: estado, reparaciones_json: reparaciones,\n});\nconst pedirModelo = (motivo, razon) => ({\n  accion: 'solicitar_modelo', evento: null, razon, motivo_request: motivo,\n  estado_interno: estado, reparaciones_json: reparaciones,\n});\n\nlet salida;\nif (TERMINALES.indexOf(estado) >= 0) {\n  salida = cerrar(null, 'el paso ya estaba en estado terminal');\n} else if (ahora >= limite) {\n  // El deadline manda sobre cualquier otra rama: no se abre un request nuevo\n  // que no cabe en el paso.\n  salida = cerrar('deadline', 'deadline del paso alcanzado');\n} else if (estado === 'preparar_contexto' || estado === 'solicitar_modelo') {\n  salida = pedirModelo('turno', 'turno normal del protocolo');\n} else if (estado === 'espera_reintento') {\n  salida = pedirModelo('turno', 'reintento de transporte reprogramado por el dispatcher');\n} else if (estado === 'reparar_json') {\n  salida = reparaciones < maxReparaciones\n    ? pedirModelo('reparacion', 'una reparación acotada, sin herramientas')\n    : cerrar('sin_reparacion', 'sin presupuesto de reparación: error visible');\n} else if (estado === 'ejecutar_herramienta') {\n  salida = pendientes.length > 0\n    ? {\n      accion: 'ejecutar_herramienta', evento: null, motivo_request: null,\n      razon: `${pendientes.length} tool_use pendiente(s)`,\n      estado_interno: estado, reparaciones_json: reparaciones,\n      pending_tool_use_ids: pendientes,\n    }\n    : cerrar('error_fatal', 'estado ejecutar_herramienta sin tool_use pendientes');\n} else if (estado === 'validar_salida') {\n  if (cp.salida_valida) salida = cerrar('valida', 'salida válida: el paso cierra');\n  else if (reparaciones < maxReparaciones) salida = pedirModelo('reparacion', 'salida inválida con presupuesto de reparación');\n  else salida = cerrar('sin_reparacion', 'salida inválida y sin reparación disponible');\n} else {\n  salida = cerrar('error_fatal', `estado interno no manejado: ${estado}`);\n}\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "name": "Decidir accion"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_solicitar_modelo",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "solicitar_modelo",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "solicitar_modelo"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_ejecutar_herramienta",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "ejecutar_herramienta",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ejecutar_herramienta"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_cerrar",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "cerrar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cerrar"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Ruta del paso"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 17 §5.3: la reserva ocurre ANTES del HTTP; un request enviado sin reserva no existe para el presupuesto.\nSELECT * FROM forense.reserve_request($1::uuid, $2::bigint, $3::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.execution_id }}, ={{ $json.fencing_token }}, ={{ $json.request_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Reservar request",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/construir-cuerpo.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Worker: compone el body de /v1/messages con insumos de DB (17 §5.2).\n\nconst x = $input.first().json;\nif (!x.modelo) throw new Error('modelo ausente: se resuelve de configuración, nunca del prompt');\nif (!Array.isArray(x.system_bloques) || x.system_bloques.length === 0) {\n  throw new Error('system ausente: bloque común + rol + contrato son obligatorios');\n}\nif (!Array.isArray(x.mensajes) || x.mensajes.length === 0) {\n  throw new Error('mensajes ausentes: el checkpoint debe traer al menos el paquete de contexto');\n}\n// Todo tool_use del último assistant debe tener su tool_result en el\n// siguiente user: compactar borrando pares rompe el protocolo (17 §7).\nconst ultimoAssistant = [...x.mensajes].reverse().find((m) => m.role === 'assistant');\nif (ultimoAssistant) {\n  const usos = (ultimoAssistant.content ?? []).filter((b) => b.type === 'tool_use').map((b) => b.id);\n  if (usos.length > 0) {\n    const indice = x.mensajes.lastIndexOf(ultimoAssistant);\n    const siguiente = x.mensajes[indice + 1];\n    const resueltos = ((siguiente && siguiente.content) || [])\n      .filter((b) => b.type === 'tool_result').map((b) => b.tool_use_id);\n    const faltantes = usos.filter((id) => resueltos.indexOf(id) < 0);\n    if (faltantes.length > 0) throw new Error(`faltan tool_result para: ${faltantes.join(', ')}`);\n  }\n}\nconst cuerpo = {\n  model: x.modelo,\n  max_tokens: Number(x.max_tokens ?? 2000),\n  temperature: x.temperatura === undefined || x.temperatura === null ? 0 : Number(x.temperatura),\n  system: x.system_bloques,\n  messages: x.mensajes,\n};\nconst herramientas = Array.isArray(x.herramientas) ? x.herramientas : [];\n// Reparación acotada y roles sin tools (Réplica, Redactor, Editor) no reciben\n// la clave `tools` (17 §5.8).\nif (x.sin_herramientas !== true && herramientas.length > 0) {\n  cuerpo.tools = herramientas;\n  cuerpo.tool_choice = { type: 'auto' };\n}\nconst salida = { cuerpo, herramientas_enviadas: cuerpo.tools ? cuerpo.tools.length : 0 };\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Construir cuerpo Messages"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.cuerpo) }}",
+        "options": {
+          "timeout": 45000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        0
+      ],
+      "name": "POST /v1/messages",
+      "credentials": {
+        "anthropicApi": {
+          "name": "Anthropic account"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/clasificar-transporte.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Worker: 429/5xx con Retry-After, timeout ambiguo (17 §6).\n\nconst x = $input.first().json;\nconst BASE_BACKOFF_MS = 500;\nconst MAX_BACKOFF_MS = 8000;\nconst MAX_REINTENTOS = Number(x.max_reintentos ?? 2);\nconst status = x.status === undefined ? null : x.status;\nconst tipo = x.tipo ?? null;\nconst intento = Number(x.intento ?? 1);\nconst ahora = Number(x.ahora_ms ?? Date.parse(x.ahora ?? new Date().toISOString()));\nconst limite = x.deadline_at ? Date.parse(x.deadline_at) : Number.POSITIVE_INFINITY;\nconst headers = x.headers ?? {};\n\nlet clase;\nif (tipo === 'timeout' || tipo === 'conexion_interrumpida') clase = 'ambiguo';\nelse if (status === null) clase = 'error';\nelse if (status >= 200 && status < 300) clase = 'ok';\nelse if (status === 429 || status === 408 || status >= 500) clase = 'reintentable';\nelse clase = 'error';\n\nconst crudo = headers['retry-after'] ?? headers['Retry-After'] ?? null;\nlet segundos = null;\nif (crudo !== null && crudo !== undefined && crudo !== '') {\n  const numero = Number(crudo);\n  if (Number.isFinite(numero)) segundos = numero;\n  else {\n    const fecha = Date.parse(String(crudo));\n    if (Number.isFinite(fecha)) segundos = Math.max(0, (fecha - ahora) / 1000);\n  }\n}\nconst aleatorio = x.aleatorio === undefined || x.aleatorio === null ? Math.random() : Number(x.aleatorio);\nconst techo = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, Math.max(0, intento - 1)));\nconst espera_ms = segundos !== null ? Math.max(0, Math.round(segundos * 1000)) : Math.round(techo * aleatorio);\n\nconst cabeEnDeadline = ahora + espera_ms < limite;\nconst reintentar = clase === 'reintentable' && intento <= MAX_REINTENTOS && cabeEnDeadline;\n// Ruta EXCLUYENTE para el switch del workflow: una respuesta correcta no\n// puede caer además en la rama de «desconocido».\nlet ruta;\nif (clase === 'ok') ruta = 'continuar';\nelse if (reintentar) ruta = 'reintentar';\nelse if (clase === 'ambiguo') ruta = 'desconocido';\nelse ruta = 'error';\nconst salida = {\n  clase,\n  ruta,\n  espera_ms: reintentar ? espera_ms : 0,\n  intento,\n  reintentar,\n  retry_after_respetado: segundos !== null,\n  motivo: clase === 'ambiguo'\n    ? 'timeout_ambiguo: posible consumo externo sin respuesta; no se reintenta automáticamente'\n    : clase === 'reintentable' && !reintentar\n      ? (cabeEnDeadline ? 'reintentos_transporte_agotados' : 'deadline_excedido')\n      : null,\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        0
+      ],
+      "name": "Clasificar transporte"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_continuar",
+                    "leftValue": "={{ $json.ruta }}",
+                    "rightValue": "continuar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "continuar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_reintentar",
+                    "leftValue": "={{ $json.ruta }}",
+                    "rightValue": "reintentar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reintentar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_desconocido",
+                    "leftValue": "={{ $json.ruta }}",
+                    "rightValue": "desconocido",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "desconocido"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c_error",
+                    "leftValue": "={{ $json.ruta }}",
+                    "rightValue": "error",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "error"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2200,
+        0
+      ],
+      "name": "Ruta de transporte"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $json.espera_ms }}",
+        "unit": "ms"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        280
+      ],
+      "name": "Backoff"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 17 §6: timeout ambiguo. Puede haber coste externo sin respuesta; no se afirma exactly-once.\nUPDATE forense.llm_solicitudes\n   SET estado = 'desconocido', error = $2::jsonb\n WHERE request_id = $1::uuid",
+        "options": {
+          "queryReplacement": "={{ $json.request_id }}, ={{ JSON.stringify({ codigo: \"timeout_ambiguo\", motivo: $json.motivo }) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2200,
+        420
+      ],
+      "name": "Marcar desconocido",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Error permanente del proveedor o reintentos de transporte agotados: el paso cierra en error, no reintenta solo.\nUPDATE forense.llm_solicitudes\n   SET estado = 'error', error = $2::jsonb\n WHERE request_id = $1::uuid",
+        "options": {
+          "queryReplacement": "={{ $json.request_id }}, ={{ JSON.stringify({ codigo: $json.clase, motivo: $json.motivo }) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2200,
+        560
+      ],
+      "name": "Marcar error de request",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/interpretar-respuesta.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Worker: stop_reason, cola de tool_use y parseo de salida (17 §5.5–5.8).\n\nconst x = $input.first().json;\nconst REQUERIDAS = {\n  documental: ['senal_ids', 'resumen', 'limitaciones'],\n  financiero: ['senal_ids', 'resumen', 'limitaciones'],\n  relacional: ['senal_ids', 'resumen', 'limitaciones'],\n  temporal: ['senal_ids', 'resumen', 'limitaciones'],\n  externo: ['senal_ids', 'resumen', 'limitaciones'],\n  auditor: ['rfc_principal', 'rfcs_satelite', 'tipologia', 'hipotesis', 'evidencia', 'limitaciones'],\n  defensor: ['argumentos'],\n  replica: ['resoluciones'],\n  redactor: ['markdown'],\n  editor: [],\n};\nconst CONTRATO = {\n  documental: 'agents.especialista', financiero: 'agents.especialista',\n  relacional: 'agents.especialista', temporal: 'agents.especialista',\n  externo: 'agents.especialista', auditor: 'agents.auditor',\n  defensor: 'agents.defensor', replica: 'agents.replica',\n  redactor: 'agents.redactor', editor: 'agents.editor',\n};\nconst rol = x.rol;\nconst cuerpo = (x.respuesta && x.respuesta.body) ? x.respuesta.body : (x.body ?? {});\nconst stop = cuerpo.stop_reason ?? null;\nconst bloques = Array.isArray(cuerpo.content) ? cuerpo.content : [];\nconst comun = {\n  provider_request_id: cuerpo.id ?? null,\n  usage: cuerpo.usage ?? null,\n  modelo: cuerpo.model ?? null,\n  stop_reason: stop,\n  bloques_assistant: bloques,\n  rol,\n  contrato: CONTRATO[rol] ?? null,\n  requiere_validacion_contrato: true,\n};\n\nlet salida;\nif (stop === 'tool_use') {\n  const cola = bloques.filter((b) => b.type === 'tool_use')\n    .map((b) => ({ tool_use_id: b.id, nombre: b.name, argumentos: b.input ?? {} }));\n  salida = cola.length > 0\n    ? Object.assign({}, comun, { tipo: 'tool_use', cola, evento: 'tool_use' })\n    : Object.assign({}, comun, { tipo: 'json_invalido', evento: 'end_turn', cola: [], diagnostico: 'stop_reason=tool_use sin bloques tool_use' });\n} else if (stop === 'max_tokens') {\n  // Salida truncada: jamás se persiste como informe válido (17 §7).\n  salida = Object.assign({}, comun, {\n    tipo: 'incompleto', evento: 'max_tokens', salida_valida: null,\n    texto: bloques.filter((b) => b.type === 'text').map((b) => b.text).join('\\n'),\n    diagnostico: 'salida truncada por max_tokens; no es un informe válido',\n  });\n} else if (stop === 'refusal') {\n  salida = Object.assign({}, comun, { tipo: 'refusal', evento: 'refusal', diagnostico: 'el proveedor rechazó continuar' });\n} else if (stop === 'end_turn' || stop === 'stop_sequence') {\n  const texto = bloques.filter((b) => b.type === 'text').map((b) => b.text).join('\\n').trim();\n  const sinValla = texto.replace(/^\\s*```(?:json)?\\s*/i, '').replace(/\\s*```\\s*$/i, '').trim();\n  const candidatos = [sinValla];\n  const abre = sinValla.indexOf('{');\n  const cierra = sinValla.lastIndexOf('}');\n  if (abre >= 0 && cierra > abre) candidatos.push(sinValla.slice(abre, cierra + 1));\n  let valor = null;\n  for (const candidato of candidatos) {\n    try {\n      const parsed = JSON.parse(candidato);\n      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) { valor = parsed; break; }\n    } catch (e) { /* siguiente candidato */ }\n  }\n  if (valor === null) {\n    salida = Object.assign({}, comun, { tipo: 'json_invalido', evento: 'end_turn', texto, errores: [{ instancePath: '/', message: 'no se pudo parsear un objeto JSON' }] });\n  } else {\n    const requeridas = REQUERIDAS[rol] ?? [];\n    const faltan = requeridas.filter((k) => valor[k] === undefined);\n    const sobran = requeridas.length > 0 ? Object.keys(valor).filter((k) => requeridas.indexOf(k) < 0) : [];\n    const errores = faltan.map((k) => ({ instancePath: `/${k}`, message: 'campo requerido ausente' }))\n      .concat(sobran.map((k) => ({ instancePath: `/${k}`, message: 'campo no permitido por el contrato' })));\n    salida = errores.length > 0\n      ? Object.assign({}, comun, { tipo: 'schema_invalido', evento: 'end_turn', texto, salida: valor, errores })\n      : Object.assign({}, comun, { tipo: 'salida_estructura_ok', evento: 'end_turn', salida: valor, errores: [] });\n  }\n} else {\n  salida = Object.assign({}, comun, {\n    tipo: 'stop_desconocido', evento: 'refusal',\n    diagnostico: `stop_reason no soportada: ${String(stop)}`,\n  });\n}\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        0
+      ],
+      "name": "Interpretar respuesta"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE forense.llm_solicitudes\n   SET estado = 'completado', provider_request_id = $2::text,\n       usage = $3::jsonb, modelo = $4::text\n WHERE request_id = $1::uuid",
+        "options": {
+          "queryReplacement": "={{ $json.request_id }}, ={{ $json.provider_request_id }}, ={{ JSON.stringify($json.usage) }}, ={{ $json.modelo }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2640,
+        0
+      ],
+      "name": "Completar request",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 17 §4: unicidad (request_id, tool_use_id). La reentrega devuelve el registro previo, sin mutación nueva.\nSELECT * FROM forense.claim_tool($1::uuid, $2::bigint, $3::uuid, $4::text, $5::text)",
+        "options": {
+          "queryReplacement": "={{ $json.execution_id }}, ={{ $json.fencing_token }}, ={{ $json.request_id }}, ={{ $json.tool_use_id }}, ={{ $json.args_hash }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1320,
+        140
+      ],
+      "name": "Reclamar tool",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.nuevo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1540,
+        140
+      ],
+      "name": "¿Tool nueva?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mismo tool_use_id ya ejecutado: se devuelve el resultado guardado.\n// No consume cuota ni repite la mutación SQL (17 §6).\nconst x = $input.first().json;\nreturn [{ json: { tool_use_id: x.tool_use_id, resultado: x.resultado, error: x.error ?? null, reentrega: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        280
+      ],
+      "name": "Reentrega registrada"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.base_rest }}/rpc/{{ $json.nombre }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.argumentos_backend) }}",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        140
+      ],
+      "name": "Llamar RPC forense",
+      "credentials": {
+        "supabaseApi": {
+          "name": "Forense Supabase"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- La RPC de 06 ya escribió evidencia y bitácora una sola vez; aquí solo se cierra el ledger.\nUPDATE forense.tool_ejecuciones\n   SET estado = $1::text, resultado = $2::jsonb, duracion_ms = $3::int\n WHERE request_id = $4::uuid AND tool_use_id = $5::text",
+        "options": {
+          "queryReplacement": "={{ $json.estado }}, ={{ JSON.stringify($json.envelope) }}, ={{ $json.duracion_ms }}, ={{ $json.request_id }}, ={{ $json.tool_use_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1980,
+        140
+      ],
+      "name": "Registrar resultado tool",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/armar-tool-results.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Worker: un tool_result por cada tool_use_id, en orden (17 §5.5).\n\nconst x = $input.first().json;\nconst cola = Array.isArray(x.cola) ? x.cola : [];\nconst resultados = Array.isArray(x.resultados) ? x.resultados : [];\nif (cola.length === 0) throw new Error('cola de tool_use vacía: no hay resultados que enviar');\nconst porId = new Map(resultados.map((r) => [r.tool_use_id, r]));\nconst faltantes = cola.filter((t) => !porId.has(t.tool_use_id)).map((t) => t.tool_use_id);\nif (faltantes.length > 0) throw new Error(`faltan tool_result para: ${faltantes.join(', ')}`);\nconst content = cola.map((t) => {\n  const r = porId.get(t.tool_use_id);\n  const esError = (r.error !== null && r.error !== undefined) || r.is_error === true;\n  const payload = esError\n    ? { ok: false, error: r.error ?? { codigo: 'error_herramienta', mensaje: 'error sin detalle', reintentable: false } }\n    : r.resultado;\n  const bloque = {\n    type: 'tool_result',\n    tool_use_id: t.tool_use_id,\n    content: typeof payload === 'string' ? payload : JSON.stringify(payload),\n  };\n  if (esError) bloque.is_error = true;\n  return bloque;\n});\nconst salida = {\n  mensaje: { role: 'user', content },\n  tool_use_ids: cola.map((t) => t.tool_use_id),\n  con_error: content.filter((b) => b.is_error === true).length,\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        140
+      ],
+      "name": "Armar tool_results"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- 17 §3: CAS sobre (caso_id, paso, revision) + fencing. Un lease vencido no puede escribir.\nSELECT * FROM forense.save_checkpoint($1::uuid, $2::bigint, $3::int, $4::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.execution_id }}, ={{ $json.fencing_token }}, ={{ $json.revision }}, ={{ JSON.stringify($json.checkpoint) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3080,
+        0
+      ],
+      "name": "Guardar checkpoint",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ [\"terminado\",\"error\",\"timeout\"].includes($json.estado_interno) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3300,
+        0
+      ],
+      "name": "¿Estado terminal?"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_id }}",
+            "execution_id": "={{ $json.execution_id }}",
+            "owner": "={{ $json.owner }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3520,
+        140
+      ],
+      "name": "Redespachar paso"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- completada | error | timeout | omitida. Libera slot y lease y escribe bitácora.\nSELECT * FROM forense.finish_step($1::uuid, $2::bigint, $3::text, $4::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.execution_id }}, ={{ $json.fencing_token }}, ={{ $json.estado_tarea }}, ={{ JSON.stringify($json.resultado) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3520,
+        0
+      ],
+      "name": "Finalizar paso",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- La barrera la cierra esta función sobre el conjunto exacto de tarea_id, no un Merge de cinco ramas.\nSELECT * FROM forense.advance_case_if_ready($1::uuid, $2::int)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.revision_esperada }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3740,
+        0
+      ],
+      "name": "Avanzar caso si listo",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_ejecutar_agente — worker de paso (17 §3).\n\nUna ejecución = UN request de modelo O UN lote de herramientas,\nguarda checkpoint y termina. No hay nodo AI Agent: los argumentos\nsalen de los bloques tool_use parseados por código y\np_tarea / p_caso / p_operacion los fija el backend.\n\nInactivo. Credenciales por nombre, sin IDs ni secretos.\nLos workflowId PENDIENTE_* se resuelven después de importar (17 §2).",
+        "height": 260,
+        "width": 420,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        560
+      ],
+      "name": "Nota worker"
+    }
+  ],
+  "connections": {
+    "Paso entrante": {
+      "main": [
+        [
+          {
+            "node": "Reclamar paso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reclamar paso": {
+      "main": [
+        [
+          {
+            "node": "¿Claim vigente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Claim vigente?": {
+      "main": [
+        [
+          {
+            "node": "Cargar ejecución",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Paso no reclamable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cargar ejecución": {
+      "main": [
+        [
+          {
+            "node": "Decidir accion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decidir accion": {
+      "main": [
+        [
+          {
+            "node": "Ruta del paso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ruta del paso": {
+      "main": [
+        [
+          {
+            "node": "Reservar request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reclamar tool",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reservar request": {
+      "main": [
+        [
+          {
+            "node": "Construir cuerpo Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir cuerpo Messages": {
+      "main": [
+        [
+          {
+            "node": "POST /v1/messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /v1/messages": {
+      "main": [
+        [
+          {
+            "node": "Clasificar transporte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar transporte": {
+      "main": [
+        [
+          {
+            "node": "Ruta de transporte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ruta de transporte": {
+      "main": [
+        [
+          {
+            "node": "Interpretar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Backoff",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar desconocido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar error de request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backoff": {
+      "main": [
+        [
+          {
+            "node": "POST /v1/messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar desconocido": {
+      "main": [
+        [
+          {
+            "node": "Guardar checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar error de request": {
+      "main": [
+        [
+          {
+            "node": "Guardar checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar respuesta": {
+      "main": [
+        [
+          {
+            "node": "Completar request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Completar request": {
+      "main": [
+        [
+          {
+            "node": "Guardar checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reclamar tool": {
+      "main": [
+        [
+          {
+            "node": "¿Tool nueva?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tool nueva?": {
+      "main": [
+        [
+          {
+            "node": "Llamar RPC forense",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reentrega registrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Llamar RPC forense": {
+      "main": [
+        [
+          {
+            "node": "Registrar resultado tool",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar resultado tool": {
+      "main": [
+        [
+          {
+            "node": "Armar tool_results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reentrega registrada": {
+      "main": [
+        [
+          {
+            "node": "Armar tool_results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar tool_results": {
+      "main": [
+        [
+          {
+            "node": "Guardar checkpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar checkpoint": {
+      "main": [
+        [
+          {
+            "node": "¿Estado terminal?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Estado terminal?": {
+      "main": [
+        [
+          {
+            "node": "Finalizar paso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redespachar paso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalizar paso": {
+      "main": [
+        [
+          {
+            "node": "Avanzar caso si listo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
