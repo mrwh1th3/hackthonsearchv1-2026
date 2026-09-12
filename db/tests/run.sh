@@ -68,6 +68,7 @@ echo "== migraciones =="
 aplicar "$DBDIR/001_schema.sql" "001_schema.sql"
 aplicar "$DBDIR/002_views.sql"  "002_views.sql"
 aplicar "$DBDIR/003_pistas.sql" "003_pistas.sql"
+aplicar "$DBDIR/004_clusters.sql" "004_clusters.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 
@@ -75,7 +76,8 @@ aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 
 echo "== reaplicación (idempotencia) =="
 reaplicar_ok=true
-for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" "$DBDIR/seeds/seed_fake.sql"; do
+for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" \
+         "$DBDIR/004_clusters.sql" "$DBDIR/seeds/seed_fake.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
   else
@@ -85,11 +87,30 @@ for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" 
     fallos=$((fallos + 1))
   fi
 done
-anotar "reaplicar 001+002+seed no falla" "$reaplicar_ok" "aplicado dos veces sobre la misma base"
+anotar "reaplicar migraciones y seed no falla" "$reaplicar_ok" "aplicado dos veces sobre la misma base"
 
 echo "== aserciones =="
 aplicar "$HERE/assertions.sql" "tests/assertions.sql"
 aplicar "$HERE/assertions_003.sql" "tests/assertions_003.sql"
+aplicar "$HERE/assertions_004.sql" "tests/assertions_004.sql"
+
+echo "== snapshot gen-v1 (opcional: GEN=0 lo omite) =="
+GEN="${GEN:-auto}"
+if [ "$GEN" = "0" ]; then
+  echo "  omitido por GEN=0"
+else
+  if bash "$HERE/cargar_gen.sh" "$DB"; then
+    aplicar "$HERE/assertions_gen.sql" "tests/assertions_gen.sql"
+  else
+    rc=$?
+    if [ "$rc" = "3" ] && [ "$GEN" != "1" ]; then
+      echo "  sin snapshot gen-v1 disponible: aserciones de datos reales omitidas"
+    else
+      echo "  FALLA carga de gen-v1"
+      fallos=$((fallos + 1))
+    fi
+  fi
+fi
 
 echo "== contrato de pistas (contracts/entities.pista) =="
 RAIZ="$(dirname "$DBDIR")"
