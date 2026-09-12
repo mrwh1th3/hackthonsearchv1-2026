@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { validateContract } from "@/lib/contracts/validate";
-import { guardarBorrador } from "@/lib/document/almacen-demo";
 import { estadoCitas } from "@/lib/document/citas";
 import { normalizarDocumento } from "@/lib/document/documento";
 import { esquemaBorrador } from "@/lib/document/esquemas";
-import { cargarCasoEditor, guardas, modoBackend, origenDe, respuestaNoConfigurado } from "@/lib/document/servidor";
+import { cargarCasoEditor, guardas, repositorio, respuestaNoConfigurado } from "@/lib/document/servidor";
 
 /**
  * `POST /api/reportes/borrador` — autoguardado (15 §10).
@@ -31,10 +30,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "cuerpo_invalido", detalles: parseo.error.issues }, { status: 422 });
   }
 
-  const modo = modoBackend();
-  if (modo === "no_configurado") return respuestaNoConfigurado();
+  const repo = repositorio();
+  if (!repo) return respuestaNoConfigurado();
 
-  const caso = await cargarCasoEditor(parseo.data.caso_id);
+  const caso = await cargarCasoEditor(parseo.data.caso_id, repo);
   if (!caso) return NextResponse.json({ error: "caso_no_encontrado" }, { status: 404 });
 
   // El documento llega del editor del navegador: se normaliza y se valida
@@ -45,10 +44,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "documento_invalido", detalles: validacion.errors }, { status: 422 });
   }
 
-  const resultado = guardarBorrador(parseo.data.caso_id, {
-    version_base: parseo.data.version_base,
-    documento,
-  });
+  let resultado;
+  try {
+    resultado = await repo.guardarBorrador(parseo.data.caso_id, {
+      version_base: parseo.data.version_base,
+      documento,
+    });
+  } catch {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
 
   if (!resultado.ok) {
     if (resultado.motivo === "conflicto_version") {
@@ -59,7 +63,7 @@ export async function POST(req: Request) {
 
   const citas = estadoCitas(documento, caso.referenciasValidadas);
   return NextResponse.json({
-    origen: origenDe(modo),
+    origen: repo.origen,
     guardado: resultado.valor.guardado,
     version_base: resultado.valor.version_base,
     content_hash: resultado.valor.content_hash,

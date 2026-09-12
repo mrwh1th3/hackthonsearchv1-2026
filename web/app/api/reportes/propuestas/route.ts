@@ -7,10 +7,11 @@ import { construirPropuesta, salidaEditorDemostracion } from "@/lib/document/pro
 import {
   cargarCasoEditor,
   guardas,
-  modoBackend,
+  modoPropuesta,
   nuevoUuid,
   origenDe,
   reenviarAWebhook,
+  repositorio,
   respuestaNoConfigurado,
 } from "@/lib/document/servidor";
 import type { SalidaEditor, SolicitudEdicion } from "@/lib/document/tipos";
@@ -39,10 +40,15 @@ export async function POST(req: Request) {
 
   // Antes de tocar la fuente de datos: sin backend de agentes ni fuente de
   // fixtures no hay respuesta que dar (no se finge una).
-  const modo = modoBackend();
+  const modo = modoPropuesta();
   if (modo === "no_configurado") return respuestaNoConfigurado();
 
-  const caso = await cargarCasoEditor(solicitud.caso_id);
+  // Una propuesta se calcula contra el expediente persistido: sin repositorio
+  // no hay versión base que leer ni propuesta que guardar (503, no invención).
+  const repo = repositorio();
+  if (!repo) return respuestaNoConfigurado();
+
+  const caso = await cargarCasoEditor(solicitud.caso_id, repo);
   if (!caso) return NextResponse.json({ error: "caso_no_encontrado" }, { status: 404 });
 
   // Control optimista: la propuesta se calcula contra la versión vigente.

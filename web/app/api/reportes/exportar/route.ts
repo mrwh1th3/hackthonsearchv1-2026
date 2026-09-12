@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { contractVersion } from "@/lib/contracts/validate";
-import { obtenerVersion, versionActual } from "@/lib/document/almacen-demo";
 import { citasDeMarkdown, estadoCitas } from "@/lib/document/citas";
 import { esquemaExportar } from "@/lib/document/esquemas";
-import { cargarCasoEditor, guardas, modoBackend, origenDe, respuestaNoConfigurado } from "@/lib/document/servidor";
+import { cargarCasoEditor, guardas, repositorio, respuestaNoConfigurado } from "@/lib/document/servidor";
 
 /**
  * `POST /api/reportes/exportar` — Markdown y JSON del expediente (15 §11).
@@ -29,15 +28,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "cuerpo_invalido", detalles: parseo.error.issues }, { status: 422 });
   }
 
-  const modo = modoBackend();
-  if (modo === "no_configurado") return respuestaNoConfigurado();
+  const repo = repositorio();
+  if (!repo) return respuestaNoConfigurado();
 
-  const caso = await cargarCasoEditor(parseo.data.caso_id);
+  const caso = await cargarCasoEditor(parseo.data.caso_id, repo);
   if (!caso) return NextResponse.json({ error: "caso_no_encontrado" }, { status: 404 });
 
-  const reporte = parseo.data.version
-    ? obtenerVersion(parseo.data.caso_id, parseo.data.version)
-    : versionActual(parseo.data.caso_id);
+  let reporte;
+  try {
+    reporte = parseo.data.version
+      ? await repo.obtenerVersion(parseo.data.caso_id, parseo.data.version)
+      : await repo.versionActual(parseo.data.caso_id);
+  } catch {
+    return NextResponse.json({ error: "persistencia_no_disponible" }, { status: 502 });
+  }
   if (!reporte) return NextResponse.json({ error: "version_inexistente" }, { status: 404 });
 
   const citas = estadoCitas(reporte.contenido_json, caso.referenciasValidadas);
@@ -49,7 +53,7 @@ export async function POST(req: Request) {
     autor: reporte.autor,
     creado: reporte.creado,
     generado: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-    origen: origenDe(modo),
+    origen: repo.origen,
     contratos: `v${contractVersion}`,
     content_hash: reporte.content_hash,
     citas_totales: citas.total,
