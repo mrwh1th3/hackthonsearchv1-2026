@@ -123,7 +123,14 @@ done
 # 013 (oleada 4, forense-db): reescribe F1 y añade índices. Sin ella el banco
 # mide la F1 correlacionada de 003 y la prueba de rendimiento (30 s, gate de
 # inyección en vivo de 21 §3) deja de significar lo que dice medir.
-for n in 010 011 012 013; do
+# 014 (oleada 5, forense-db): `analizar_snapshot` y el ANALYZE dentro de
+# `clonar_corrida`. Sin ella el clon nace sin estadísticas, el planeador cree
+# que la corrida nueva está vacía y el barrido de pistas se va de 2 s a 42 s:
+# la prueba de rendimiento mediría la ausencia de ANALYZE, no el barrido.
+# 015 (oleada 5, forense-db): la regla determinista de `cobertura_completa`.
+# Sin ella ningún caso puede salir de `no_concluyente` y la prueba de dictamen
+# mediría una columna que nadie escribe.
+for n in 010 011 012 013 014 015; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional
