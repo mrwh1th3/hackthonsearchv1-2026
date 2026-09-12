@@ -1,0 +1,147 @@
+// n8n/runtime/config.mjs — configuración del runtime (17 §5, §6, §7; 03 presupuestos).
+// Dueño: forense-runtime. Sin red, sin secretos, sin IDs de n8n.
+//
+// NOTA DE VERIFICACIÓN: `ANTHROPIC_VERSION` y los IDs de modelo NO están
+// comprobados contra la cuenta (21 §5 deja la credencial sin verificar).
+// Son configuración por defecto que el smoke autorizado debe confirmar o
+// corregir; ningún test de este repo prueba que existan.
+
+export const PROVEEDOR = 'messages_api';
+
+export const API = Object.freeze({
+  base_url: 'https://api.anthropic.com',
+  ruta_mensajes: '/v1/messages',
+  // Pendiente de smoke: "headers según versión API probada" (17 §5).
+  anthropic_version: '2023-06-01',
+  anthropic_version_verificada: false,
+  // Deadline de request y lease propuestos por 17 §4.
+  deadline_request_ms: 45_000,
+  lease_ms: 90_000,
+});
+
+// 17 §7: asignación inicial de modelos del producto (propuesta a medir, no
+// afirmación de disponibilidad). El modelo se resuelve SIEMPRE desde aquí,
+// nunca desde el prompt ni desde datos del contribuyente.
+export const MODELOS_POR_ROL = Object.freeze({
+  documental: 'sonnet',
+  financiero: 'opus',
+  relacional: 'opus',
+  temporal: 'sonnet',
+  externo: 'sonnet',
+  auditor: 'opus',
+  defensor: 'opus',
+  replica: 'opus',
+  redactor: 'sonnet',
+  editor: 'sonnet',
+});
+
+// Alias → ID de API. Sin verificar contra la cuenta (17 §10): el smoke debe
+// resolver los IDs realmente soportados antes de ejecutar.
+export const IDS_MODELO = Object.freeze({
+  sonnet: 'claude-sonnet-4-5',
+  opus: 'claude-opus-4-1',
+});
+export const IDS_MODELO_VERIFICADOS = false;
+
+// 17 §7: techos de TOKENS de entrada por rol (medidos con contador del modelo).
+export const TECHO_TOKENS_ENTRADA = Object.freeze({
+  documental: 8000,
+  financiero: 8000,
+  relacional: 8000,
+  temporal: 8000,
+  externo: 8000,
+  auditor: 16000,
+  defensor: 16000,
+  replica: 16000,
+  redactor: 24000,
+  editor: 24000,
+});
+
+// 08 + 17 §7: techos de CARACTERES del paquete inicial. Se aplican ADEMÁS de
+// los techos de tokens; no son una conversión de aquéllos.
+export const TECHO_CARACTERES_PAQUETE = Object.freeze({
+  documental: 12000,
+  financiero: 12000,
+  relacional: 12000,
+  temporal: 12000,
+  externo: 12000,
+  auditor: 24000,
+  defensor: 24000,
+  replica: 24000,
+  redactor: 24000,
+  editor: 24000,
+});
+
+// Techo de salida por rol (max_tokens del request). Configurable.
+export const MAX_TOKENS_SALIDA = Object.freeze({
+  documental: 2000,
+  financiero: 2000,
+  relacional: 2000,
+  temporal: 2000,
+  externo: 2000,
+  auditor: 4000,
+  defensor: 4000,
+  replica: 2000,
+  redactor: 8000,
+  editor: 8000,
+});
+
+// 03 + 06: allowlist de herramientas por rol. `leer_senal` NO existe para R1
+// (ACL de 06); se habilita en ronda 2 / reintento y para Auditor y Defensor.
+export const HERRAMIENTAS_POR_ROL = Object.freeze({
+  documental: Object.freeze(['forense_perfil', 'forense_facturas', 'forense_pares',
+    'forense_escribir_senal', 'forense_registrar_evidencia']),
+  financiero: Object.freeze(['forense_conciliar', 'forense_seguir_dinero', 'forense_facturas',
+    'forense_escribir_senal', 'forense_registrar_evidencia']),
+  relacional: Object.freeze(['forense_relacionados', 'forense_ciclos', 'forense_facturas',
+    'forense_escribir_senal', 'forense_registrar_evidencia']),
+  temporal: Object.freeze(['forense_perfil', 'forense_facturas', 'forense_pares',
+    'forense_escribir_senal', 'forense_registrar_evidencia']),
+  externo: Object.freeze(['forense_listas', 'forense_relacionados',
+    'forense_escribir_senal', 'forense_registrar_evidencia']),
+  auditor: Object.freeze(['forense_perfil', 'forense_facturas', 'forense_conciliar',
+    'forense_seguir_dinero', 'forense_relacionados', 'forense_ciclos', 'forense_pares',
+    'forense_listas', 'forense_leer_senal', 'forense_registrar_evidencia']),
+  defensor: Object.freeze(['forense_perfil', 'forense_facturas', 'forense_conciliar',
+    'forense_seguir_dinero', 'forense_relacionados', 'forense_ciclos', 'forense_pares',
+    'forense_listas', 'forense_leer_senal']),
+  // 03/17: sin herramientas. No se envía la clave `tools`.
+  replica: Object.freeze([]),
+  redactor: Object.freeze([]),
+  editor: Object.freeze([]),
+});
+
+// Herramienta de lectura del pizarrón: prohibida en R1 (17 §7, 06 ACL).
+export const HERRAMIENTA_PIZARRON = 'forense_leer_senal';
+
+export const ROLES_ESPECIALISTA = Object.freeze(['documental', 'financiero', 'relacional', 'temporal', 'externo']);
+export const ROLES_SIN_TOOLS = Object.freeze(['replica', 'redactor', 'editor']);
+export const ROLES_CIERRE = Object.freeze(['auditor', 'defensor', 'replica', 'redactor']);
+
+export const FAMILIA_POR_ROL = Object.freeze({
+  documental: 'D', financiero: 'F', relacional: 'R', temporal: 'T', externo: 'E',
+});
+export const ROL_POR_FAMILIA = Object.freeze({
+  D: 'documental', F: 'financiero', R: 'relacional', T: 'temporal', E: 'externo',
+});
+
+// Contrato de salida por rol → nombre del contrato en contracts/release.json.
+export const CONTRATO_SALIDA_POR_ROL = Object.freeze({
+  documental: 'agents.especialista',
+  financiero: 'agents.especialista',
+  relacional: 'agents.especialista',
+  temporal: 'agents.especialista',
+  externo: 'agents.especialista',
+  auditor: 'agents.auditor',
+  defensor: 'agents.defensor',
+  replica: 'agents.replica',
+  redactor: 'agents.redactor',
+  editor: 'agents.editor',
+});
+
+// 17 §6 / §5: una sola reparación acotada por paso de validación.
+export const MAX_REPARACIONES_JSON = 1;
+// 17 §6: hasta dos reintentos de TRANSPORTE (no son reintentos forenses).
+export const MAX_REINTENTOS_TRANSPORTE = 2;
+// 03: máximo dos reintentos forenses por caso.
+export const MAX_REINTENTOS_FORENSES = 2;
