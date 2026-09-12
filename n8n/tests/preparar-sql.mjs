@@ -25,27 +25,26 @@ const PSQL = process.env.PSQL ?? '/opt/homebrew/opt/postgresql@17/bin/psql';
 // Funciones que entrega forense-db en 004/005 (y el enum de bitácora que hay
 // que ampliar). Un fallo que las mencione es dependencia, no defecto.
 const PENDIENTES = [
-  // 004/005 — investigación y herramientas
-  'advance_case_if_ready', 'validar_salida_rol', 'reclamar_cluster', 'crear_caso',
-  'preparar_contexto_ronda1', 'crear_tareas_ronda', 'estado_barrera', 'cerrar_ronda',
-  'expandir_y_crear_tareas_r2', 'abrir_tarea_cierre', 'forense_validar_evidencia',
-  'aplicar_resolucion_replica', 'paquete_auditor_final', 'guardar_dictamen',
-  'validar_expediente', 'cerrar_caso', 'armar_clusters', 'v_metricas_corrida',
-  // 004/005 — reintento y corrida
+  // Ausentes de verdad en 001–008 (verificado con pg_proc el 2026-09-12 H5):
+  // escrituras transaccionales que pertenecen a forense-db. Ver IMPORT.md
+  // §«Funciones que faltan» y `solicitudes_coordinador` de la entrega.
+  'abrir_corrida', 'cargar_o_clonar_snapshot', 'verificar_integridad_corrida',
+  'estado_corrida', 'cerrar_ronda', 'aplicar_resolucion_replica',
+  'paquete_auditor_final', 'guardar_dictamen', 'validar_expediente', 'cerrar_caso',
   'autores_reintento', 'expandir_cluster_reintento', 'crear_tareas_revision',
-  'revalidar_caso', 'abrir_corrida', 'cargar_o_clonar_snapshot',
-  'verificar_integridad_corrida', 'estado_corrida', 'cerrar_barreras_vencidas',
-  // 006 — producto y editor
+  'revalidar_caso', 'cerrar_barreras_vencidas', 'eventos_salida_pendientes',
   'cargar_version_expediente', 'guardar_propuesta_edicion',
-  // 007 — notificaciones y voz
-  'leer_evento_salida', 'reclamar_evento_salida', 'destinatario_aviso',
-  'omitir_llamada', 'crear_intento_llamada', 'guardar_aceptacion_llamada',
-  'registrar_callback_llamada', 'actualizar_llamada', 'eventos_salida_pendientes',
-  // 008 — ingesta e inyección en vivo (21 §3)
-  'clonar_corrida_con_inyeccion', 'registrar_inyeccion', 'validar_inyeccion',
-  'clusters_por_prioridad_inyeccion', 'forense.inyecciones',
-  // enum de bitácora a ampliar
-  'ck_bitacora_tipo_evento', 'paso_en_cola', 'paso_checkpoint', 'corrida_cargada',
+  // 007 — el nodo llama a un nombre que 007 no expone; la capacidad existe con
+  // otra firma (reclamar_evento_salida(owner,segundos), solicitar_llamada,
+  // resultado_llamada). Pendientes de recablear, NO de migración.
+  'leer_evento_salida', 'destinatario_aviso', 'omitir_llamada',
+  'crear_intento_llamada', 'guardar_aceptacion_llamada', 'reclamar_evento_salida',
+  'registrar_callback_llamada', 'actualizar_llamada',
+  // 008 — idem: existe clusters_afectados(p_inyeccion) y registrar_inyeccion
+  // con cinco argumentos.
+  'clusters_por_prioridad_inyeccion', 'registrar_inyeccion',
+  // enum de bitácora que 009 amplía
+  'ck_bitacora_tipo_evento', 'paso_en_cola', 'paso_checkpoint',
 ];
 
 const archivos = fs.readdirSync(path.join(RAIZ, 'workflows')).filter((f) => f.endsWith('.json'));

@@ -115,11 +115,10 @@ segundo; 21 §5 es normativo sobre 00–20).
 Sin esto, los workflows importan pero no corren. `preparar-sql.mjs` los localiza
 uno a uno; el resumen:
 
-1. **`forense.advance_case_if_ready(caso_id uuid, paso text, revision_expected int)`.**
-   En `db/002_views.sql` la función tiene hoy **dos** argumentos. La decisión
-   H3 01:35 (DECISIONES.md) le da el `paso` porque la barrera es por paso, y el
-   JSON ya la llama con tres. **Hasta que 004/005 la publique con tres
-   argumentos, el worker falla al cerrar un paso terminal.**
+1. ~~`forense.advance_case_if_ready` con tres argumentos~~ **resuelto**: 005 la
+   publica como `(p_caso_id uuid, p_paso text, p_revision_expected int default
+   null)` y devuelve `jsonb`. Verificado el 2026-09-12 H5 ejecutándola de verdad
+   (`n8n/tests/e2e-camino-worker.mjs`), no sólo con `PREPARE`.
 2. **Dos valores nuevos en el check `ck_bitacora_tipo_evento`:** `paso_en_cola` y
    `paso_checkpoint`. Comprobado con un INSERT real contra la base local:
    `ERROR: new row for relation "bitacora" violates check constraint
@@ -129,12 +128,77 @@ uno a uno; el resumen:
    prefiere no ampliar el enum, el cambio alternativo es de una línea por nodo
    (`p_tipo => 'razonamiento'` con el evento real en el payload), pero entonces
    la UI no puede distinguir el paso en cola del razonamiento.
-3. **Funciones de 004–008** que el JSON llama y todavía no existen (48
-   ocurrencias). Para cada nodo que las usa, la tabla `CONTRATOS_NODOS` de
-   `n8n/runtime/generar-workflows.mjs` declara **qué columnas debe devolver**;
-   `FORMA_PENDIENTE` lista esos nodos explícitamente. Esa tabla es la
-   especificación: si la función devuelve otra forma, el grafo se rompe en el
-   nodo siguiente, no en el que falla.
+3. **Funciones de 004–008.** Estado medido el 2026-09-12 H5 con
+   `node n8n/tests/preparar-sql.mjs <base>` sobre una base con 001–008:
+   **ok=45, pendiente=28, falla=0** (antes del recableado: ok=42, pendiente=31).
+   Para cada nodo que las usa, `CONTRATOS_NODOS` en
+   `n8n/runtime/generar-workflows.mjs` declara **qué columnas debe devolver** y
+   `FORMA_PENDIENTE` lista los nodos cuya forma sigue sin verificar. Detalle en
+   §3.5.
+
+   **Aviso importante sobre `PREPARE`:** analiza tipos, no la forma de la
+   salida. Casi todas las funciones de 004–008 devuelven **`jsonb` escalar**, así
+   que `SELECT * FROM forense.f(...)` pasa `PREPARE` y publica **una sola
+   columna** con el nombre de la función: el nodo siguiente no encuentra
+   `$json.caso_id` y el grafo se rompe donde no falló nada. Por eso los nodos del
+   camino de investigación proyectan con `jsonb_to_record(...) AS x(col tipo…)`.
+   `falla=0` **no** es prueba de cableado; la prueba es
+   `node n8n/tests/e2e-camino-worker.mjs <base>`.
+
+### 3.5 Funciones que faltan en 001–008 (petición a forense-db)
+
+Verificado contra `pg_proc` de una base con 001–008 aplicadas, no supuesto.
+Dos grupos distintos:
+
+**(a) Ausentes: escrituras transaccionales que pertenecen a la migración.** El
+nodo no puede inlinearlas sin duplicar invariantes (atomicidad, evento de
+bitácora, liberación de lease) ni sacar el dictamen determinista de la DB:
+
+| Función pedida | Workflow / nodo | Qué debe devolver (CONTRATOS_NODOS) |
+|---|---|---|
+| `forense.cerrar_ronda(caso uuid, ronda int, resumen jsonb)` | investigar_cluster / Ronda fin R1 | `senales, familias_evaluables, version_contexto, roles_por_expansion, rfcs_frontera, ruta_material, expansiones_usadas` |
+| `forense.aplicar_resolucion_replica(caso uuid, tarea uuid)` | investigar_cluster / Aplicar resolución | `resoluciones` |
+| `forense.paquete_auditor_final(caso uuid)` | investigar_cluster / Paquete auditor final | `caso, pistas, evidencia, pendientes, cobertura_completa, presupuesto` (lectura pura: puede quedarse como SELECT del nodo si forense-db prefiere) |
+| `forense.guardar_dictamen(caso uuid, dictamen jsonb)` | investigar_cluster / Guardar dictamen | `caso_id, nivel, version` |
+| `forense.validar_expediente(caso uuid, version int)` | investigar_cluster / Validar citas | `version, ok, estado_final` |
+| `forense.cerrar_caso(caso uuid, estado_final text)` | investigar_cluster / Cerrar caso | `estado_final, duracion_ms` |
+| `forense.autores_reintento(caso uuid, motivo text, objetivo jsonb)` | reintento / Seleccionar autores | `autores, puede_expandir, motivo, objetivo` |
+| `forense.expandir_cluster_reintento(caso uuid, objetivo jsonb)` | reintento / Expandir para reintento | `autores, expandido, version_contexto, rfcs_nuevos` |
+| `forense.crear_tareas_revision(caso uuid, intento int, autores text[], objetivo jsonb)` | reintento / Crear tareas de revisión | `tarea_id, tarea_ids, version_contexto, deadline` |
+| `forense.revalidar_caso(caso uuid)` | reintento / Revalidar si cambió evidencia | `limitaciones, evidencia_revalidada` |
+| `forense.cerrar_barreras_vencidas(now timestamptz)` | reconciliador / Barreras vencidas | `caso_id, paso, cerradas, limitaciones` |
+| `forense.eventos_salida_pendientes(limite int)` | reconciliador / Outbox pendiente | `evento_id, investigacion_id, intentos` |
+| `forense.abrir_corrida`, `cargar_o_clonar_snapshot`, `verificar_integridad_corrida`, `estado_corrida` | corrida (4 nodos) | ver `CONTRATOS_NODOS.FORENSE_corrida` |
+| `forense.cargar_version_expediente(caso uuid, version int)`, `forense.guardar_propuesta_edicion(...)` | editar_expediente | ver `CONTRATOS_NODOS.FORENSE_editar_expediente` |
+
+**(b) Existen con otro nombre o firma: el recableado es del nodo, no de la DB.**
+Queda pendiente en este corte y **no** requiere migración:
+
+| El nodo llama | Existe en la DB como |
+|---|---|
+| `leer_evento_salida`, `destinatario_aviso`, `omitir_llamada`, `crear_intento_llamada`, `guardar_aceptacion_llamada` | `forense.reclamar_evento_salida(p_owner text, p_segundos int)` + `forense.solicitar_llamada(p_event_id uuid, p_owner text, p_agent_id text)` |
+| `reclamar_evento_salida(uuid, text)` | `forense.reclamar_evento_salida(text, int)` — el evento no se pasa, se reclama el siguiente |
+| `registrar_callback_llamada` + `actualizar_llamada` | `forense.resultado_llamada(p_llamada, p_estado, p_provider_payload, p_conversation_id, p_call_sid, p_aviso_entregado, p_error)` |
+| `clusters_por_prioridad_inyeccion(uuid, uuid)` | `forense.clusters_afectados(p_inyeccion uuid)` → TABLE(cluster_id, score, n_rfcs_afectados, prioridad) |
+| `registrar_inyeccion(uuid, uuid, text, text)` | `forense.registrar_inyeccion(p_base uuid, p_payload jsonb, p_origen text, p_idempotency uuid, p_perfil uuid)` |
+| «Aplicar» del editor | `forense.aplicar_propuesta(p_propuesta uuid, p_perfil uuid, p_contenido_json jsonb, p_markdown text)` → jsonb con `aplicada, version_resultante, conflicto_version` |
+
+**Bugs de cableado ya corregidos en este corte** (estaban en el JSON, no en la DB):
+`crear_caso` recibía cluster y corrida invertidos; `crear_tareas_ronda` pasaba el
+intento en la posición de los agentes; `expandir_y_crear_tareas_r2` mandaba jsonb
+donde la firma pide `text[]`; `public.forense_validar_evidencia` se llamaba con
+dos argumentos y sólo acepta uno.
+
+### 3.6 Contratos de estado descubiertos al ejecutar
+
+- `forense.tareas_agente.estado` admite `pendiente | ejecutando | completada |
+  error | timeout | omitida`. **No** admite `terminado`: ése es el
+  `estado_interno` de `forense.ejecuciones_agente`. Un nodo que confunda ambos
+  rompe el check, no la lógica.
+- Las RPC `public.forense_*` se loggean a sí mismas en `forense.bitacora`
+  (`tool_call` + `tool_result`). `forense.tool_ejecuciones` es el ledger de
+  runtime y cuelga de una ejecución LLM: con proveedor simulado está vacío y eso
+  es correcto, no una pérdida de rastro.
 4. **Idempotencia por `p_operacion`** en los wrappers `public.forense_*` (06
    §Runtime). La rama de herramientas del worker es lineal a propósito: llama a
    la RPC para cada `tool_use_id`, incluidas las reentregas, y confía en que
@@ -182,6 +246,36 @@ Registrar p50/p95, requests, tokens, límite efectivo y errores en
   (`3fc52b5a-3e4b-54f4-a714-b3303b6f0347`, 140 pistas) sirve de referencia.
 - `select forense.correr_pistas(<corrida>)` ya ejecutado o se ejecutará desde
   `FORENSE_corrida`.
+
+**Paso 0.b — ensayo sin n8n (recomendado antes de importar).** El camino
+completo del worker se puede ejecutar contra Postgres con el proveedor simulado,
+sin instancia n8n y sin gastar cuota de Anthropic:
+
+```sh
+createdb -U postgres forense_rt
+pg_dump -U postgres -Fc -n forense -n public -d forense -f /tmp/forense.dump
+pg_restore -U postgres -d forense_rt --no-owner --no-acl /tmp/forense.dump
+# 009 aún no está en main: ampliar el check en ESTA base, no en la compartida
+psql -U postgres -d forense_rt -c "ALTER TABLE forense.bitacora \
+  DROP CONSTRAINT ck_bitacora_tipo_evento, ADD CONSTRAINT ck_bitacora_tipo_evento \
+  CHECK (tipo_evento IS NULL OR tipo_evento = ANY (ARRAY[...,'paso_en_cola','paso_checkpoint']))"
+node n8n/tests/preparar-sql.mjs forense_rt      # espera falla=0
+node n8n/tests/e2e-camino-worker.mjs forense_rt # espera eventos>0 y un nivel
+```
+
+Referencia medida el 2026-09-12 H5 sobre un clon de `gen-v1` (regla 10: se clona,
+nunca se investiga sobre `gen-v1`): **45 eventos en `forense.bitacora`**
+(16 `tool_call` + 16 `tool_result`, 5 señales, `dictamen`, `validacion`,
+`auditoria`, `ronda_inicio`×2, `redaccion_inicio/fin`), nivel `presuncion_alta`
+con familias D/E/F/R/T, 45 pasos SQL en **49.1 s**, de los cuales **~46 s son
+`forense.correr_pistas`** sobre 8081 CFDI: el resto del camino son ~3 s. Ese
+reparto es el dato a llevar al gate — el cuello de botella de una corrida nueva
+es el cálculo de pistas, no la orquestación. Con `--reusar <corrida_clonada>` el
+ensayo se repite en ~1 s.
+
+El script **no** prueba el proveedor real ni la calidad de detección: prueba que
+DB → RPC → orquestación → dictamen determinista → expediente están cableados y
+dejan rastro.
 
 ### Paso 1 — una herramienta real
 
