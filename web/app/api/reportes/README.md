@@ -43,8 +43,26 @@ BFF». No hay nodo de webhook para las cinco operaciones deterministas, así que
 
 Cada respuesta declara `origen` (`supabase` | `fixture` | `n8n`) y, cuando
 escribe, `bitacora: true|false` — CLAUDE.md regla 2: el modo fixture nunca
-afirma un evento que no ocurrió. Sin repositorio, Aplicar responde 503 y el
-cliente conserva su borrador.
+afirma un evento que no ocurrió, y `bitacora` es lo que ESA escritura dejó, no
+la capacidad del modo (una reversión repetida no vuelve a anotar). Sin
+repositorio, Aplicar responde 503 y el cliente conserva su borrador.
+
+Estado de la persistencia en modo `supabase` (H8):
+
+- **Propuesta**: `/propuestas` mintea el `propuesta_id` e inserta la fila en
+  `forense.propuestas_edicion` (006 §5) antes de responder — el workflow de
+  n8n no inserta nada (decisión del coordinador). `request_id` lleva el
+  `idempotency_key` (UNIQUE): un reintento devuelve la misma propuesta.
+- **Aplicar**: lee esa fila acotada por `caso_id` y manda `p_contenido_json` y
+  `p_markdown` derivados del `patch` persistido. Nunca lee memoria del proceso.
+- **Descartar**: transición confirmada + evento `edicion` con
+  `payload.evento_real='propuesta_descartada'` por `forense.log`.
+- **Revertir**: `forense.revertir_expediente` (migración 010) si existe; si
+  PostgREST responde `PGRST202` —y solo entonces—, INSERT + `forense.log`.
+  Cualquier otro error de la RPC se propaga: no se reescribe a mano lo que
+  pudo haberse escrito ya.
+- **Borrador**: el autoguardado vive en `contenido_json` de la versión vigente;
+  no hay almacén en memoria en este modo.
 
 Envs nuevas que el despliegue necesita: `SUPABASE_SERVICE_ROLE_KEY` y
 (opcional) `SUPABASE_URL` si difiere de `NEXT_PUBLIC_SUPABASE_URL`.
