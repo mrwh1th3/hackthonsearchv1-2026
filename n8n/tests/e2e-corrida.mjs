@@ -161,6 +161,24 @@ if (!SALIDA_JSON) {
   console.log('\n── preparación de la corrida (nodos del JSON exportado)');
 }
 
+// 0. Regresión del caso degenerado: una corrida SIN clusters. `estado_corrida`
+//    exige `total > 0` para declarar `terminada`, así que devuelve false y
+//    `sin_clusters` indefinidamente; con el IF leyendo `terminada` a secas el
+//    bucle giraba para siempre. Se comprueba con la consulta REAL del nodo
+//    contra una corrida sin clusters (lectura pura, no muta nada).
+const sinClusters = psql(`select id::text from forense.corridas c
+   where not exists (select 1 from forense.clusters k where k.corrida_id = c.id) limit 1`);
+if (sinClusters) {
+  const degenerado = filaDeNodo('nodo Esperar y reconciliar (corrida sin clusters)',
+    'Esperar y reconciliar', [sinClusters]);
+  if (degenerado.estado_final !== 'sin_clusters' || degenerado.terminada !== false) {
+    throw new Error(`el caso degenerado cambió de forma: ${JSON.stringify(degenerado)}`);
+  }
+  if (degenerado.cerrable !== true) {
+    throw new Error('una corrida sin clusters no es `cerrable`: el bucle giraría para siempre');
+  }
+}
+
 // 1. «Validar e idempotencia» → 2. «Cargar o clonar snapshot» → 3. integridad.
 const idem = `${SELLO}`;
 const abierta = filaDeNodo('nodo Validar e idempotencia', 'Validar e idempotencia',
@@ -289,6 +307,10 @@ if (inicial.length === 0) throw new Error('el despacho inicial devolvió cero í
 
 const casosAbiertos = [];
 const despachados = [];
+// Lo que realmente entra a «Ciclo de corrida» en la vuelta: los ítems que salió
+// el IF por la rama que se tomó. Arranca con el despacho inicial y en cada
+// vuelta se sustituye por lo que produjo el redespacho.
+let itemsDeLaVuelta = inicial;
 for (const d of inicial.filter(hayAdmitidos)) {
   despachados.push(d.cluster_id);
   casosAbiertos.push(crearCaso(d));
@@ -310,9 +332,16 @@ while (true) {
   }
   if (!SALIDA_JSON) console.log(`\n── vuelta ${vuelta}`);
 
-  // «Ciclo de corrida»: colapsa la vuelta a un ítem antes de reconciliar.
-  const ciclo = ejecutarCodeNode('Ciclo de corrida', { entrada: inicial, corrida: abierta });
+  // «Ciclo de corrida»: colapsa la vuelta a UN ítem antes de reconciliar. Se le
+  // pasan los ítems de ESTA vuelta (el despacho inicial la primera vez, el
+  // redespacho después): colapsar el lote del redespacho es justo su razón de
+  // existir, y probarlo siempre con el lote inicial no mediría nada.
+  const ciclo = ejecutarCodeNode('Ciclo de corrida', { entrada: itemsDeLaVuelta, corrida: abierta });
   if (ciclo.length !== 1) throw new Error(`«Ciclo de corrida» devolvió ${ciclo.length} ítems, no 1`);
+  const esperados = itemsDeLaVuelta.filter((i) => i.despachar === true).length;
+  if (ciclo[0].despachados_en_vuelta !== esperados) {
+    throw new Error(`«Ciclo de corrida» contó ${ciclo[0].despachados_en_vuelta} despachos y entraron ${esperados}`);
+  }
 
   estado = filaDeNodo('nodo Esperar y reconciliar', 'Esperar y reconciliar', [CORRIDA]);
   if (estado.terminada === true) break;
@@ -340,6 +369,7 @@ while (true) {
     despachados.push(d.cluster_id);
     casosAbiertos.push(crearCaso(d));
   }
+  itemsDeLaVuelta = redespacho;
   vueltas.push({
     vuelta,
     cola_restante: Number(cola.cola_restante),

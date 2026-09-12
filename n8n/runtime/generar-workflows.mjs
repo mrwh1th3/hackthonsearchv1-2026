@@ -1575,13 +1575,14 @@ export function corrida() {
     'Esperar y reconciliar',
     [
       'SELECT e.corrida_id, e.terminada, e.estado_final,',
-      '       e.completados, e.en_cola, e.errores',
+      '       e.completados, e.en_cola, e.errores,',
+      "       (e.terminada OR e.estado_final = 'sin_clusters') AS cerrable",
       '  FROM forense.estado_corrida($1::uuid) e',
     ].join('\n'),
     C('corrida_id'),
-    'Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. DEPENDE de forense-db.',
+    "Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. `cerrable` añade el único caso en que `terminada` es false y aun así no hay nada que esperar: `sin_clusters` (estado_corrida exige total>0 para declarar terminada, así que una corrida sin clusters giraría para siempre). DEPENDE de forense-db.",
   ));
-  add(si('¿Corrida terminada?', '={{ $json.terminada }}'));
+  add(si('¿Corrida terminada?', '={{ $json.cerrable }}'));
 
   // Rama de espera: es la que drena la cola. Mientras `cola_restante > 0` se
   // vuelve a mirar cuántos slots quedan libres y se despachan los clusters
@@ -1626,12 +1627,14 @@ export function corrida() {
   add(sql(
     'Métricas',
     [
-      'SELECT forense.v_metricas_corrida($1::uuid) AS metricas,',
-      '       e.estado_final, e.terminada',
+      'SELECT forense.v_metricas_corrida($1::uuid)',
+      "       || jsonb_build_object('estado_final_calculado', e.estado_final) AS metricas,",
+      '       e.estado_final, e.terminada,',
+      "       CASE WHEN e.estado_final = 'error' THEN 'error' ELSE 'completada' END AS estado_cierre",
       '  FROM forense.estado_corrida($1::uuid) e',
     ].join('\n'),
     C('corrida_id'),
-    'Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista.',
+    "Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista. `estado_cierre` lo traduce al dominio de `corridas.estado` (CHECK: preparando|lista|procesando|completada|error): `sin_clusters` NO es un estado persistible y escribirlo rompía la restricción; el matiz viaja en `metricas.estado_final_calculado`.",
   ));
 
   add(sql(
@@ -1642,8 +1645,8 @@ export function corrida() {
       ' WHERE id = $1::uuid',
       'RETURNING id AS corrida_id, estado, fin, metricas',
     ].join('\n'),
-    `${C('corrida_id')}, ={{ $json.estado_final }}, ={{ JSON.stringify($json.metricas) }}`,
-    '`completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables.',
+    `${C('corrida_id')}, ={{ $json.estado_cierre }}, ={{ JSON.stringify($json.metricas) }}`,
+    '`completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.',
   ));
 
   fila = 3; columna = 0;
@@ -1654,7 +1657,8 @@ export function corrida() {
     'y se despacha en la rama de espera conforme se liberan slots.',
     'Una corrida vacía no se investiga y terminar de despachar',
     'no es cerrar la corrida: cierra `estado_corrida`, que cuenta',
-    'también la cola de clusters (012).',
+    'también la cola de clusters (012). Sin clusters, `terminada`',
+    'es false por definición: lo cierra `cerrable`.',
   ].join('\n'), 240, 400));
 
   const connections = conectar([
@@ -2447,13 +2451,13 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Despachar cluster': [],
     'Ciclo de corrida': ['vuelta', 'items_entrantes', 'despachados_en_vuelta', 'clusters_en_vuelta'],
     'Esperar y reconciliar': ['corrida_id', 'terminada', 'estado_final', 'completados',
-      'en_cola', 'errores'],
+      'en_cola', 'errores', 'cerrable'],
     'Cola y slots': ['corrida_id', 'clusters_total', 'cola_restante', 'casos_activos', 'pendientes'],
     'Redespachar pendientes': ['cluster_id', 'corrida_id', 'investigacion_id', 'idempotency_key',
       'admitidos', 'en_cola', 'cola_restante', 'despachar', 'max_activos', 'casos_activos',
       'slots_libres', 'pendientes_totales', 'motivo'],
     'Despachar pendiente': [],
-    'Métricas': ['metricas', 'estado_final', 'terminada'],
+    'Métricas': ['metricas', 'estado_final', 'terminada', 'estado_cierre'],
     'Cerrar corrida': ['corrida_id', 'estado', 'fin', 'metricas'],
   }),
   FORENSE_inyectar: Object.freeze({

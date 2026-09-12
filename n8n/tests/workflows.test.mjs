@@ -310,9 +310,29 @@ test('corrida: ningún despacho sale sin cluster_id (el IF decide, no la lista v
     assert.equal(nodo.parameters.conditions.conditions[0].leftValue, '={{ $json.despachar }}');
   }
   // El SELECT de clusters emite ítem aunque no haya ninguno: una corrida vacía
-  // llega al bucle y cierra como `sin_clusters` en vez de quedarse colgada.
+  // llega al bucle en vez de detener la rama en el primer nodo.
   const select = wf.nodes.find((n) => n.name === 'Clusters por score');
   assert.equal(select.alwaysOutputData, true);
+});
+
+test('corrida: una corrida SIN clusters cierra — `terminada` sola la dejaría girando', () => {
+  const wf = cargar('FORENSE_corrida.json');
+  // forense.estado_corrida (012) exige `total > 0` para declarar `terminada`,
+  // así que con cero clusters devuelve terminada=false y estado_final
+  // 'sin_clusters' PARA SIEMPRE. El IF no puede leer `terminada` a secas.
+  const reconciliar = wf.nodes.find((n) => n.name === 'Esperar y reconciliar');
+  assert.match(reconciliar.parameters.query, /'sin_clusters'\) AS cerrable/);
+  const decision = wf.nodes.find((n) => n.name === '¿Corrida terminada?');
+  assert.equal(decision.parameters.conditions.conditions[0].leftValue, '={{ $json.cerrable }}');
+  // Y lo que se persiste tiene que caber en el CHECK de corridas.estado
+  // (preparando|lista|procesando|completada|error): 'sin_clusters' no cabe.
+  const metricas = wf.nodes.find((n) => n.name === 'Métricas');
+  assert.match(metricas.parameters.query, /AS estado_cierre/);
+  assert.match(metricas.parameters.query, /estado_final_calculado/);
+  const cerrar = wf.nodes.find((n) => n.name === 'Cerrar corrida');
+  assert.match(cerrar.parameters.options.queryReplacement, /\$json\.estado_cierre/);
+  assert.equal(/\$json\.estado_final/.test(cerrar.parameters.options.queryReplacement), false,
+    'estado_final puede valer sin_clusters y rompería el CHECK de corridas.estado');
 });
 
 test('corrida: el estado con el que se cierra se relee, no se toma de una vuelta del bucle', () => {
@@ -321,7 +341,7 @@ test('corrida: el estado con el que se cierra se relee, no se toma de una vuelta
   const reemplazos = cerrar.parameters.options.queryReplacement;
   assert.equal(/Esperar y reconciliar/.test(reemplazos), false,
     'el nodo corre muchas veces: referenciar una de sus vueltas no es determinista');
-  assert.match(reemplazos, /\$json\.estado_final/);
+  assert.match(reemplazos, /\$json\.estado_cierre/);
   const metricas = wf.nodes.find((n) => n.name === 'Métricas');
   assert.match(metricas.parameters.query, /forense\.estado_corrida\(\$1::uuid\)/);
   assert.match(metricas.parameters.query, /forense\.v_metricas_corrida\(\$1::uuid\)/);

@@ -265,8 +265,15 @@ Cuatro cosas que un cambio manual en la UI de n8n rompe en silencio:
 3. **`MAX_ACTIVOS` es una constante inyectada** al principio del `jsCode` de
    `Despachar hasta 4` y `Redespachar pendientes` (valor 4). Cambiarla en un solo
    nodo descuadra el techo: se cambia en `generar-workflows.mjs` y se regenera.
-4. **`Clusters por score` lleva `alwaysOutputData: true`.** Sin eso, una corrida
-   sin clusters no llega al bucle y se queda `procesando` para siempre.
+4. **`Clusters por score` lleva `alwaysOutputData: true`** y el IF lee
+   **`cerrable`, no `terminada`.** `forense.estado_corrida` (012) exige
+   `total > 0` para declarar `terminada`, así que una corrida **sin clusters**
+   devuelve `terminada=false` y `estado_final='sin_clusters'` indefinidamente:
+   con el IF leyendo `terminada` el bucle giraría cada 10 s para siempre.
+   `cerrable = terminada OR estado_final = 'sin_clusters'` lo cierra, y
+   `Métricas` traduce con `estado_cierre` porque `sin_clusters` **no cabe** en el
+   CHECK de `corridas.estado` (`preparando|lista|procesando|completada|error`);
+   el matiz viaja en `metricas.estado_final_calculado`.
 
 `Espera corrida` es un nodo `wait` de 10 000 ms: acota la vuelta sin hacer
 polling al proveedor. Las dos lecturas por vuelta son de Postgres

@@ -255,7 +255,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. DEPENDE de forense-db.\nSELECT e.corrida_id, e.terminada, e.estado_final,\n       e.completados, e.en_cola, e.errores\n  FROM forense.estado_corrida($1::uuid) e",
+        "query": "-- Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. `cerrable` añade el único caso en que `terminada` es false y aun así no hay nada que esperar: `sin_clusters` (estado_corrida exige total>0 para declarar terminada, así que una corrida sin clusters giraría para siempre). DEPENDE de forense-db.\nSELECT e.corrida_id, e.terminada, e.estado_final,\n       e.completados, e.en_cola, e.errores,\n       (e.terminada OR e.estado_final = 'sin_clusters') AS cerrable\n  FROM forense.estado_corrida($1::uuid) e",
         "options": {
           "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
         }
@@ -285,7 +285,7 @@
           "conditions": [
             {
               "id": "c1",
-              "leftValue": "={{ $json.terminada }}",
+              "leftValue": "={{ $json.cerrable }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -419,7 +419,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista.\nSELECT forense.v_metricas_corrida($1::uuid) AS metricas,\n       e.estado_final, e.terminada\n  FROM forense.estado_corrida($1::uuid) e",
+        "query": "-- Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista. `estado_cierre` lo traduce al dominio de `corridas.estado` (CHECK: preparando|lista|procesando|completada|error): `sin_clusters` NO es un estado persistible y escribirlo rompía la restricción; el matiz viaja en `metricas.estado_final_calculado`.\nSELECT forense.v_metricas_corrida($1::uuid)\n       || jsonb_build_object('estado_final_calculado', e.estado_final) AS metricas,\n       e.estado_final, e.terminada,\n       CASE WHEN e.estado_final = 'error' THEN 'error' ELSE 'completada' END AS estado_cierre\n  FROM forense.estado_corrida($1::uuid) e",
         "options": {
           "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
         }
@@ -440,9 +440,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables.\nUPDATE forense.corridas\n   SET estado = $2::text, fin = now(), metricas = $3::jsonb\n WHERE id = $1::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
+        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.\nUPDATE forense.corridas\n   SET estado = $2::text, fin = now(), metricas = $3::jsonb\n WHERE id = $1::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $json.estado_final }}, ={{ JSON.stringify($json.metricas) }}"
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $json.estado_cierre }}, ={{ JSON.stringify($json.metricas) }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -460,7 +460,7 @@
     },
     {
       "parameters": {
-        "content": "FORENSE_corrida (07 §1, 17 §2, regla 10).\n\nMAX_ACTIVOS clusters activos como máximo; el resto queda EN COLA\ny se despacha en la rama de espera conforme se liberan slots.\nUna corrida vacía no se investiga y terminar de despachar\nno es cerrar la corrida: cierra `estado_corrida`, que cuenta\ntambién la cola de clusters (012).",
+        "content": "FORENSE_corrida (07 §1, 17 §2, regla 10).\n\nMAX_ACTIVOS clusters activos como máximo; el resto queda EN COLA\ny se despacha en la rama de espera conforme se liberan slots.\nUna corrida vacía no se investiga y terminar de despachar\nno es cerrar la corrida: cierra `estado_corrida`, que cuenta\ntambién la cola de clusters (012). Sin clusters, `terminada`\nes false por definición: lo cierra `cerrable`.",
         "height": 240,
         "width": 400,
         "color": 4
