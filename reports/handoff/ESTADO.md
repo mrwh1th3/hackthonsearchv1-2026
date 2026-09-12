@@ -32,7 +32,7 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 | webapp + editor | 20 rutas, Supabase real, privado por perfil_id, realtime, inyección con diff, editor persistente (propuestas en DB, revertir por RPC, bitácora) | typecheck OK, lint 0, build OK, 272/272 |
 | voice | adaptador ElevenLabs con firma t=,v0=, callback post_call_transcription, dedupe por tipo | 67/67 |
 | qa | 131 integración (forense_qa 001–011) + 7 e2e; informes oleadas 2–3 | 131/131, 7/7 |
-Contratos **1.3.1**: 110/110. Supabase remoto: 001–009 + 003 recalibrada + seeds; **010/011 en aplicación** (agente).
+Contratos **1.3.1**: 110/110. Supabase remoto: **001–011 + 003 recalibrada + seeds aplicadas** (versiones hasta 20260912094346; 32/32 cuerpos de 010/011 idénticos; 126 funciones en `forense`, ninguna con EXECUTE público; `v_metricas_corrida` completa). Datos remotos: solo fixture; gen-v1 pendiente de `SUPABASE_DB_URL`.
 
 ## Abierto (oleada 4 en curso)
 - QA-004: garantizar cluster por RFC inyectado en FORENSE_inyectar (armar_cluster_para) y estado_corrida con clusters pendientes (db + runtime).
