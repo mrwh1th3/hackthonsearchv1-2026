@@ -95,7 +95,7 @@ psql -d forense -f db/013_rendimiento.sql
 - `010_runtime_funciones.sql` (oleada 2b): 26+ funciones del runtime que los workflows de n8n llaman; todo retorna `table(...)` con nombres exactos del contrato.
 - `011_metricas_corrida.sql` (oleada 3): `forense.v_metricas_corrida` completa (baseline, selector, acierto_de_cache, tasa_de_ronda_2, reintentos por motivo).
 - `012_inyeccion_clusters.sql` (oleada 4): QA-004, garantiza cluster por RFC inyectado vía `forense.armar_cluster_para`, estado_corrida con clusters pendientes.
-- `013_rendimiento.sql` (oleada 4): optimización de pistas F1/refresh v_pares_giro/E1, índices y planes SQL mejorados.
+- `013_rendimiento.sql` (oleada 4): cuatro índices y F1 reescrita con resultado idéntico. Ojo: tras clonar una corrida hay que ejecutar `ANALYZE` (lo hace `forense.analizar_snapshot()` de 014 en el hotfix H11); sin él F1 tarda ~42 s por estadísticas rancias.
 
 **Estado actual:** 001–013 aplicadas en la instancia `forense` local y en Supabase `hackthon2026` (H10).
 
@@ -195,7 +195,7 @@ PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh
 
 Crea base temporal, aplica migraciones 001–013, corre aserciones de función e idempotencia, valida pistas contra esquema de contratos. Borra base al terminar.
 
-**Resultado esperado:** todas las pistas proyectadas al tipo `entities.pista` del contrato sin errores, clusters por RFC inyectado garantizados, rendimiento de pistas <100ms cada una.
+**Resultado esperado:** todas las pistas proyectadas al tipo `entities.pista` del contrato sin errores, clusters por RFC inyectado garantizados, rendimiento del barrido completo ≈1–2 s sobre gen-v1 con estadísticas actualizadas (ANALYZE tras clonar; 014).
 
 #### 5.4 Prompts (variantes y techos por rol)
 

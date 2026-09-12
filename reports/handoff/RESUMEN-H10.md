@@ -91,7 +91,7 @@ Actualizado: 2026-09-12 H10, por forense-docs (haiku). Oleadas 1–3 en main, ol
 
 ## Observaciones técnicas oleada 4
 
-- **Rendimiento:** pista F1 bajó de 372ms a ~180ms (índices en movimientos, plan mejorado)
+- **Rendimiento (corregido por el coordinador, H11):** la causa real de los 42–68 s de `correr_pistas` tras clonar una corrida son estadísticas de Postgres rancias (F1 pasa de 42 609 ms a 243 ms con `ANALYZE`); 013 añade índices y una F1 equivalente, y el hotfix 014 ejecuta `ANALYZE` al clonar y antes del barrido. El gate de inyección en vivo (<30 s) queda rojo hasta integrar 014.
 - **Variantes de prompt:** intento≥1 sin motivo degradan a `reintento:sin_motivo` con aviso
 - **QA-004:** `forense.armar_cluster_para(corrida_id, rfc)` resuelve RFC inyectado sin cluster
 - **e2e-inyeccion.mjs:** test case de 447 líneas cubre clonar corrida + inyectar los 3 paquetes + validar cluster
