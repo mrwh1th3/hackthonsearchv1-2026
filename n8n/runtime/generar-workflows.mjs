@@ -1145,7 +1145,18 @@ export function reintento() {
   fila = 1; columna = 9;
   add(sql(
     'Barrera reintento',
-    'SELECT * FROM forense.estado_barrera($1::uuid, $2::text)',
+    // `forense.estado_barrera` devuelve UN jsonb escalar, no una tabla: con
+    // `SELECT *` n8n recibía `{estado_barrera:{…}}` y el IF siguiente leía
+    // `$json.completa` = undefined, es decir, la barrera nunca cerraba por la
+    // rama buena. Lo cazó `n8n/tests/verificar-forma-nodos.mjs` en H8.
+    // Mismo patrón que «Esperar barrera R1»: jsonb_to_record y las columnas
+    // de identidad proyectadas a mano.
+    [
+      'SELECT $1::uuid AS caso_id, b.paso, b.completa, b.faltantes, b.vencida',
+      '  FROM jsonb_to_record(forense.estado_barrera($1::uuid, $2::text))',
+      '    AS b(ok boolean, existe boolean, paso text, completa boolean,',
+      '         faltantes jsonb, vencida boolean, estado jsonb)',
+    ].join('\n'),
     `${R('caso_id')}, ={{ 'reintento' + $('Validar intento').first().json.intento }}`,
     'Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.',
   ));
@@ -2263,8 +2274,10 @@ export const FORMA_PENDIENTE = Object.freeze({
     'Aplicar resolución', 'Cerrar caso', 'Guardar dictamen',
     'Ronda fin R1', 'Validar citas',
   ]),
+  // 'Barrera reintento' salió en H8: dejó de ser `SELECT *` (usaba una
+  // función que devuelve jsonb escalar y perdía todas las columnas).
   FORENSE_reintento: Object.freeze([
-    'Barrera reintento', 'Crear tareas de revisión', 'Expandir para reintento',
+    'Crear tareas de revisión', 'Expandir para reintento',
     'Revalidar si cambió evidencia', 'Seleccionar autores',
   ]),
   FORENSE_editar_expediente: Object.freeze(['Cargar versión base', 'Guardar propuesta']),
