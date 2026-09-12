@@ -1,6 +1,6 @@
 # RUNBOOK — Inicio, desarrollo y despliegue del Agente Forense
 
-Documento operativo de referencia para trabajar con el sistema multi-agente de investigación de fraude fiscal. Última actualización: 2026-09-12 H5.
+Documento operativo de referencia para trabajar con el sistema multi-agente de investigación de fraude fiscal. Última actualización: 2026-09-12 H10 (oleada 4 integrada).
 
 ## (a) Requisitos locales
 
@@ -77,6 +77,11 @@ psql -d forense -f db/005_rpc.sql
 psql -d forense -f db/006_producto_ui.sql
 psql -d forense -f db/007_notificaciones_voz.sql
 psql -d forense -f db/008_ingesta.sql
+psql -d forense -f db/009_runtime_eventos.sql
+psql -d forense -f db/010_runtime_funciones.sql
+psql -d forense -f db/011_metricas_corrida.sql
+psql -d forense -f db/012_inyeccion_clusters.sql
+psql -d forense -f db/013_rendimiento.sql
 ```
 
 - `001_schema.sql`: tablas, índices, RLS, realtime, control de runtime.
@@ -86,8 +91,13 @@ psql -d forense -f db/008_ingesta.sql
 - `005_rpc.sql`: las 11 herramientas `public.forense_*`, 3 funciones de sistema y las funciones que usa el runtime.
 - `006_producto_ui.sql` y `007_notificaciones_voz.sql`: perfiles, investigaciones, propuestas, outbox y llamadas (sin SELECT público).
 - `008_ingesta.sql`: ingestas, staging, `forense.inyecciones` y `clonar_corrida_con_inyeccion` (inyección en vivo, 21 §3).
+- `009_runtime_eventos.sql` (oleada 2): tipos de evento (`paso_en_cola`, `paso_checkpoint`), catálogo ClaveProdServ por giro.
+- `010_runtime_funciones.sql` (oleada 2b): 26+ funciones del runtime que los workflows de n8n llaman; todo retorna `table(...)` con nombres exactos del contrato.
+- `011_metricas_corrida.sql` (oleada 3): `forense.v_metricas_corrida` completa (baseline, selector, acierto_de_cache, tasa_de_ronda_2, reintentos por motivo).
+- `012_inyeccion_clusters.sql` (oleada 4): QA-004, garantiza cluster por RFC inyectado vía `forense.armar_cluster_para`, estado_corrida con clusters pendientes.
+- `013_rendimiento.sql` (oleada 4): optimización de pistas F1/refresh v_pares_giro/E1, índices y planes SQL mejorados.
 
-**Estado actual:** 001–008 aplicadas en la instancia `forense` local y en Supabase `hackthon2026` (H5).
+**Estado actual:** 001–013 aplicadas en la instancia `forense` local y en Supabase `hackthon2026` (H10).
 
 #### 2.3 Cargar fixture manual (UI)
 
@@ -151,49 +161,56 @@ Ejecuta D2, F1, F2, R1, R2, E1, T1 en ~1.1 segundos. La salida es un JSON con co
 
 **Datos esperados:** 16 candidatos de entidades con dos o más familias, 0 falsos positivos de trampas legítimas.
 
-### Paso 5: Tests por módulo
+### Paso 5: Tests por módulo (todos en H10 verde)
+
+#### 5.0 Ejecutar todo de una vez
+
+```bash
+npm run test:all  # contiene: contracts + n8n + db + prompts + voice + webapp
+```
 
 #### 5.1 Tests de contratos (no dependen de DB)
 
 ```bash
 npm test --prefix contracts
-# Devuelve: 100 tests, 0 fallos, <1s
+# Devuelve: 110 tests, 0 fallos, ~260ms (oleada 4)
 ```
 
 #### 5.2 Tests de runtime (n8n workflows)
 
 ```bash
 node --test "n8n/tests/*.test.mjs"
-# Devuelve: 326 tests, 0 fallos, ~300ms
+# Devuelve: 337 tests, 0 fallos, ~360ms (oleada 4: e2e-inyeccion + variante-prompt)
 ```
 
-Valida que cada workflow JSON tenga nodos válidos, que las referencias de subworkflows sean resolvibles tras importar, y que las queries SQL parseen contra Postgres 17 con migraciones 001–008.
+Valida que cada workflow JSON tenga nodos válidos, que las referencias de subworkflows sean resolvibles tras importar, y que las queries SQL parseen contra Postgres 17 con migraciones 001–013.
 
 #### 5.3 Tests de BD (migraciones + concurrencia)
 
 ```bash
 PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh
-# Devuelve: 300 aserciones, 0 fallos, ~30s
+# Devuelve: ~400+ aserciones (001-013), 0 fallos, ~45-60s
+# Archivos: assertions_001-013.sql, assertions_*_gen.sql (gen-v1 specific)
 ```
 
-Crea base temporal, aplica migraciones, corre aserciones de función e idempotencia, valida pistas contra esquema de contratos. Borra base al terminar.
+Crea base temporal, aplica migraciones 001–013, corre aserciones de función e idempotencia, valida pistas contra esquema de contratos. Borra base al terminar.
 
-**Resultado esperado:** todas las pistas proyectadas al tipo `entities.pista` del contrato sin errores.
+**Resultado esperado:** todas las pistas proyectadas al tipo `entities.pista` del contrato sin errores, clusters por RFC inyectado garantizados, rendimiento de pistas <100ms cada una.
 
-#### 5.4 Prompts (12 ficheros, 79 tests)
+#### 5.4 Prompts (variantes y techos por rol)
 
 ```bash
 node --test "tests/prompts/*.test.mjs"
-# Devuelve: 79 tests, 0 fallos
+# Devuelve: 106 tests, 0 fallos (~420ms, oleada 4: variante_prompt, motivo_reintento)
 ```
 
-Valida que cada prompt tenga entrada/salida conforme a contrato y que no contenga strings secretos.
+Valida que cada prompt tenga entrada/salida conforme a contrato, techos de caracteres por rol (system ≤10k, paquete ≤12k/24k), variantes de reintento sin motivo, y que no contenga strings secretos.
 
 #### 5.5 Telefonía (ElevenLabs, omitida sin número saliente)
 
 ```bash
 node --test "tests/voice/*.test.mjs"
-# Devuelve: tests OK; llamadas reales saltadas sin número
+# Devuelve: 67 tests, 0 fallos, ~120ms
 ```
 
 ### Paso 6: Aplicación web (Next.js)
@@ -226,7 +243,16 @@ npm --prefix web run lint         # ESLint + Prettier
 
 **Resultado esperado:** 0 errores.
 
-#### 6.4 Build
+#### 6.4 Tests de webapp
+
+```bash
+npm --prefix web test
+# Devuelve: 272 tests, 0 fallos, ~6s (oleada 4: QA integración, e2e inyección)
+```
+
+Valida rutas, middlewares de sesión, inyecciones, editor, persistencia, componentes React, y API de BFF.
+
+#### 6.5 Build
 
 ```bash
 npm --prefix web run build
@@ -234,7 +260,7 @@ npm --prefix web run build
 
 Genera `.next/` pronto para prerendering. El build debe completarse sin errores.
 
-#### 6.5 Desarrollo local
+#### 6.6 Desarrollo local
 
 ```bash
 npm --prefix web run dev
@@ -251,7 +277,7 @@ Acceder como usuario `auditor` / contraseña `1234` (fixture). Las rutas disponi
 - `/estadisticas`: comparativas entre corridas
 - etc. (18 rutas totales)
 
-### Paso 7: Verificación de smoke local
+### Paso 7: Smoke local (gate H4 — DB → herramientas → runtime → evento → UI)
 
 Un smoke es una prueba técnica mínima de que el flujo DB → herramientas → UI funciona.
 
@@ -298,39 +324,52 @@ Supabase `hackthon2026` tiene aplicadas:
 
 ### Paso 2: Crear credenciales en n8n
 
-Cuando `.env` esté rellenado en local, ejecutar:
+Cuando `.env` esté rellenado en local:
 
 ```bash
+# Verificar sin crear (--dry-run)
+node scripts/n8n-credentials.mjs --dry-run
+
+# Crear credenciales (requiere N8N_API_KEY en .env)
 node scripts/n8n-credentials.mjs
 ```
 
-Este script (sin salida de secretos) crea tres credenciales por nombre exacto:
-- `Forense Postgres`: conexión a la base `forense` en Supabase
-- `Forense Supabase`: header `apikey` + `Authorization` para RPC
-- `Forense Webhook`: header compartida de autenticación entre BFF y webhooks
+Este script (sin salida de secretos) crea hasta cuatro credenciales por nombre exacto:
+- `Forense Postgres`: conexión a la base `forense` en Supabase (requiere `SUPABASE_DB_URL`)
+- `Forense Supabase`: header `apikey` + `Authorization` para RPC (requiere `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)
+- `Forense Webhook`: header compartida de autenticación entre BFF y webhooks (requiere `INTERNAL_WEBHOOK_SECRET`)
+- `ElevenLabs Forense`: opcional, para voz (requiere `ELEVENLABS_API_KEY`)
 
 **Verificación manual en n8n:**
 1. Ir a Credentials (llave en la esquina)
 2. Buscar "Forense"
-3. Deben existir las tres con tipo `postgres`, `supabaseApi`, `httpHeaderAuth`
+3. Deben existir las tres primarias con tipo `postgres`, `supabaseApi`, `httpHeaderAuth`
 
-### Paso 3: Importar workflows
+### Paso 3: Importar workflows (10 en ORDEN)
 
-Una vez que las credenciales existen (paso 2), importar los diez workflows JSON:
+Una vez que las credenciales existen (paso 2):
 
 ```bash
-node scripts/n8n-import.mjs --only FORENSE_ejecutar_agente,FORENSE_reintento,FORENSE_editar_expediente,FORENSE_investigar_cluster,FORENSE_corrida,FORENSE_inyectar,FORENSE_notificar_completada,FORENSE_resultado_llamada,FORENSE_reconciliador,FORENSE_errores
+# Verificar sin importar (--dry-run)
+node scripts/n8n-import.mjs --dry-run
+
+# Importar TODOS en orden
+node scripts/n8n-import.mjs
+
+# O solo algunos (--only)
+node scripts/n8n-import.mjs --only FORENSE_ejecutar_agente,FORENSE_inyectar,FORENSE_reintento
 ```
 
-Esto:
-1. Lee cada JSON de `n8n/workflows/`
+El script:
+1. Lee cada JSON de `n8n/workflows/` en orden (ORDEN definida en script)
 2. Lo envía a la API de n8n
 3. n8n asigna IDs y versionIds
-4. Imprime el mapeo (sin ejecutar workflows)
+4. Guarda mapeo de IDs en `reports/handoff/n8n-ids.json` (manifest)
+5. Resuelve `PENDIENTE_FORENSE_*` en segunda pasada si los IDs ya existen
 
-**Resultado esperado:** 10 workflows importados, status `inactive`.
+**Resultado esperado:** 10 workflows importados, status `inactive`, manifest guardado.
 
-Ver `n8n/workflows/IMPORT.md` §2 para resolver los IDs de subworkflows (sustituir `PENDIENTE_FORENSE_*` por los IDs reales).
+Ver `n8n/workflows/IMPORT.md` para detalles de subworkflows y resolutores de referencias.
 
 ### Paso 4: Cargar gen-v1 en remoto
 
@@ -349,28 +388,37 @@ python3 loaders/load_gen.py \
 
 Esto realiza la validación y carga remota. Devuelve uuid de corrida.
 
-### Paso 5: Smoke remoto (H4)
+### Paso 5: Smoke remoto (H4 gate)
 
 Una vez que workflows estén importados y gen-v1 cargada:
 
 ```bash
-# 1. Activar el workflow FORENSE_smoke_anthropic en n8n (manual en UI)
-# 2. Dispararlo: POST /webhook/<url-pública> con payload:
-{
-  "corrida_id": "<uuid de gen-v1-remote>",
-  "investigacion_id": "<uuid nuevo>"
-}
-# 3. Esperar ~10 segundos y revisar logs en n8n
-# 4. Verificar en Supabase que se creó un evento de tipo 'investigacion_iniciada'
+# 1. En n8n UI: activar el workflow FORENSE_smoke_anthropic (si existe) o crear uno nuevo con:
+#    Trigger: Webhook, POST a /webhook/FORENSE_smoke
+#    Nodo: HTTP Request → https://api.anthropic.com/v1/messages (POST)
+#    Headers: x-api-key = ANTHROPIC_API_KEY, content-type = application/json
+#    Body: model="claude-sonnet-5", max_tokens=500, messages=[{"role": "user", "content": "¿quién eres?"}]
+#    Nodo: Set → guardar response en bitacora como evento 'smoke_ok'
+
+# 2. Disparar manualmente en n8n UI (Test) o por webhook:
+curl -X POST 'https://n8n.srv1550651.hstgr.cloud/webhook/FORENSE_smoke' \
+  -H 'Content-Type: application/json' \
+  -d '{"corrida_id": "<uuid de gen-v1-remote>", "test": "smoke"}'
+
+# 3. Esperar ~5 segundos y revisar:
+#    - Logs en n8n (execution successful)
+#    - Supabase: SELECT * FROM forense.bitacora WHERE tipo_evento = 'smoke_ok' LIMIT 1
+#    - Response time < 3s (provider latency ≈ 1-1.5s + overhead)
 ```
 
-Esto verifica que:
-- El provider API `messages_api` funciona (ya probado en H0 por el coordinador)
-- Las credenciales n8n están correctas
-- La base remota responde
-- El webhook autentica correctamente
+**Resultado esperado (H4 gate):** evento `smoke_ok` persistido, latencia ≤3s, modelo responde, token usage registrado en bitacora.
 
-**Resultado esperado:** evento persistido, latencia ~1-2s.
+Esto verifica que:
+- El provider API `messages_api` funciona con credenciales reales
+- Las credenciales n8n están correctas
+- La base remota responde y registra eventos
+- El webhook autentica correctamente
+- La latencia de end-to-end es aceptable para investigaciones
 
 ### Paso 6: Desplegar web en Vercel
 
@@ -392,74 +440,132 @@ Esto verifica que:
 
 **Verificación:** navegar a `/login` y ver formulario de demo.
 
-## (d) Inyección en vivo
+## (d) Inyección en vivo (oleada 4 — QA-004)
 
-Los jueces inyectarán datos sintéticos mientras el sistema está corriendo. Cada inyección crea una corrida clonada que preserva el snapshot original.
+Los jueces inyectarán datos sintéticos mientras el sistema está corriendo (H32–34). Cada inyección crea una corrida clonada que preserva el snapshot original y garantiza un cluster por RFC inyectado.
 
-### Flujo de una inyección
+### Requisito: QA-004 (criterio del juez, H9 07:32)
 
-1. **Solicitud:** POST `/api/inyecciones` con
+Tras clonar una corrida con inyección, `armar_clusters` puede dejar fuera RFC inyectados que no cruzan el selector de dos familias. **Garantía:** `forense.armar_cluster_para(corrida_id, rfc)` crea cluster manual, y `estado_corrida` cuenta también `clusters_pendientes`.
+
+### Flujo de inyección en vivo
+
+1. **Solicitud:** POST `/api/inyecciones` con tres paquetes:
    ```json
    {
      "corrida_origen_id": "<uuid de gen-v1>",
      "filas_por_tabla": {
-       "forense.contribuyentes": [...],
-       "forense.cfdi": [...]
+       "forense.contribuyentes": [{ "id": "...", "rfc": "INY:001", ... }, ...],
+       "forense.cfdi": [{ "id": "...", "rfc_emisor": "INY:001", ... }, ...],
+       "forense.movimientos": [{ "id": "...", "rfc_cuenta": "INY:001", ... }, ...]
      }
    }
    ```
 
-2. **Clonación:** `forense.clonar_corrida_con_inyeccion()` crea `corrida_nueva_id` con mismo nombre + timestamp
+2. **Clonación:** `forense.clonar_corrida_con_inyeccion(corrida_id, inyeccion_payload)` crea `corrida_nueva_id` con timestamp, preserva pistas de origen
 
-3. **Cálculo:** se reejecutar pistas en la corrida nueva
+3. **Cálculo:** re-ejecutar pistas en la corrida nueva (solo sobre datos inyectados para latencia baja)
 
-4. **Prioridad:** el frontend despacha primero los clusters que tocan los RFC inyectados
+4. **Garantía Q-004:** para cada RFC inyectado sin cluster:
+   - Llamar `forense.armar_cluster_para(corrida_id, 'INY:001')` 
+   - Cluster existe aunque no cruce el selector (ruta manual, decisión determinista igual)
 
-5. **Timeline persistido:** cada evento tiene `timestamp` y `tipo_evento` = `inyeccion`
+5. **Prioridad:** frontend despacha primero clusters que tocan RFC inyectados
 
-6. **Diff UI:** lado a lado antes/después de la inyección, explicación de cambios
+6. **Timeline:** cada evento tiene `timestamp`, `tipo_evento='inyeccion'`, `corrida_origen_id`
 
-### Ensayar inyección en local
+7. **Diff UI:** lado a lado antes/después, cambios en pistas, nuevos clusters, explicación
+
+### Ensayar inyección en local (H24–26)
 
 ```bash
-# 1. Tener gen-v1 cargada y pistas ya corridas (paso 4 de arranque local)
+# 1. Tener gen-v1 cargada y pistas ya corridas
+psql -d forense -c "select id, nombre from forense.corridas where nombre = 'gen-v1' limit 1;"
 
-# 2. Crear una inyección ficticia (Python):
-python3 << 'EOF'
+# 2. Simulación: crear inyección con los tres paquetes
+python3 << 'EOTEST'
 import json
 import uuid
+from datetime import datetime
 
-# Simulación: agregar un CFDI sospechoso
+corrida_origen = "<uuid de gen-v1>"
 nueva_corrida = str(uuid.uuid4())
-inyeccion = {
-  "corrida_origen_id": "<uuid de gen-v1>",
+
+inyeccion_payload = {
+  "corrida_origen_id": corrida_origen,
+  "timestamp": datetime.utcnow().isoformat(),
   "filas_por_tabla": {
+    "forense.contribuyentes": [
+      {
+        "id": str(uuid.uuid4()),
+        "corrida_id": nueva_corrida,
+        "rfc": "INY:FRAUDE001",
+        "razon_social": "Empresa Fantasma de Prueba",
+        "regimen_fiscal": "603"
+      }
+    ],
     "forense.cfdi": [
       {
         "id": str(uuid.uuid4()),
         "corrida_id": nueva_corrida,
-        "rfc_emisor": "DEMO:FRAUDE001",
+        "rfc_emisor": "INY:FRAUDE001",
         "rfc_receptor": "DEMO:VICTIMA001",
+        "monto": "5000000.00",
+        "fecha": "2026-01-15",
+        "tipo_comprobante": "I"
+      }
+    ],
+    "forense.movimientos": [
+      {
+        "id": str(uuid.uuid4()),
+        "corrida_id": nueva_corrida,
+        "rfc_cuenta": "INY:FRAUDE001",
         "monto": "5000000.00",
         "fecha": "2026-01-15"
       }
     ]
   }
 }
-print(json.dumps(inyeccion, indent=2))
-EOF
 
-# 3. Cargar la inyección en Supabase (tabla forense.inyecciones)
-psql -d forense << 'EOF'
-INSERT INTO forense.inyecciones (id, corrida_origen_id, estado, payload)
-VALUES (uuid_generate_v4(), '<uuid de gen-v1>', 'iniciada', '<json del paso 2>');
-EOF
+print(json.dumps(inyeccion_payload, indent=2))
+EOTEST
 
-# 4. Ejecutar pistas en la nueva corrida
-psql -d forense -c "select forense.correr_pistas('<nueva_corrida_id>');"
+# 3. Guardar payload y hacer inyección (coordina con coordinador para remoto)
+psql -d forense << 'EOSQL'
+-- Insertar inyección
+INSERT INTO forense.inyecciones (id, corrida_origen_id, estado, payload, creado_en)
+VALUES (
+  uuid_generate_v4(),
+  '<uuid de gen-v1>',
+  'iniciada',
+  '<json del paso 2>',
+  now()
+);
+
+-- Ejecutar clonar_corrida_con_inyeccion (crea corrida nueva y ejecuta pistas)
+SELECT forense.clonar_corrida_con_inyeccion(
+  (SELECT id FROM forense.corridas WHERE nombre = 'gen-v1'),
+  '<json del paso 2>'::jsonb
+) AS nueva_corrida_id;
+
+-- Verificar clusters nuevos (QA-004)
+SELECT 
+  c.id, c.estado, 
+  COUNT(DISTINCT e.rfc) as rfcs_en_cluster,
+  ARRAY_AGG(DISTINCT e.rfc) as rfcs
+FROM forense.clusters c
+JOIN forense.cluster_entidades ce ON c.id = ce.cluster_id
+JOIN forense.entidades e ON ce.entidad_id = e.id
+WHERE c.corrida_id = '<nueva_corrida_id>'
+GROUP BY c.id, c.estado;
+EOSQL
 ```
 
-Ver `21-criterios-juez-e-inyeccion-en-vivo.md` §3.4 para el protocolo completo y casos de prueba.
+### Smoke H4 con inyección
+
+Ver `n8n/tests/e2e-inyeccion.mjs` (447 líneas, test case completo con tres paquetes y assertion de cluster por RFC).
+
+Ver `21-criterios-juez-e-inyeccion-en-vivo.md` §3 para protocolo completo, ejecución H32–34, y evaluación del juez.
 
 ## (e) Demo
 
@@ -570,43 +676,64 @@ Secretos de aplicación (server-side):
 
 Nunca confundir roles de secreto. Un secreto de servidor en una variable pública es exfiltración.
 
-## Apéndice: comandos rápidos (snippet)
+## Apéndice: comandos rápidos (snippet H10)
 
 ```bash
 # Verificar setup local
 node scripts/launch.mjs --check
 
-# Tests rápidos (sin DB)
-npm test --prefix contracts && node --test "n8n/tests/*.test.mjs"
-
-# Tests completos (con DB)
+# Tests completos (oleada 4: 110 + 337 + 106 + 67 + 272 + ~400 aserciones DB)
 npm run test:all
 
-# Regenerar dataset
-python3 generator/gen.py --seed 42 --n 100 --meses 12 --out data/gen/
+# O por módulo
+npm test --prefix contracts                           # 110 tests
+node --test "n8n/tests/*.test.mjs"                    # 337 tests
+node --test "tests/prompts/*.test.mjs"                # 106 tests
+node --test "tests/voice/*.test.mjs"                  # 67 tests
+npm --prefix web test                                 # 272 tests
+PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH \
+  bash db/tests/run.sh                                # ~400+ assertions
 
-# Cargar en local
+# n8n (remoto)
+node scripts/n8n-credentials.mjs --dry-run            # verificar
+node scripts/n8n-credentials.mjs                      # crear (requiere .env)
+node scripts/n8n-import.mjs --dry-run                 # listar workflows
+node scripts/n8n-import.mjs                           # importar todos
+
+# Dataset
+python3 generator/gen.py --seed 42 --n 100 --meses 12 --out data/gen/
 python3 loaders/load_gen.py --in data/gen/ --db forense --nombre gen-v1
 
-# Ejecutar pistas
+# Pistas en local
 psql -d forense -c "select forense.correr_pistas((select id from forense.corridas where nombre = 'gen-v1'));"
+
+# Inyección en local (oleada 4)
+psql -d forense -c "select forense.clonar_corrida_con_inyeccion(...)" 
 
 # Web dev
 npm --prefix web run dev    # http://localhost:3000
 
-# Rollback seguro
-git revert HEAD && git push origin main
-# o
-git stash
+# Rollback seguro (no destruir datos)
+git revert HEAD             # crea commit inverso
+# o para worktree
+git stash push -u -m "WIP-worktree"
 ```
 
 ---
 
-**Responsables de secciones:**
-- (a)–(b): forense-docs, verificado en H5
-- (c): coordinador (opus), seguimiento en ESTADO.md
-- (d): 21-criterios-juez-e-inyeccion-en-vivo.md §3
-- (e): 13-demo.md (guión exhaustivo)
+**Responsables de secciones (oleada 4):**
+- (a)–(b): forense-docs (haiku), verificado en H10
+  - Migraciones 001–013, scripts n8n con --dry-run, conteos reales de tests
+  - Tests: 110 (contracts) + 337 (n8n) + 106 (prompts) + 67 (voice) + 272 (webapp) + ~400 (db assertions)
+- (c): coordinador (opus), ESTADO.md y DECISIONES.md
+- (d): inyección en vivo (oleada 4) — QA-004, cluster por RFC garantizado, e2e-inyeccion.mjs
+- (e): 13-demo.md (guión exhaustivo, H32–36)
 - (f): operaciones post-despliegue
 
-Versión: 1.0 (H5, 2026-09-12)
+**Bloqueos externos abiertos (ESTADO.md H10):**
+0. `.env` del usuario: N8N_API_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL
+1. Supabase: exponer schema `forense` en Project Settings → API → Exposed Schemas
+2. Vercel: crear proyecto `forense` (root `web`) si es necesario
+3. ElevenLabs: número saliente configurado en UI (voz sin número se omite)
+
+Versión: 1.1 (H10, 2026-09-12 — oleada 4 integrada)
