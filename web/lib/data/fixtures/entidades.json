@@ -1,0 +1,28 @@
+{
+  "DEMO:ENTIDAD-0": {
+    "rfc": "DEMO:ENTIDAD-0",
+    "razon_social_untrusted": "Comercializadora Demo Uno SA de CV",
+    "giro": "Comercio al por mayor (fixture)",
+    "en_lista_sat": false,
+    "listas_sat": [],
+    "atributos_compartidos": [
+      { "atributo": "domicilio_fiscal_untrusted", "valor_untrusted": "Calle Ficticia 123", "rfcs_que_lo_comparten": ["DEMO:ENTIDAD-0B"] }
+    ],
+    "facturas": [
+      { "id": "CFDI:00000000-0000-4000-8000-000000000901", "direccion": "emitida", "contraparte": "DEMO:ENTIDAD-0B", "monto": "1000.00", "fecha": "2026-01-05T00:00:00Z" }
+    ],
+    "casos_previos": ["00000000-0000-4000-8000-000000000100"]
+  },
+  "DEMO:ENTIDAD-1": {
+    "rfc": "DEMO:ENTIDAD-1",
+    "razon_social_untrusted": "Servicios Demo Dos SA de CV",
+    "giro": "Servicios profesionales (fixture)",
+    "en_lista_sat": false,
+    "listas_sat": [],
+    "atributos_compartidos": [],
+    "facturas": [
+      { "id": "CFDI:00000000-0000-4000-8000-000000000911", "direccion": "emitida", "contraparte": "DEMO:ENTIDAD-1B", "monto": "500.00", "fecha": "2026-01-08T00:00:00Z" }
+    ],
+    "casos_previos": ["00000000-0000-4000-8000-000000000101"]
+  }
+}

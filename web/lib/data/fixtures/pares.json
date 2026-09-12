@@ -1,0 +1,8 @@
+{
+  "DEMO:ENTIDAD-0": [
+    { "metrica": "facturacion_mensual", "unidad": "MXN", "valor_propio": 9800, "p10": 400, "p50": 1500, "p90": 4200 },
+    { "metrica": "ratio_nomina", "unidad": "ratio", "valor_propio": 0.02, "p10": 0.18, "p50": 0.32, "p90": 0.55 },
+    { "metrica": "tasa_cancelacion", "unidad": "%", "valor_propio": 42, "p10": 1, "p50": 4, "p90": 9 },
+    { "metrica": "n_clientes", "unidad": "conteo", "valor_propio": 2, "p10": 8, "p50": 20, "p90": 55 }
+  ]
+}

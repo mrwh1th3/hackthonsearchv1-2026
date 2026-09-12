@@ -1,0 +1,11 @@
+{
+  "00000000-0000-4000-8000-000000000100": {
+    "caso_id": "00000000-0000-4000-8000-000000000100",
+    "rfc_comparable": "DEMO:ENTIDAD-1",
+    "giro_compartido": "Comercio al por mayor (fixture)",
+    "pistas_solapadas": ["D2"],
+    "resultado_comparable": "anomalia_explicada",
+    "razon_tipificada": "defensa_aceptada",
+    "explicacion": "El comparable disparó la misma pista D2 pero la Réplica aceptó la defensa de margen delgado con compras reales verificadas; este caso no tuvo esa defensa disponible."
+  }
+}

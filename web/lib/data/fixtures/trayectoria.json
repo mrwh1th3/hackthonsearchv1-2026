@@ -1,0 +1,14 @@
+{
+  "DEMO:ENTIDAD-0": [
+    { "periodo": "2025-09", "evento": "alta", "monto_emitido": "0.00", "monto_recibido": "0.00", "n_cfdi": 0 },
+    { "periodo": "2025-10", "evento": "primer_cfdi", "monto_emitido": "1200.00", "monto_recibido": "0.00", "n_cfdi": 2 },
+    { "periodo": "2025-11", "evento": null, "monto_emitido": "3400.00", "monto_recibido": "500.00", "n_cfdi": 5 },
+    { "periodo": "2025-12", "evento": "pico", "monto_emitido": "9800.00", "monto_recibido": "500.00", "n_cfdi": 14 },
+    { "periodo": "2026-01", "evento": "silencio", "monto_emitido": "1000.00", "monto_recibido": "0.00", "n_cfdi": 1 }
+  ],
+  "DEMO:ENTIDAD-1": [
+    { "periodo": "2025-11", "evento": "alta", "monto_emitido": "0.00", "monto_recibido": "0.00", "n_cfdi": 0 },
+    { "periodo": "2025-12", "evento": "primer_cfdi", "monto_emitido": "500.00", "monto_recibido": "480.00", "n_cfdi": 1 },
+    { "periodo": "2026-01", "evento": null, "monto_emitido": "520.00", "monto_recibido": "500.00", "n_cfdi": 1 }
+  ]
+}

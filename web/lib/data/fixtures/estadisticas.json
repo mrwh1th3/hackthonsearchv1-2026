@@ -1,0 +1,24 @@
+{
+  "00000000-0000-4000-8000-000000000001": {
+    "embudo": [
+      { "etapa": "pistas_disparadas", "cantidad": 40, "denominador": 40 },
+      { "etapa": "rfc_candidatos", "cantidad": 18, "denominador": 40 },
+      { "etapa": "clusters", "cantidad": 3, "denominador": 40 },
+      { "etapa": "casos_2_familias", "cantidad": 1, "denominador": 40 },
+      { "etapa": "presuncion_alta", "cantidad": 0, "denominador": 40 }
+    ],
+    "confusion": [
+      { "real": "positivo", "predicho": "positivo", "cantidad": 1 },
+      { "real": "positivo", "predicho": "negativo", "cantidad": 0 },
+      { "real": "negativo", "predicho": "positivo", "cantidad": 0 },
+      { "real": "negativo", "predicho": "negativo", "cantidad": 2 }
+    ],
+    "fpr_trampas": { "numerador": 0, "denominador": 8 },
+    "por_tipologia": [
+      { "tipologia": "retorno", "cantidad": 1, "monto_en_riesgo": "1000.00" },
+      { "tipologia": "no_concluyente", "cantidad": 2, "monto_en_riesgo": "0.00" }
+    ],
+    "costo": { "tokens_totales": 42000, "duracion_ms_total": 185000, "llamadas_totales": 27, "tasa_acierto_cache": 0.18 },
+    "rondas": { "pct_ronda_2": 0.33, "pct_frontera_expandida": 0.33, "pct_reintento": 0.33 }
+  }
+}
