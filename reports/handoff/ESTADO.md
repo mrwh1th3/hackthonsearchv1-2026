@@ -211,11 +211,25 @@ que el 4/15 del selector **no incumple** la meta, y el 0/15 de gen-v1 tampoco
 la cumplía: con cero trampas investigadas, la capa de descarte nunca se
 ejercía. La FPR del sistema sigue **sin medir** hasta el gate H8–10.
 
-Trabajo de calibración que queda (medido, no hipótesis): de las ocho trampas,
-sólo cuatro disparan alguna familia hoy, y de esas, `startup_pico` dispara
-**sólo T**. Darle a ella la ráfaga de timbrado deja a T2 con trampa legítima
-propia cuya FPR se puede medir **sin** poner a prueba a la vez la regla de dos
-familias. Es aditivo: el grupo corporativo se queda como está.
+Trabajo de calibración que queda, con una vía ya descartada por lectura del
+código (para que nadie la reintente):
+
+- **Lo que NO funciona:** darle la ráfaga de timbrado a `startup_pico`, que es
+  la única trampa que dispara **sólo T** (las otras tres que disparan familia
+  son R, R y F). La pierna (a) de T2 exige una **cadena de ≥3 saltos**
+  (`saltos >= 3` en `db/019_pista_t2.sql`, donde el receptor de una factura
+  emite la siguiente dentro de la ventana), y la startup factura **en
+  estrella**: ella emite a varios clientes que no re-emiten. Una ráfaga ahí no
+  dispararía T2.
+- **Lo que sí lo restauraría:** una **cadena de suministro legítima que timbra
+  su cierre en una sola corrida** — por ejemplo proveedor → maquilador →
+  distribuidor → cliente, tres saltos dentro de la ventana, con pagos reales,
+  nómina de plantilla y contrapartes diversificadas. Dispararía T1+T2, o sea
+  **dos pistas de UNA sola familia**: el baseline de dos pistas la marcaría y
+  el selector de dos familias la excluiría. Eso **restaura el diferencial**
+  que gen-v2 dejó en cero, y lo hace **añadiendo** un comportamiento legítimo,
+  no borrando el del grupo corporativo. Es trabajo de `generator/trampas.py`
+  con su declaración en el ground truth, no un parche de integración.
 
 ### Adaptadores de datasets externos (oleada 6)
 `loaders/load_69b.py` (lista 69-B real del SAT → `listas_sat`, sólo familia E)
