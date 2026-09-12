@@ -35,6 +35,8 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/favicon.ico") return true;
   if (pathname.startsWith("/icons/")) return true;
   if (pathname === "/manifest.webmanifest") return true;
+  if (pathname === "/icon.svg") return true;
+  if (pathname === "/apple-icon.png") return true;
   return false;
 }
 
