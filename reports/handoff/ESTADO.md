@@ -23,14 +23,17 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 3. **ElevenLabs/Twilio**: número saliente pendiente de que el usuario lo configure en la UI de ElevenLabs; sin él no hay llamada real.
 4. ~~Repo público~~ resuelto (privado).
 
-## Oleada 1 — integrada en main (H3, ≈01:45)
-| Builder | Entrega | Verificación reproducida |
+## Oleadas 1, 2 y 2b — integradas en main (H7, ≈05:25)
+| Módulo | En main | Verificación en main |
 |---|---|---|
-| forense-db | 001/002/003 (D2,F1,F2,R1,R2,E1,T1), seed_fake, harness, generator (5 tipologías/8 trampas, determinista), loaders/load_gen.py | 109/109 aserciones; gen-v1: 8081 CFDI, 140 pistas, selector 16/17 fraudes, 0/15 trampas, 0/68 fondo |
-| forense-runtime | n8n/runtime (provider, ledger, presupuesto, checkpoint, barrera, despertar, contexto, auditor-final, transporte, dispatcher), 8 code nodes generados, MANIFEST + 2 workflows JSON | 181/181 tests; generadores --check OK. Devuelto al autor: rama `cerrar` de decidir-paso devuelve estado actual (alto); IDs de modelo a claude-sonnet-5/opus-5 |
-| forense-prompts | 12 prompts, ensamblar.mjs, manifest (version_prompts e4a2f861e988) | 79/79 tests; manifest --check OK |
-| forense-webapp | shell + 20 rutas con fixtures rotulados, BFF sesión/investigaciones/inyecciones, componentes compartidos | typecheck OK, lint 0 errores, 43/43 tests, build OK con selector de fuente fixture |
-Contratos **1.2.0** (CADENA, trayectoria, corrida_cargada/inyeccion): 100/100.
+| db | 001–009 (14 pistas calibradas, clusters, 11 RPC + sistema + runtime, producto, voz, ingesta/inyección, eventos de runtime + catálogo de giros), seeds, generator, loaders/load_gen, eval/metricas + comparar_corridas, eval/inyecciones a/b/c | `bash db/tests/run.sh` 313/313. gen-v1: selector 16/17 fraudes, 0/15 trampas, 0/68 fondo; baseline dos pistas FPR 4/15 |
+| runtime | módulos + dispatcher, 9 code nodes, 10 workflows JSON recableados (preparar-sql ok=45, pendientes 28 → 26 funciones SQL que faltan, listadas en la entrega de db 2b), e2e del camino del worker con proveedor simulado: 45 eventos en bitácora | 326/326; generadores --check OK |
+| prompts | 12 prompts, ámbito paquete, ACL, Trayectoria, variantes de reintento; version_prompts 61ed12e965dd | 96/96; manifest --check OK |
+| webapp | 20 rutas, SupabaseDataSource forense, privado por service_role (perfil, investigaciones, notificaciones, inyecciones, vistas), realtime, BFF a n8n, /datos real, /inyecciones diff | typecheck OK, lint 0, build OK, 231/231 (con editor) |
+| editor | DocumentWorkspace + chat + BFF /api/reportes con modos fixture/supabase/n8n, selección verificada por texto_hash, bitácora | hallazgo alto abierto: previsualización de propuesta en memoria en modo supabase (oleada 3) |
+| voice | integrations/elevenlabs (payload, HMAC, dedupe, estados, callback) | 52/52; sin llamadas reales |
+| qa | 67 integración (forense_qa, 001–009) + 6 e2e + informe | 64 pass / 2 todo (QA-003 db) tras corregir un comentario; e2e 4/6: la prueba de propuesta manda un texto_hash que el editor rechaza con 409 (alinear en QA, oleada 3) |
+Contratos 1.2.1: 100/100. Supabase remoto: 001–008 + seeds aplicadas; 009 + 003 recalibrada en aplicación (agente).
 
 ## Acciones pendientes del usuario
 - Rellenar `.env` (raíz, gitignored): `N8N_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`. Con eso el coordinador ejecuta `node scripts/n8n-credentials.mjs`, `node scripts/n8n-import.mjs`, carga gen-v1 en remoto y corre el smoke H4.
