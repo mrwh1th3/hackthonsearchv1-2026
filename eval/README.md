@@ -20,7 +20,7 @@ python3 eval/comparar_corridas.py --base gen-v1 --nueva gen-v1-inyectada --db fo
 
 Ambos hablan con Postgres por `psql` (sin dependencias) y solo leen.
 
-### Números medidos (100 RFC, 17 fraudes, 15 trampas legítimas)
+### Números medidos (gen-v1: 100 RFC · 17 fraudes · 15 trampas · gen-v2: 104 · 17 · 19)
 
 **Estos números son del SELECTOR, no del dictamen.** El selector decide a
 quién se investiga; el dictamen decide a quién se marca. `docs/10` §FPR lo
@@ -33,21 +33,42 @@ meta de ≤0.15 **no se compara contra esta tabla**.
 |---|---|---|---|---|---|---|---|---|
 | gen-v1 | baseline dos pistas | 16 | 7 | 1 | 76 | 69.6% | 94.1% | 4/15 |
 | gen-v1 | selector dos familias | 16 | 3 | 1 | 80 | 84.2% | 94.1% | 0/15 |
-| gen-v2 | baseline dos pistas | 17 | 8 | 0 | 75 | 68.0% | 100% | 4/15 |
-| gen-v2 | selector dos familias | 17 | 8 | 0 | 75 | **68.0%** | **100%** | **4/15** |
+| gen-v2 | baseline dos pistas | 17 | 12 | 0 | 75 | 58.6% | 100% | 8/19 |
+| gen-v2 | selector dos familias | 17 | 8 | 0 | 79 | **68.0%** | **100%** | **4/19** |
 
-**Lo que cambió al volver T2 evaluable (gen-v2 + db/019), sin adornos:** el
-recall sube a 17/17 y `capas` pasa de 4/5 a 5/5, pero el selector de dos
-familias y el baseline de dos pistas quedan **idénticos** (17/8/0/75). O sea:
-en gen-v2 la regla de dos familias **no aporta discriminación**. La causa no
-es un error de siembra: la trampa del grupo corporativo comparte domicilio y
-representante (familia R) **y** timbra en lote (familia T), y las dos cosas
-son ciertas de un grupo corporativo real. Con T2 evaluable, exigir dos
-familias no separa a ese grupo legítimo de un fraude.
+Los denominadores difieren a propósito: gen-v2 **suma** los 4 RFC de la trampa
+9 sin sustituir a nadie, así que gen-v1 conserva byte a byte su
+`dataset_hash` (`17a3e1ce…`) y sigue siendo la corrida cargada. Un invariante
+del generador (`gen.py:verificar` §5) falla si el padrón de trampas y la
+constante del módulo se separan, justamente para que nadie "corrija" el
+tamaño del fondo y mueva cada RFC de esa corrida.
 
-No se quita esa co-ocurrencia para recuperar el número: la trampa existe
-justamente para medir falsos positivos, y borrarla sería medir un dataset más
-fácil. Es un hallazgo sobre el selector, no un problema de etiquetado.
+**El diferencial baseline-vs-selector, y de dónde salió.** En la primera
+versión de gen-v2 las dos reglas salían **idénticas** (17/8/0/75): exigir dos
+familias no aportaba discriminación. La causa no era un error de siembra,
+sino la trampa del grupo corporativo, que comparte domicilio y representante
+(familia R) **y** timbra en lote (familia T) —las dos cosas ciertas de un
+grupo real—. Quitar esa co-ocurrencia habría recuperado el número midiendo un
+dataset más fácil, así que no se quitó.
+
+Se restituyó por el otro lado: **añadiendo** un comportamiento que ocurre de
+verdad. La trampa 9 son cuatro comercializadoras constituidas para un solo
+proyecto que timbran cada estimación de fase en una corrida del administrador
+(3 saltos en 6 min → T2) y concentran su facturación en un trimestre antes de
+liquidar la plantilla (→ T1): **dos pistas de UNA sola familia**. Verificado
+sobre los 4 RFC, no inferido del agregado: `codigos = {T1,T2}`, `familias = 1`,
+el baseline los marca y `score_entidad` no. Ese es exactamente el delta de la
+tabla (12−8 FP, 8/19−4/19 trampas). El selector vuelve a ser estrictamente
+mejor —68.0% contra 58.6% de precisión, la mitad de trampas en la cola— con
+recall 17/17 y `capas` 5/5 en las dos reglas.
+
+**Coste declarado, no escondido:** T2 como pista baja de 38.5% a 29.4% de
+precisión (17 marcados = 5 de `capas` + 8 de trampas + 4 del resto). Es el
+precio de tener algo que descartar, no un defecto.
+
+**La FPR del selector sigue en 4/19 = 21.1%, por encima de la meta ≤15%** de
+docs/10. Son los 4 RFC del grupo corporativo, y bajarla exige quitar esa
+co-ocurrencia legítima. Se publica el número, no se maquilla el dataset.
 
 **Lo que ninguna de estas filas dice:** cuántas trampas quedan **marcadas**
 al final. Eso exige el pipeline completo con Defensor, y es el gate H8–10

@@ -190,18 +190,20 @@ pistas propias y por tanto cero solape; es un subconjunto, no el panel.
 sobre datos enteramente reales**. La única medición no nula es 1 de 4 en
 gen-v1 del corte anterior, y ahí los niveles estaban puestos a mano.
 
-### Hallazgo H11-e: con T2 evaluable, la regla de dos familias deja de discriminar
-Sobre gen-v2, el selector de dos familias y el baseline de dos pistas dan
-**exactamente lo mismo**: 17/8/0/75. En gen-v1 el selector ganaba (0/15 de
-trampas encoladas frente a 4/15 del baseline). La causa es una co-ocurrencia
+### Hallazgo H11-e (resuelto): con T2 evaluable, la regla de dos familias dejó de discriminar
+En la primera versión de gen-v2 el selector de dos familias y el baseline de
+dos pistas daban **exactamente lo mismo**: 17/8/0/75. En gen-v1 el selector
+ganaba (0/15 de trampas encoladas frente a 4/15 del baseline). El diferencial
+está restituido y medido; la resolución va al final de esta sección. La causa es una co-ocurrencia
 legítima, no un error de siembra: la trampa del grupo corporativo comparte
 domicilio y representante (familia R) **y** timbra en lote (familia T), y las
 dos cosas son ciertas de un grupo corporativo real.
 
-**No se quita esa trampa para recuperar el número.** Existe justamente para
+**No se quitó esa trampa para recuperar el número.** Existe justamente para
 medir falsos positivos; borrarla sería medir un dataset más fácil. Se corrigió
-la afirmación, no el dato: `eval/README.md` y `13-demo.md` ya no dicen que dos
-familias elimina los falsos positivos del baseline.
+primero la afirmación, no el dato: `eval/README.md` y `13-demo.md` ya no dicen
+que dos familias elimina los falsos positivos del baseline, y ahora publican
+las cifras de la tabla de abajo.
 
 Contexto que evita leer esto peor de lo que es: la meta de FPR ≤0.15 de
 `docs/10` §FPR está definida sobre trampas **marcadas** con cobertura
@@ -211,25 +213,77 @@ que el 4/15 del selector **no incumple** la meta, y el 0/15 de gen-v1 tampoco
 la cumplía: con cero trampas investigadas, la capa de descarte nunca se
 ejercía. La FPR del sistema sigue **sin medir** hasta el gate H8–10.
 
-Trabajo de calibración que queda, con una vía ya descartada por lectura del
-código (para que nadie la reintente):
+**CERRADO (commit de integración, trampa 9).** El diferencial se restauró
+añadiendo un comportamiento legítimo, no borrando el del grupo corporativo, y
+está medido en las dos direcciones. `generator/trampas.py` §9 siembra una
+**cadena de suministro de proyecto único**: cuatro comercializadoras
+constituidas para una sola obra que timbran cada estimación de fase en una
+corrida del administrador (3 saltos en 6 min → **T2**) y concentran toda su
+facturación en un trimestre antes de liquidar la plantilla (→ **T1**). Dos
+pistas de **una sola** familia: el baseline de dos pistas las marca, el
+selector de dos familias las excluye.
 
-- **Lo que NO funciona:** darle la ráfaga de timbrado a `startup_pico`, que es
-  la única trampa que dispara **sólo T** (las otras tres que disparan familia
-  son R, R y F). La pierna (a) de T2 exige una **cadena de ≥3 saltos**
-  (`saltos >= 3` en `db/019_pista_t2.sql`, donde el receptor de una factura
-  emite la siguiente dentro de la ventana), y la startup factura **en
-  estrella**: ella emite a varios clientes que no re-emiten. Una ráfaga ahí no
-  dispararía T2.
-- **Lo que sí lo restauraría:** una **cadena de suministro legítima que timbra
-  su cierre en una sola corrida** — por ejemplo proveedor → maquilador →
-  distribuidor → cliente, tres saltos dentro de la ventana, con pagos reales,
-  nómina de plantilla y contrapartes diversificadas. Dispararía T1+T2, o sea
-  **dos pistas de UNA sola familia**: el baseline de dos pistas la marcaría y
-  el selector de dos familias la excluiría. Eso **restaura el diferencial**
-  que gen-v2 dejó en cero, y lo hace **añadiendo** un comportamiento legítimo,
-  no borrando el del grupo corporativo. Es trabajo de `generator/trampas.py`
-  con su declaración en el ground truth, no un parche de integración.
+Verificado por el integrador en base propia (`forense_verif_t9`, migraciones
+001–020, CSV regenerados, `eval/metricas.py`), no aceptado del autoinforme:
+
+| gen-v2 · 104 RFC · 17 fraude · 19 trampas | baseline dos pistas | selector dos familias |
+|---|---|---|
+| TP/FP/FN/TN | 17/**12**/0/75 | 17/8/0/**79** |
+| precisión | 58.6% | **68.0%** |
+| FPR sobre trampas | **8/19 = 42.1%** | **4/19 = 21.1%** |
+
+El baseline sube y el selector no se mueve. Comprobado también el
+**mecanismo**, no sólo el agregado: los 4 RFC del consorcio salen con
+`codigos = {T1,T2}`, `familias = 1`, marcados por el baseline y ausentes de
+`score_entidad`; ese es exactamente el delta (12−8 FP, 8/19−4/19 trampas).
+Recall 17/17 y `capas` 5/5 en las dos reglas. `db/tests/run.sh`: 534
+aserciones, 0 fallidas, 0 omitidas.
+
+**gen-v1 no se movió un byte:** `dataset_hash` regenerado con el código final
+= `17a3e1ceb787d56df08534c501284c9eb33a72bc143cc2f6c0a0ab2a73581778`, el mismo
+de la corrida cargada en la base compartida. La trampa 9 **suma** 4 RFC al
+padrón (104 frente a 100) en vez de sustituir a nadie, y por eso el fondo no
+se re-dimensiona.
+
+Tres cosas que quedaron dichas en vez de suavizadas:
+
+- **Coste declarado:** T2 como pista baja de 38.5% a 29.4% de precisión (17
+  marcados = 5 de `capas` + 8 de trampas + 4 del resto). Es el precio de tener
+  algo que descartar.
+- **La FPR del selector sigue en 21.1%**, por encima de la meta ≤15% de
+  `docs/10`. Son los 4 RFC del grupo corporativo; bajarla exige quitar la
+  co-ocurrencia legítima que ya se decidió no quitar.
+- **Una colisión que la guarda de 019 evitó, y que conviene conocer.** El
+  primer intento puso el consorcio en **construcción**, el giro de la
+  tipología `capas`: 9 de 17 RFC del giro quedaban en ráfaga (0.53) y la
+  guarda relativa al giro de `db/019_pista_t2.sql` suprimió la pierna (a) en
+  **todo** el giro, `capas` incluida — la trampa tapaba al fraude. Se resolvió
+  **moviendo el giro** a comercializadora (16 pares, ninguno en ráfaga →
+  4/20 = 0.20), **no** el umbral de la pista. Es la primera vez que esa guarda
+  se ejercita con datos reales y no sólo con fixture, y funcionó: detectó que
+  el timbrado en lote se había vuelto la norma del giro.
+
+**Hallazgo del integrador sobre la entrega:** `trampas.CONTRIBUYENTES_INTRADIA
+= 19` llegaba **definida y nunca usada**. `cfg.n_fondo` sigue calculándose con
+`CONTRIBUYENTES` (15) en los dos horarios, que es lo correcto —así gen-v1
+conserva su hash—, pero una constante muerta con ese nombre es exactamente lo
+que un lector futuro cablea a `n_fondo` creyendo corregir un descuido,
+encogiendo el fondo 4 y moviendo cada RFC de la corrida cargada. Se convirtió
+en invariante comprobado (`gen.py:verificar` §5): falla con "INVARIANTE ROTA"
+si el padrón de trampas y la constante se separan. Verificado en las dos
+direcciones — calla con 19, dispara al desalinearla a 18 — porque una
+aserción que no se ha visto fallar no está probada.
+
+**Sin aserción SQL de la trampa 9, y por qué:** `db/tests/cargar_gen.sh` copia
+sólo `gen-v1` por id fijo. La verificación de la trampa 9 es la medición de
+`eval/metricas.py` sobre gen-v2, reproducible con los comandos de
+`generator/README.md`, no una aserción del harness.
+
+**Lo que NO funciona, para que nadie lo reintente:** darle la ráfaga de
+timbrado a `startup_pico`. La pierna (a) de T2 exige una **cadena de ≥3
+saltos** (`saltos >= 3` en `db/019_pista_t2.sql`, donde el receptor de una
+factura emite la siguiente dentro de la ventana), y la startup factura **en
+estrella**. Una ráfaga ahí no dispararía T2.
 
 ### Adaptadores de datasets externos (oleada 6)
 `loaders/load_69b.py` (lista 69-B real del SAT → `listas_sat`, sólo familia E)

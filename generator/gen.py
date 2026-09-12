@@ -532,6 +532,8 @@ def verificar(m: Mundo, definitivos: Sequence[str], trampas_rfc: Sequence[str]) 
     """Invariantes que el generador se exige a sí mismo antes de escribir."""
     import networkx as nx
 
+    import trampas as trampas_mod
+
     problemas: List[str] = []
 
     # 1. Grafo CFDI: ninguna trampa a menos de 3 saltos de un RFC 'definitivo'.
@@ -582,7 +584,24 @@ def verificar(m: Mundo, definitivos: Sequence[str], trampas_rfc: Sequence[str]) 
     if mal:
         problemas.append("%d movimientos con CLABE inexistente" % len(mal))
 
-    # 5. Ninguna fecha posterior al corte.
+    # 5. El padrón de trampas tiene el tamaño que declara la constante del
+    #    módulo. `CONTRIBUYENTES` dimensiona el universo de fondo
+    #    (`cfg.n_fondo`) y por decisión deliberada NO cambia con `--horario`:
+    #    la trampa 9 suma 4 RFC sobre el padrón en vez de sustituir a nadie,
+    #    y por eso gen-v1 conserva byte a byte su `dataset_hash`. El riesgo
+    #    es el inverso: que alguien cablee `CONTRIBUYENTES_INTRADIA` a
+    #    `n_fondo` creyendo corregir un descuido, encogiendo el fondo 4 y
+    #    moviendo cada RFC de la corrida que ya está cargada. Comprobarlo
+    #    aquí convierte ese comentario en un invariante que falla si el
+    #    conteo y la constante se separan.
+    esperados = trampas_mod.CONTRIBUYENTES_INTRADIA if m.intradia else trampas_mod.CONTRIBUYENTES
+    if len(trampas_rfc) != esperados:
+        problemas.append(
+            "el padrón de trampas tiene %d RFC y la constante del módulo declara %d "
+            "(horario=%s): cuadra la constante, no el fondo"
+            % (len(trampas_rfc), esperados, "intradia" if m.intradia else "plano"))
+
+    # 6. Ninguna fecha posterior al corte.
     corte_s = m.corte.strftime("%Y-%m-%d")
     futuras = [f["uuid"] for f in m.cfdi if f["fecha"][:10] > corte_s]
     if futuras:

@@ -68,7 +68,7 @@ Señalar la comparación de corridas.
 
 Decirlo solo cuando esas ejecuciones existan. Con ocho trampas, cada error cambia la tasa en 12.5 puntos. Los pendientes, errores y casos sin conclusión se muestran en cobertura; no cuentan como absoluciones.
 
-**No decir que la regla de dos familias elimina los falsos positivos del baseline.** Medido (ver `eval/README.md`): en gen-v1 lo hacía (0/15 frente a 4/15), pero en gen-v2 —donde T2 ya es evaluable— el selector y el baseline de dos pistas son **idénticos**, 17/8/0/75. La causa es real y no se tapa: la trampa del grupo corporativo comparte domicilio y representante (familia R) **y** timbra en lote (familia T), y las dos cosas son ciertas de un grupo corporativo legítimo. Con T2 viva, dos familias no lo separa de un fraude.
+**No decir que la regla de dos familias *elimina* los falsos positivos del baseline: decir cuántos quita, que no es lo mismo.** Medido en gen-v2 (104 RFC, ver `eval/README.md`): el baseline de dos pistas sale 17/12/0/75 con 58.6% de precisión y 8 de 19 trampas en la cola; el selector de dos familias sale 17/8/0/79 con 68.0% y 4 de 19. Mejor de forma estricta, no perfecto. Y el número incómodo se dice de frente si preguntan: **la FPR del selector sobre trampas es 21.1%, por encima de nuestra propia meta del 15%**. Son los cuatro RFC del grupo corporativo, que comparte domicilio y representante (familia R) **y** timbra en lote (familia T) —las dos cosas ciertas de un grupo real—. Bajar ese número exigía borrar esa co-ocurrencia, o sea medir un dataset más fácil; se dejó y se publica.
 
 Lo que sí se puede decir, y es más fuerte porque distingue las dos etapas:
 
