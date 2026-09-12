@@ -65,17 +65,29 @@
 --
 -- LO QUE ESTA MIGRACIÓN NO ARREGLA (medido en `forense_rt`, 15 casos
 -- dictaminados, 15 con `resultado_por_rfc` poblada): hoy el camino de
--- cluster devuelve 0 filas, y no por esta consulta. De los 388 RFC de
--- cluster evaluados, 57 comparten giro y 32 comparten además una pista,
--- pero esos 32 están en el MISMO nivel que su caso (`no_concluyente`), y
--- los 206 vecinos `sin_hallazgos` —los "aquella no" más limpios— tienen
--- CERO pistas propias por construcción de `decidirNivel` (sin_hallazgos
--- exige `nEv===0 && nPistas===0`), así que no pueden solapar ninguna. El
--- cuello de botella es `pistas_solapadas: minItems 1` del contrato, que es
--- del coordinador: con `minItems 0` serían 9 de 15 casos. Sin tocar el
--- contrato, este camino se enciende solo en cuanto haya casos en presunción
--- con vecinos `no_concluyente` que compartan pista (el pool de 32 ya
--- existe; hoy 1 de 15 casos llega a presunción).
+-- cluster devuelve 0 filas, y el respaldo también. No es por esta consulta.
+--
+-- El cuello de botella es la POBREZA DE EVIDENCIA de ese snapshot: 5 filas
+-- en `forense.evidencia` para 15 casos, 0 elementos de `resultado_por_rfc`
+-- con `evidencia_ids`, y sólo 2 casos con `evaluacion_pistas` no vacía. Sin
+-- evidencia no hay familias que contar y sin defensa no hay descartes, así
+-- que ninguna de las tres razones puede tipificarse. `forense_rt` es un
+-- smoke de runtime, no una investigación.
+--
+-- Corrección de una cifra que circuló antes de medirla con la razón
+-- exigida: relajar `pistas_solapadas` a `minItems 0` daría **1 de 15**, no
+-- 9 de 15 (de los 17 candidatos con giro y nivel menos grave, sólo 1 tiene
+-- razón tipificable). Así que el contrato NO es la palanca dominante y no
+-- se toca; la palanca es una corrida con evidencia y defensas reales.
+--
+-- Lo que sí es estructural, y es un subconjunto: los vecinos
+-- `sin_hallazgos` —los "aquella no" más limpios— tienen CERO pistas propias
+-- por construcción de `decidirNivel` (ese nivel exige `nEv===0 &&
+-- nPistas===0`), así que nunca pueden solapar una pista y `minItems 1` los
+-- excluye siempre. No bloquea el panel: un vecino con UNA familia cae en
+-- `no_concluyente` mientras el principal con dos presume, o sea comparte
+-- pista Y es menos grave, que es justo la fila que este camino devuelve
+-- (hay aserción de ello en `db/tests/assertions_020.sql`).
 --
 -- ADITIVA E IDEMPOTENTE: un solo `create or replace` y la reafirmación de
 -- permisos de 018. No toca tablas, ni firmas, ni catálogos `check`.
