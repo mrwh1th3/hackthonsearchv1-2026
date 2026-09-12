@@ -38,6 +38,7 @@ export {
 } from './dedupe.mjs';
 
 export {
+  adaptarCuerpoProveedor,
   resultadoDesdeCallback,
   estadoDesdeCallback,
   procesarCallback,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 
 import {
+  adaptarCuerpoProveedor,
   resultadoDesdeCallback,
   estadoDesdeCallback,
   procesarCallback,
@@ -108,6 +109,114 @@ test('procesarCallback: JSON inválido en el cuerpo no lanza, responde no acepta
   });
   assert.equal(resultado.aceptado, false);
   assert.equal(resultado.motivo, 'json_invalido');
+});
+
+// --- Formato real documentado por ElevenLabs (hallazgo QA #2):
+// {type:'post_call_transcription'|'post_call_audio', data:{conversation_id, agent_id, status, analysis, metadata}}.
+
+test('adaptarCuerpoProveedor: post_call_transcription con data.status="done" → finalizada, campos leídos de data.*', () => {
+  const cuerpo = {
+    type: 'post_call_transcription',
+    data: {
+      conversation_id: 'conv-pc-1',
+      agent_id: 'agent_x',
+      status: 'done',
+      analysis: { aviso_entregado: true },
+      metadata: { call_duration_secs: 24 },
+    },
+  };
+  const normalizado = adaptarCuerpoProveedor(cuerpo);
+  assert.equal(normalizado.formato, 'post_call');
+  assert.equal(normalizado.estado, 'finalizada');
+  assert.equal(normalizado.conversation_id, 'conv-pc-1');
+
+  const resultado = resultadoDesdeCallback(cuerpo);
+  assert.equal(resultado.estado, 'finalizada');
+  assert.equal(resultado.aviso_entregado, true);
+  assert.equal(resultado.conversation_id, 'conv-pc-1');
+});
+
+test('adaptarCuerpoProveedor: post_call_audio (variante de audio) se reconoce igual que post_call_transcription', () => {
+  const cuerpo = {
+    type: 'post_call_audio',
+    data: { conversation_id: 'conv-pc-2', status: 'done', analysis: {} },
+  };
+  const normalizado = adaptarCuerpoProveedor(cuerpo);
+  assert.equal(normalizado.formato, 'post_call');
+  assert.equal(normalizado.estado, 'finalizada');
+});
+
+test('adaptarCuerpoProveedor: post_call con data.status desconocido → resultado_desconocido, NUNCA finalizada por default (regla 4)', () => {
+  const cuerpo = {
+    type: 'post_call_transcription',
+    data: { conversation_id: 'conv-pc-3', status: 'un_valor_nuevo_del_proveedor', analysis: { aviso_entregado: true } },
+  };
+  const resultado = resultadoDesdeCallback(cuerpo);
+  assert.equal(resultado.estado, 'resultado_desconocido');
+  // aviso_entregado no puede quedar en true sobre un estado que no es 'finalizada',
+  // sin importar lo que diga el análisis: no hay evidencia real de entrega.
+  assert.equal(resultado.aviso_entregado, null);
+});
+
+test('adaptarCuerpoProveedor: post_call sin status → resultado_desconocido (ausencia no es éxito)', () => {
+  const cuerpo = { type: 'post_call_transcription', data: { conversation_id: 'conv-pc-4' } };
+  assert.equal(resultadoDesdeCallback(cuerpo).estado, 'resultado_desconocido');
+});
+
+test('adaptarCuerpoProveedor: formato plano (heredado) sigue funcionando igual que antes', () => {
+  const normalizado = adaptarCuerpoProveedor({ type: 'completed', conversation_id: 'conv-plano-1' });
+  assert.equal(normalizado.formato, 'plano');
+  assert.equal(normalizado.estado, 'finalizada');
+});
+
+test('procesarCallback: pipeline completo con formato post_call_transcription real (firma → dedupe → estado)', () => {
+  const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
+  const { rawBody, headers } = cuerpoFirmado(
+    {
+      type: 'post_call_transcription',
+      data: { conversation_id: 'conv-pc-5', status: 'done', analysis: { aviso_entregado: true } },
+    },
+    SECRETO,
+    ahoraMs,
+  );
+  const resultado = procesarCallback({ rawBody, headers, secreto: SECRETO, ahora: ahoraMs, estadoActual: 'en_curso' });
+  assert.equal(resultado.aceptado, true);
+  assert.equal(resultado.estado, 'finalizada');
+  assert.equal(resultado.aviso_entregado, true);
+  assert.equal(resultado.conversation_id, 'conv-pc-5');
+});
+
+test('procesarCallback + dedupe: post_call_transcription y post_call_audio de la MISMA llamada no se descartan entre sí', () => {
+  const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
+  const almacenDedupe = crearAlmacenDedupe();
+  const transcripcion = cuerpoFirmado(
+    { type: 'post_call_transcription', data: { conversation_id: 'conv-pc-6', status: 'done', analysis: {} } },
+    SECRETO,
+    ahoraMs,
+  );
+  const audio = cuerpoFirmado(
+    { type: 'post_call_audio', data: { conversation_id: 'conv-pc-6', status: 'done', analysis: {} } },
+    SECRETO,
+    ahoraMs,
+  );
+  const r1 = procesarCallback({ ...transcripcion, secreto: SECRETO, ahora: ahoraMs, estadoActual: 'en_curso', almacenDedupe });
+  const r2 = procesarCallback({ ...audio, secreto: SECRETO, ahora: ahoraMs, estadoActual: 'en_curso', almacenDedupe });
+  assert.equal(r1.duplicado, false);
+  assert.equal(r2.duplicado, false, 'post_call_audio no debe leerse como duplicado de post_call_transcription');
+});
+
+test('procesarCallback + dedupe: dos ENTREGAS repetidas del mismo post_call_transcription sí son duplicado', () => {
+  const ahoraMs = Date.UTC(2026, 0, 31, 12, 0, 0);
+  const almacenDedupe = crearAlmacenDedupe();
+  const { rawBody, headers } = cuerpoFirmado(
+    { type: 'post_call_transcription', data: { conversation_id: 'conv-pc-7', status: 'done', analysis: {} } },
+    SECRETO,
+    ahoraMs,
+  );
+  const primero = procesarCallback({ rawBody, headers, secreto: SECRETO, ahora: ahoraMs, estadoActual: 'en_curso', almacenDedupe });
+  const segundo = procesarCallback({ rawBody, headers, secreto: SECRETO, ahora: ahoraMs, estadoActual: 'en_curso', almacenDedupe });
+  assert.equal(primero.duplicado, false);
+  assert.equal(segundo.duplicado, true);
 });
 
 test('procesarCallback: solicita_no_llamar solo se marca con respaldo explícito del análisis', () => {
