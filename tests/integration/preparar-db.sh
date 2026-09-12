@@ -135,7 +135,10 @@ done
 # no la lista de candidatos del cluster) y siembra `max_expansiones_caso=1`.
 # Sin ella `rls-scope` ve tres funciones SECURITY DEFINER abiertas a PUBLIC y
 # la cobertura vuelve a quedar en false para todo cluster real.
-for n in 010 011 012 013 014 015 016 017; do
+# 019 (oleada 6, forense-db): recalibra la pierna (a) de T2 (sincronía) a la
+# ventana de un lote de timbrado. Es `create or replace` de una sola función;
+# sin ella T2 marca 85 de 100 RFC sobre un snapshot con hora intradía.
+for n in 010 011 012 013 014 015 016 017 019; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional

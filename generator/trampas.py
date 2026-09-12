@@ -113,14 +113,14 @@ def sembrar(m, fondo, cfg) -> Dict:
                 if m.intradia:
                     # TRAMPA DE T2(a): el ERP del grupo timbra TODO el cierre
                     # intercompañía en una sola corrida nocturna, así que
-                    # A→B→C→D son 3 facturas encadenadas en 90 minutos. T2
+                    # A→B→C→D son 3 facturas encadenadas en 6 minutos. T2
                     # dispara y tiene razón en disparar: lo que la separa del
                     # carrusel no es la hora, es que hay nómina de plantilla,
                     # compras al giro y depósito por factura. Sin este falso
                     # positivo T2 no tendría nada que descartar.
                     f = m.dia_de(i, 11)
                     hora, minuto = m.rafaga(k, 4, hora_inicio=20, minuto_inicio=15,
-                                            minutos_totales=90)
+                                            minutos_totales=6)
                 else:
                     f, hora, minuto = m.dia_de(i, 11 + k * 4), None, None
                 row = m.factura(a, b, f, base * (1 - 0.04 * k),
@@ -133,7 +133,7 @@ def sembrar(m, fondo, cfg) -> Dict:
              "grupo corporativo con tesorería centralizada: comparte domicilio y representante y "
              "opera en ciclo intercompañía, pero tiene nómina, compras y pagos verificables"
              + (". El cierre intercompañía se timbra en una sola corrida del ERP (4 facturas "
-                "encadenadas en 90 minutos): es la trampa de T2(a), ráfaga legítima"
+                "encadenadas en 6 minutos): es la trampa de T2(a), ráfaga legítima"
                 if m.intradia else ""))
     rfcs.extend(grupo)
     trampas.append("grupo_corporativo")
@@ -346,7 +346,7 @@ def sembrar(m, fondo, cfg) -> Dict:
     if m.intradia:
         m.notas.append("TRAMPA DE T2(a) declarada (--horario intradia): el grupo corporativo "
                        "timbra su cierre intercompañía en una sola corrida del ERP, 4 facturas "
-                       "encadenadas en 90 minutos. Es una ráfaga LEGÍTIMA y así consta en "
+                       "encadenadas en 6 minutos. Es una ráfaga LEGÍTIMA y así consta en "
                        "ground_truth.csv (es_trampa_legitima=true). Con ella el grupo llega a "
                        "dos familias (R y T), así que el selector automático SÍ lo puede "
                        "seleccionar: es el falso positivo que la capa de descarte tiene que "
