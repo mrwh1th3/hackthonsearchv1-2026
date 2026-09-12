@@ -3,12 +3,12 @@
   "contracts_version": "1.2.1",
   "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
   "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
-  "version_prompts": "0177c1c6996d",
+  "version_prompts": "cf6b53746dc6",
   "archivos": [
     {
       "name": "README.md",
-      "sha256": "ad4fc62ef36ec1ac5756eb5f796f0a18eed494680509b56ccea4f207eda11564",
-      "chars": 6376
+      "sha256": "2d7ddef1cfc0d30c4bb8c73a435731dfbdf52e0ee30a20b9bb89b7b4c99ee54e",
+      "chars": 6612
     },
     {
       "name": "auditor.md",
@@ -32,33 +32,33 @@
     },
     {
       "name": "ensamblar.mjs",
-      "sha256": "5a1badd47fd502d5657763c4cd99187cb3a5663a7a1a263934115d28784f3556",
-      "chars": 34563
+      "sha256": "768fca6edfdfcf6757140f4183b45a9b052fbd89a8c0f73bf41c61487ff3d634",
+      "chars": 35058
     },
     {
       "name": "esp-documental.md",
-      "sha256": "8af9a20168602ad65afa594929c1add8889505b23b3c2e1def18e89ad9b4a59d",
-      "chars": 3562
+      "sha256": "bfc67594ea8be203cd88944aa288f2764308d5cb3331f9c60148374c7528f711",
+      "chars": 3782
     },
     {
       "name": "esp-externo.md",
-      "sha256": "162cc0f3b907a480574628e37df91c55d851875a18651c2f0a90b4036ab45e87",
-      "chars": 3652
+      "sha256": "2e386565384e398406492e3a1c0668a778eae29496208dfeb625f365096c5734",
+      "chars": 3872
     },
     {
       "name": "esp-financiero.md",
-      "sha256": "e223b20ac6ae9ccf20567cb246e1bc7ad334c095b2fcdbc4f4418815dce5a08a",
-      "chars": 3894
+      "sha256": "852fb6bd22c594443b965a2f93281e2aa04257d195de33f1bd11a4860c670c31",
+      "chars": 4114
     },
     {
       "name": "esp-relacional.md",
-      "sha256": "ef167e3b22134652345848abc50bb282cdaddec52c64bba533fdb597f841caec",
-      "chars": 3297
+      "sha256": "a4d873dad69561872cf9aeff0fb4614e3e2952d6755d4626c66e7d524971688c",
+      "chars": 3517
     },
     {
       "name": "esp-temporal.md",
-      "sha256": "4271706bdfbff4666c393a8ab1a4bcba18bb234598a9fb6291fc8ac236d4b002",
-      "chars": 3102
+      "sha256": "545b6b6ef1326d4901af7e6858ab3f899f01e1a4112d7c7fedfc292757903ba2",
+      "chars": 3322
     },
     {
       "name": "fewshot-documental.md",
@@ -125,14 +125,16 @@
         "forense_escribir_senal",
         "forense_facturas",
         "forense_pares",
-        "forense_perfil"
+        "forense_perfil",
+        "forense_registrar_evidencia"
       ],
       "r2": [
         "forense_escribir_senal",
         "forense_facturas",
         "forense_leer_senal",
         "forense_pares",
-        "forense_perfil"
+        "forense_perfil",
+        "forense_registrar_evidencia"
       ]
     },
     "financiero": {
@@ -140,6 +142,7 @@
         "forense_conciliar",
         "forense_escribir_senal",
         "forense_facturas",
+        "forense_registrar_evidencia",
         "forense_seguir_dinero"
       ],
       "r2": [
@@ -147,6 +150,7 @@
         "forense_escribir_senal",
         "forense_facturas",
         "forense_leer_senal",
+        "forense_registrar_evidencia",
         "forense_seguir_dinero"
       ]
     },
@@ -155,6 +159,7 @@
         "forense_ciclos",
         "forense_escribir_senal",
         "forense_facturas",
+        "forense_registrar_evidencia",
         "forense_relacionados"
       ],
       "r2": [
@@ -162,6 +167,7 @@
         "forense_escribir_senal",
         "forense_facturas",
         "forense_leer_senal",
+        "forense_registrar_evidencia",
         "forense_relacionados"
       ]
     },
@@ -170,26 +176,30 @@
         "forense_escribir_senal",
         "forense_facturas",
         "forense_pares",
-        "forense_perfil"
+        "forense_perfil",
+        "forense_registrar_evidencia"
       ],
       "r2": [
         "forense_escribir_senal",
         "forense_facturas",
         "forense_leer_senal",
         "forense_pares",
-        "forense_perfil"
+        "forense_perfil",
+        "forense_registrar_evidencia"
       ]
     },
     "externo": {
       "r1": [
         "forense_escribir_senal",
         "forense_listas",
+        "forense_registrar_evidencia",
         "forense_relacionados"
       ],
       "r2": [
         "forense_escribir_senal",
         "forense_leer_senal",
         "forense_listas",
+        "forense_registrar_evidencia",
         "forense_relacionados"
       ]
     },

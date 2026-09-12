@@ -48,7 +48,7 @@ sanitizado de 19, no `runtime.contexto`.
   inicial").
 - `'total'`: `system` + mensaje inicial. Lectura estricta; sigue disponible y probada.
 
-Medido con los fixtures de contracts: el `system` de un especialista ocupa **8.6k–9.5k**, así
+Medido con los fixtures de contracts: el `system` de un especialista ocupa **8.9k–9.7k**, así
 que en ámbito `'total'` quedan ~2.2k para los datos —una o dos pistas a tamaño máximo— y con
 `fewshot` activo quedan ~600. Por eso el ámbito por defecto es `'paquete'`: con `'total'`, el
 peor caso del contrato dejaba al especialista sin una sola pista que investigar. Es una
@@ -58,7 +58,9 @@ El `system` tiene además su propio techo **medido**, `TECHO_SYSTEM_CARACTERES` 
 aborta el ensamblado: lo vigilan los tests y cada ensamblado lo reporta en
 `meta.caracteres_system`, `meta.techo_system` y `meta.system_sobre_techo`, para que el
 runtime lo registre. Dos casos lo rebasan a propósito y están medidos: los roles de cierre
-(~10.0k–10.1k, con techo de paquete de 24k) y la variante `fewshot` (~10.3k–11.2k).
+(~10.0k–10.1k, con techo de paquete de 24k) y la variante `fewshot` (~10.5k–11.4k; en ámbito
+`'total'` el financiero ya no cabe y el ensamblador lo dice con `bloque_obligatorio_no_cabe`
+en vez de recortar el system: esa variante se usa con el ámbito por defecto).
 
 Cuando no cabe, se omiten **bloques completos** (nunca medio JSON ni medio bloque de dato no
 confiable), se devuelve `truncado: true`, y el mensaje incluye un aviso con los IDs
@@ -82,7 +84,8 @@ corrida quedaría etiquetada con una `version_prompts` que no corresponde.
 
 Una **variante** es la misma carpeta con una opción de ensamblado distinta. Hoy hay una:
 `fewshot`, que añade al system el ejemplo adversarial de la familia (trampa de 02). Está
-**apagada por defecto** porque en ámbito `'total'` se come el presupuesto de datos.
+**apagada por defecto** porque se come ~1.6k del presupuesto y en ámbito `'total'` deja al
+especialista sin datos (o directamente no cabe).
 `meta.variante_prompt` la nombra (`documental` vs `documental+fewshot`) y el manifest lista
 las variantes posibles; el runtime la usa para calcular `prompt_hash` y registrarla junto a
 `version_prompts` en `corridas`.

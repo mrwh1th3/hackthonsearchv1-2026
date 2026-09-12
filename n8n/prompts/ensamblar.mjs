@@ -85,14 +85,18 @@ export const MODELO_PROPUESTO_POR_ROL = Object.freeze({
 // Allowlist exacta de 03 (herramientas por especialista) y 06 (quién usa cada RPC).
 // `forense_escribir_senal` es obligatoria para los especialistas (08 regla 8) y
 // `forense_leer_senal` sólo existe en ronda informada (03 rondas, 06 ACL).
+// `forense_registrar_evidencia` la tienen el Auditor Y los cinco especialistas: 06 §"Las 11
+// herramientas" la asigna a «auditor, especialistas» y 03 sólo lista las "principales"
+// (decisión H3 de reports/handoff/DECISIONES.md). Registrar no es validar: el Validador
+// determinista sigue siendo el único que marca `validada` (regla 4).
 // Ninguna herramienta de sistema (validar_evidencia, evaluar_frontera, despertar) aparece
 // aquí: no las llama el LLM.
 const TOOLS_BASE = Object.freeze({
-  documental: ['forense_perfil', 'forense_facturas', 'forense_pares'],
-  financiero: ['forense_conciliar', 'forense_seguir_dinero', 'forense_facturas'],
-  relacional: ['forense_relacionados', 'forense_ciclos', 'forense_facturas'],
-  temporal: ['forense_perfil', 'forense_facturas', 'forense_pares'],
-  externo: ['forense_listas', 'forense_relacionados'],
+  documental: ['forense_perfil', 'forense_facturas', 'forense_pares', 'forense_registrar_evidencia'],
+  financiero: ['forense_conciliar', 'forense_seguir_dinero', 'forense_facturas', 'forense_registrar_evidencia'],
+  relacional: ['forense_relacionados', 'forense_ciclos', 'forense_facturas', 'forense_registrar_evidencia'],
+  temporal: ['forense_perfil', 'forense_facturas', 'forense_pares', 'forense_registrar_evidencia'],
+  externo: ['forense_listas', 'forense_relacionados', 'forense_registrar_evidencia'],
   auditor: [
     'forense_perfil', 'forense_facturas', 'forense_conciliar', 'forense_seguir_dinero',
     'forense_relacionados', 'forense_ciclos', 'forense_pares', 'forense_listas',

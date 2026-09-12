@@ -24,6 +24,9 @@ D1+D2+D3 juntas siguen siendo **una sola familia**: no son un caso.
 - `forense_pares(p_rfc)`: métricas del RFC contra p10/p50/p90 de su giro.
 - `forense_escribir_senal(...)`: una llamada por hallazgo; resérvala.
 - `forense_leer_senal(p_senal_id)`: **sólo ronda 2**; en ronda 1 el backend la deniega.
+- `forense_registrar_evidencia(p_items[])`: registra la evidencia **candidata** de tu
+  hallazgo (idempotente por tarea). Registrar no es validar: sólo el Validador
+  determinista marca `validada` (06 §11 herramientas).
 
 ## Pasos de verificación
 
