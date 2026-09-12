@@ -482,10 +482,35 @@ Esto verifica que:
    - `N8N_WEBHOOK_BASE`: URL base de webhooks de n8n (sin trailing slash)
    - `INTERNAL_WEBHOOK_SECRET`: string para autentificar BFF → webhooks
    - `SUPABASE_SERVICE_ROLE_KEY`: clave service_role (solo BFF server-side)
+   - `SUPABASE_URL`: **la misma URL otra vez, sin el prefijo `NEXT_PUBLIC_`.** No es
+     redundante y no tiene respaldo: `web/lib/data/privado-supabase.ts:33` exige
+     `SUPABASE_URL` a secas, así que sin ella el camino PRIVADO del BFF (perfil,
+     historial, notificaciones, estado de llamada — todo el 16) se apaga mientras
+     la lectura pública sigue funcionando. Es el fallo más confuso de diagnosticar
+     en vivo: media aplicación viva y media muerta.
 
 4. Deploy: Vercel genera URL como `forense-fpo3j.vercel.app`
 
-**Verificación:** navegar a `/login` y ver formulario de demo.
+**Verificación (los cuatro fallos que sólo aparecen en producción).** Ninguno se
+ve en local ni en las pruebas, así que hay que comprobarlos en el despliegue:
+
+1. `/login` muestra el formulario, y **entrar funciona**. Si dice "Sesión demo no
+   configurada en este entorno", falta `DEMO_PASSWORD` o `SESSION_SECRET`: el
+   código falla cerrado a propósito en producción en vez de usar el secreto de
+   desarrollo, y la UI distingue ese mensaje de "usuario o contraseña
+   incorrectos". No confundir los dos.
+2. **`/metodo` muestra las tres secciones con contenido.** Lee `DECISIONES.md`,
+   `ESTADO.md` y `RUNBOOK.md` de la raíz del repo en tiempo de petición, y esos
+   archivos están FUERA de `web/`: viajan sólo porque `web/next.config.ts` los
+   mete en el rastreo (`outputFileTracingRoot` + `outputFileTracingIncludes`).
+   Si sale "no se encontró ninguno", el rastreo no los incluyó; el plan B está en
+   `reports/handoff/ESTADO.md` (hallazgo H11-f).
+3. **Perfil e historial cargan.** Si salen vacíos o con error de configuración,
+   falta `SUPABASE_URL` (ver arriba).
+4. `/datos` y `/casos` muestran datos del proyecto, no el rótulo de fixture. Si
+   muestran fixture, falta `NEXT_PUBLIC_DATA_SOURCE=supabase` o las claves
+   públicas; el selector es explícito a propósito (decisión H3) para que la mera
+   presencia de variables no active un origen a medio implementar.
 
 ## (d) Inyección en vivo (oleada 4 — QA-004)
 
