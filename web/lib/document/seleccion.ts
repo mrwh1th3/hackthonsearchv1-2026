@@ -1,4 +1,4 @@
-import { esBloqueTexto, hashTexto, indexarBloques, textoDeBloque } from "./documento";
+import { esBloqueTexto, hashTexto, indexarBloques } from "./documento";
 import type { Bloque, Documento, NodoTexto } from "./tipos";
 
 /**
@@ -21,17 +21,25 @@ import type { Bloque, Documento, NodoTexto } from "./tipos";
  *
  * **Regla de diseño: solo se afirma el desplazamiento cuando se puede probar.**
  * Un 409 falso bloquea una propuesta legítima —peor que no verificar—, así que
- * si la enumeración no cabe en el presupuesto, o la selección toca
- * contenedores (tablas, listas) cuyo texto no se reconstruye con la misma
- * semántica, el resultado es `indeterminada` y la petición **sigue**,
- * declarando `seleccion_verificada: false`. Solo una enumeración completa sin
- * coincidencia produce `desplazada`.
+ * si la enumeración no cabe en el presupuesto el resultado es `indeterminada`
+ * y la petición **sigue**, declarando `seleccion_verificada: false`. Solo una
+ * enumeración completa sin coincidencia produce `desplazada`.
+ *
+ * Tablas y listas **no** son un caso aparte. El texto de cada bloque anclado
+ * se reconstruye con `textoEntre()` sobre su propio rango, que es el mismo
+ * `textBetween` que usa el paso 1: un `tableCell` con dos párrafos aporta
+ * `"a\nb"`, igual que aportaría dentro del documento. Antes se usaba una
+ * concatenación plana que no era equivalente para contenedores y por eso se
+ * devolvía `indeterminada: contenedores` —una selección sobre la tabla de
+ * hallazgos nunca se verificaba—. El precio es que esos textos son más largos
+ * y una tabla grande puede caer ahora en `indeterminada: presupuesto`, que es
+ * un límite medido y no un «no se intentó».
  */
 
 export type VerificacionSeleccion =
   | { estado: "verificada"; via: "posiciones" | "anclas" }
   | { estado: "desplazada" }
-  | { estado: "indeterminada"; motivo: "presupuesto" | "contenedores" | "bloques_ausentes" };
+  | { estado: "indeterminada"; motivo: "presupuesto" | "bloques_ausentes" };
 
 export interface SeleccionEntrada {
   from: number;
@@ -126,19 +134,48 @@ export function rangoDeBloque(documento: Documento, blockId: string): { from: nu
 // Verificación.
 // ---------------------------------------------------------------------------
 
-/** Bloques referenciados, en orden de documento (no en el orden del cliente). */
-function bloquesEnOrden(documento: Documento, ids: string[]): Bloque[] {
+interface BloqueAnclado {
+  bloque: Bloque;
+  from: number;
+  to: number;
+}
+
+/**
+ * Bloques referenciados con su rango, en orden de documento (no en el del
+ * cliente) y **sin anidados**: si el cliente manda una tabla y además una de
+ * sus celdas, la celda ya está dentro del rango de la tabla y contarla otra
+ * vez duplicaría su texto en la reconstrucción.
+ */
+function bloquesEnOrden(documento: Documento, ids: string[]): BloqueAnclado[] {
   const buscados = new Set(ids);
-  const encontrados: Bloque[] = [];
-  function caminar(hijos: Nodo[]): void {
+  const encontrados: BloqueAnclado[] = [];
+  function caminar(hijos: Nodo[], inicio: number): void {
+    let pos = inicio;
     for (const hijo of hijos) {
-      if (esTexto(hijo)) continue;
-      if (buscados.has(hijo.attrs.id)) encontrados.push(hijo);
-      caminar(hijosDe(hijo));
+      const tamano = tamanoNodo(hijo);
+      if (!esTexto(hijo)) {
+        if (buscados.has(hijo.attrs.id)) {
+          // Hoja de bloque (`horizontalRule`): rango vacío, texto `" "`.
+          encontrados.push({ bloque: hijo, from: pos + 1, to: pos + Math.max(tamano - 1, 1) });
+        } else {
+          caminar(hijosDe(hijo), pos + 1);
+        }
+      }
+      pos += tamano;
     }
   }
-  caminar(documento.content as Nodo[]);
+  caminar(documento.content as Nodo[], 0);
   return encontrados;
+}
+
+/**
+ * Texto que un bloque aporta a `textBetween` cuando está entero dentro de la
+ * selección. Para un bloque de texto es su texto; para un contenedor, sus
+ * bloques de texto unidos por `"\n"`; para `horizontalRule`, su `leafText`.
+ */
+function textoAnclado(documento: Documento, anclado: BloqueAnclado): string {
+  if (anclado.bloque.type === "horizontalRule") return " ";
+  return textoEntre(documento, anclado.from, anclado.to);
 }
 
 export function verificarSeleccion(documento: Documento, seleccion: SeleccionEntrada): VerificacionSeleccion {
@@ -152,14 +189,13 @@ export function verificarSeleccion(documento: Documento, seleccion: SeleccionEnt
     return { estado: "verificada", via: "posiciones" };
   }
 
-  // 2. Enumeración anclada. Solo con bloques de texto: para tablas y listas la
-  //    reconstrucción no es equivalente y no se puede probar nada.
+  // 2. Enumeración anclada: la salida de `textBetween` siempre es
+  //    `sufijo(primero) + "\n" + intermedios + "\n" + prefijo(último)`, y cada
+  //    bloque aporta su texto con la MISMA semántica, contenedores incluidos.
   const bloques = bloquesEnOrden(documento, seleccion.block_ids);
-  if (bloques.length === 0 || !bloques.every(esBloqueTexto)) {
-    return { estado: "indeterminada", motivo: "contenedores" };
-  }
+  if (bloques.length === 0) return { estado: "indeterminada", motivo: "bloques_ausentes" };
 
-  const textos = bloques.map(textoDeBloque);
+  const textos = bloques.map((b) => textoAnclado(documento, b));
   const primero = textos[0];
   const ultimo = textos[textos.length - 1];
 
