@@ -103,7 +103,7 @@ export interface RepositorioExpediente {
    * Persiste la propuesta ANTES de responderla al cliente. Sin esto, el
    * `propuesta_id` que la UI recibe no existe en `forense.propuestas_edicion`
    * y Aplicar devolvería `contexto_invalido` (006 §7 busca la fila por id).
-   * Devuelve el id definitivo: si `request_id` ya estaba (reintento del mismo
+   * Devuelve el id final: si `request_id` ya estaba (reintento del mismo
    * `idempotency_key`), se reutiliza la propuesta existente.
    */
   registrarPropuesta(
