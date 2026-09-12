@@ -71,3 +71,23 @@ test('registrarCallback: sin ninguna identidad lanza ErrorVoz', () => {
   const almacen = crearAlmacenDedupe();
   assert.throws(() => registrarCallback(almacen, {}), ErrorVoz);
 });
+
+test('registrarCallback: initiated→completed de la MISMA llamada no se descartan entre sí (hallazgo forense-qa #1)', () => {
+  const almacen = crearAlmacenDedupe();
+  const identidad = { event_id: 'evt-1', conversation_id: 'conv-secuencia', call_sid: null };
+  const iniciada = registrarCallback(almacen, { ...identidad, tipo_evento: 'initiated' });
+  const sonando = registrarCallback(almacen, { ...identidad, tipo_evento: 'ringing' });
+  const completada = registrarCallback(almacen, { ...identidad, tipo_evento: 'completed' });
+  assert.equal(iniciada.nuevo, true);
+  assert.equal(sonando.nuevo, true);
+  assert.equal(completada.nuevo, true, 'completed no debe leerse como duplicado de initiated/ringing');
+});
+
+test('registrarCallback: dos entregas del MISMO tipo de evento para la misma llamada sí son duplicado', () => {
+  const almacen = crearAlmacenDedupe();
+  const identidad = { event_id: 'evt-1', conversation_id: 'conv-secuencia-2', call_sid: null, tipo_evento: 'completed' };
+  assert.equal(registrarCallback(almacen, identidad).nuevo, true);
+  const reentrega = registrarCallback(almacen, identidad);
+  assert.equal(reentrega.nuevo, false);
+  assert.equal(reentrega.motivo, 'callback_duplicado');
+});

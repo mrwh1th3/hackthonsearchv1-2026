@@ -1,11 +1,16 @@
 // integrations/elevenlabs/hmac.mjs — Verificación HMAC del callback post-llamada (16 §3).
 //
-// SUPUESTO EXPLÍCITO (sin cuenta ElevenLabs verificada, sin red aquí): se
-// asume un esquema de firma tipo Svix/Stripe `t=<epoch_s>,v0=<hex hmac-sha256
-// de "<t>.<cuerpo_crudo>">`. Es el único convenio con evidencia en el repo —
-// n8n/runtime/voz-adaptador.mjs ya parsea `t=(\d+)` de la firma. El esquema
-// se pasa por `opciones`, no está cableado: confirmar contra la cuenta real y
-// ajustar aquí (header/prefijos/mensaje), sin reescribir el resto del módulo.
+// FORMATO CONFIRMADO (hallazgo QA #5, documentación pública de ElevenLabs:
+// https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks,
+// enlazada también en 16 línea 61): el header `ElevenLabs-Signature` (lectura
+// case-insensitive) trae `t=<epoch_s>,v0=<hex hmac-sha256 de "<t>.<cuerpo_crudo>">`.
+// Ya no es un supuesto sin verificar (n8n/runtime/voz-adaptador.mjs también
+// asumía este mismo `t=`/`v0=`, así que coincide con la única otra evidencia
+// del repo) y es el default de `OPCIONES_POR_DEFECTO`. Aun así el esquema
+// completo se recibe por `opciones` — no está cableado — porque una cuenta
+// real puede usar un header/prefijo propio (multi-tenant, entorno de
+// pruebas, etc.): eso queda como alternativa configurable, probada aparte
+// de la ruta por default (ver tests/voice/hmac.test.mjs).
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -46,16 +51,22 @@ function analizarFirma(valor, opciones) {
  *
  * Dos formas de llamada, ambas soportadas para no dejar una trampa de
  * integración si el runtime importa esta función con la convención del stub:
- *   - Posicional (18, canónica aquí): verificarFirma(rawBody, headers, secreto, ahora, opciones?)
- *   - Objeto (paridad con n8n/runtime/voz-adaptador.mjs): verificarFirma({crudo, firma, ahora_ms, tolerancia_s})
+ *   - Posicional (canónica aquí): verificarFirma(rawBody, headers, secreto, ahora, opciones?)
+ *   - Objeto (paridad con n8n/runtime/voz-adaptador.mjs): verificarFirma({crudo, firma, secreto, ahora_ms, tolerancia_s})
+ *     El secreto se lee POR NOMBRE del propio objeto (hallazgo QA #3) — no
+ *     de un segundo argumento posicional — para que la forma objeto sea
+ *     autocontenida y no dependa de recordar un orden de parámetros aparte.
  *
  * @returns {{valido:boolean, motivo:string|null}}
  */
 export function verificarFirma(a, b, c, d, e) {
   if (a && typeof a === 'object' && !Buffer.isBuffer(a)) {
-    const { crudo, firma, ahora_ms, tolerancia_s } = a;
+    const { crudo, firma, secreto, ahora_ms, tolerancia_s } = a;
     const opciones = tolerancia_s ? { ventanaS: tolerancia_s } : undefined;
-    return verificarFirma(crudo, { 'elevenlabs-signature': firma }, c ?? b, ahora_ms, opciones);
+    // `c ?? b` es compatibilidad transicional con un llamador que aún pasara
+    // el secreto posicional en vez de dentro del objeto; `secreto` nombrado
+    // es la forma correcta y la que debe usarse de aquí en adelante.
+    return verificarFirma(crudo, { 'elevenlabs-signature': firma }, secreto ?? c ?? b, ahora_ms, opciones);
   }
 
   const rawBody = a;

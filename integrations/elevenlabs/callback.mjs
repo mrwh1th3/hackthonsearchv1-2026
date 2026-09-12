@@ -2,12 +2,17 @@
 //
 // Mapea SOLO hechos realmente recibidos: si el proveedor no manda un tipo
 // reconocido, el estado destino es 'resultado_desconocido', nunca se infiere
-// "Sonando" ni "entregado" sin evidencia (16 línea 27, línea 88).
+// "Sonando" ni "entregado" sin evidencia (16 línea 27, línea 88). Esa regla
+// aplica IGUAL a los dos formatos de cuerpo que este módulo acepta — ver
+// `adaptarCuerpoProveedor` — nunca se relaja para el más nuevo de los dos.
 
 import { verificarFirma } from './hmac.mjs';
 import { registrarCallback } from './dedupe.mjs';
 import { transicionarEstado } from './estados.mjs';
 
+// --- Formato "plano" (heredado; el que usa n8n/runtime/voz-adaptador.mjs y
+// el que documentaba hasta ahora este módulo en solitario):
+// {type|status, conversation_id, call_sid, analysis}.
 const MAPA_TIPO_A_ESTADO = Object.freeze({
   initiated: 'aceptada',
   ringing: 'en_curso',
@@ -18,19 +23,87 @@ const MAPA_TIPO_A_ESTADO = Object.freeze({
   busy: 'sin_respuesta',
 });
 
+// --- Formato documentado públicamente por ElevenLabs para el webhook
+// post-llamada (16 línea 61, https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks):
+// {type:'post_call_transcription'|'post_call_audio', data:{conversation_id,
+// agent_id, status, analysis, metadata, ...}}. La documentación reporta
+// `data.status` como `done`/`failed`; cualquier valor no reconocido (o su
+// ausencia) NO se traduce a 'finalizada' por default — sería inventar
+// evidencia de éxito para un vocabulario de proveedor que cambió (16 línea 27,
+// regla 4 de CLAUDE.md). Cae a 'resultado_desconocido', igual que el plano.
+const MAPA_STATUS_POST_CALL = Object.freeze({
+  done: 'finalizada',
+  completed: 'finalizada',
+  success: 'finalizada',
+  failed: 'fallida',
+  error: 'fallida',
+  no_answer: 'sin_respuesta',
+  busy: 'sin_respuesta',
+});
+
+function esEnvolturaPostCall(cuerpo) {
+  return (
+    typeof cuerpo?.type === 'string' &&
+    cuerpo.type.startsWith('post_call') &&
+    cuerpo?.data !== null &&
+    typeof cuerpo?.data === 'object' &&
+    !Array.isArray(cuerpo.data)
+  );
+}
+
+/**
+ * Normaliza CUALQUIERA de los dos formatos de callback documentados (ver
+ * arriba) a una forma interna única. No decide nada de negocio propio del
+ * dictamen (regla 4 de CLAUDE.md): solo reubica campos y resuelve `estado`
+ * vía tablas de mapeo declarativas.
+ *
+ * Exportada a propósito: el runtime/BFF puede querer inspeccionar `formato`
+ * (p. ej. para logging/bitácora) sin reimplementar esta detección.
+ *
+ * @returns {{formato:'plano'|'post_call', tipo_evento:string|null, estado:string, status_crudo:string|null, analysis:object, conversation_id:string|null, call_sid:string|null, event_id:string|null}}
+ */
+export function adaptarCuerpoProveedor(cuerpoCrudo) {
+  const cuerpo = cuerpoCrudo ?? {};
+  if (esEnvolturaPostCall(cuerpo)) {
+    const datos = cuerpo.data;
+    return {
+      formato: 'post_call',
+      tipo_evento: cuerpo.type, // 'post_call_transcription' | 'post_call_audio' (16 §3, §4)
+      estado: MAPA_STATUS_POST_CALL[datos.status] ?? 'resultado_desconocido',
+      status_crudo: datos.status ?? null,
+      analysis: datos.analysis ?? {},
+      conversation_id: datos.conversation_id ?? null,
+      call_sid: datos.call_sid ?? datos.callSid ?? null,
+      event_id: datos.completion_event_id ?? datos.event_id ?? cuerpo.completion_event_id ?? cuerpo.event_id ?? null,
+    };
+  }
+  const tipo = cuerpo.type ?? cuerpo.status ?? null;
+  return {
+    formato: 'plano',
+    tipo_evento: tipo,
+    estado: MAPA_TIPO_A_ESTADO[tipo] ?? 'resultado_desconocido',
+    status_crudo: tipo,
+    analysis: cuerpo.analysis ?? {},
+    conversation_id: cuerpo.conversation_id ?? null,
+    call_sid: cuerpo.call_sid ?? cuerpo.callSid ?? null,
+    event_id: cuerpo.completion_event_id ?? cuerpo.event_id ?? null,
+  };
+}
+
 function leerBooleano(valor) {
   return typeof valor === 'boolean' ? valor : null;
 }
 
 /**
- * Traduce el cuerpo YA VERIFICADO del callback a estado + los tres campos de
- * evaluación de 16 §4. `null` significa "sin evidencia" (desconocido), nunca
- * se rellena con `false` por defecto — una ausencia no es una negación.
+ * Traduce un cuerpo YA NORMALIZADO (`adaptarCuerpoProveedor`) a los tres
+ * campos de evaluación de 16 §4. `null` significa "sin evidencia"
+ * (desconocido), nunca se rellena con `false` por defecto — una ausencia no
+ * es una negación. Interna: `resultadoDesdeCallback` y `procesarCallback` la
+ * comparten para que dedupe y decisión de estado vengan de la MISMA
+ * normalización y nunca diverjan entre sí.
  */
-export function resultadoDesdeCallback(evento) {
-  const tipo = evento?.type ?? evento?.status ?? null;
-  const estado = MAPA_TIPO_A_ESTADO[tipo] ?? 'resultado_desconocido';
-  const analysis = evento?.analysis ?? {};
+function resultadoDesdeNormalizado(normalizado) {
+  const { estado, analysis } = normalizado;
 
   // Acepta el nombre de campo de 16 §4 (aviso_entregado) y, por compatibilidad,
   // el que usa n8n/runtime/voz-adaptador.mjs (aviso_confirmado); el primero gana.
@@ -46,9 +119,18 @@ export function resultadoDesdeCallback(evento) {
     aviso_entregado: avisoEntregado,
     solicita_no_llamar: leerBooleano(analysis.solicita_no_llamar),
     numero_equivocado: leerBooleano(analysis.numero_equivocado),
-    conversation_id: evento?.conversation_id ?? null,
-    call_sid: evento?.call_sid ?? evento?.callSid ?? null,
+    conversation_id: normalizado.conversation_id,
+    call_sid: normalizado.call_sid,
   };
+}
+
+/**
+ * Traduce el cuerpo YA VERIFICADO del callback (en cualquiera de los dos
+ * formatos de `adaptarCuerpoProveedor`) a estado + los tres campos de
+ * evaluación de 16 §4.
+ */
+export function resultadoDesdeCallback(evento) {
+  return resultadoDesdeNormalizado(adaptarCuerpoProveedor(evento));
 }
 
 /**
@@ -93,19 +175,25 @@ export function procesarCallback({ rawBody, headers, secreto, ahora, opcionesFir
     return { aceptado: false, motivo: 'json_invalido', estado: estadoActual ?? null };
   }
 
+  // Una sola normalización para dedupe Y para la decisión de estado: si cada
+  // una llamara a adaptarCuerpoProveedor por su cuenta, una diferencia futura
+  // entre ambas rutas podría deduplicar con una identidad y decidir el
+  // estado con otra.
+  const normalizado = adaptarCuerpoProveedor(cuerpo);
+
   if (almacenDedupe) {
-    const eventId = cuerpo.completion_event_id ?? cuerpo.event_id ?? null;
     const dedupe = registrarCallback(almacenDedupe, {
-      event_id: eventId,
-      conversation_id: cuerpo.conversation_id ?? null,
-      call_sid: cuerpo.call_sid ?? cuerpo.callSid ?? null,
+      event_id: normalizado.event_id,
+      conversation_id: normalizado.conversation_id,
+      call_sid: normalizado.call_sid,
+      tipo_evento: normalizado.tipo_evento,
     });
     if (!dedupe.nuevo) {
       return { aceptado: true, duplicado: true, motivo: dedupe.motivo, estado: estadoActual ?? null };
     }
   }
 
-  const resultado = resultadoDesdeCallback(cuerpo);
+  const resultado = resultadoDesdeNormalizado(normalizado);
   const transicion = estadoActual
     ? transicionarEstado(estadoActual, resultado.estado)
     : { estado: resultado.estado, cambio: true, motivo: null };
