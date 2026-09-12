@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, Database, FolderKanban, Gauge, HelpCircle, History, LogOut, Search, User, X } from "lucide-react";
+import { BarChart3, Bell, Compass, Database, FolderKanban, Gauge, HelpCircle, History, ListChecks, LogOut, Search, User, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -40,12 +40,15 @@ import type { Investigacion } from "@/lib/data";
  */
 const NAV_ITEMS = [
   { href: "/", label: "Inicio", icon: Gauge },
+  { href: "/casos", label: "Cola de casos", icon: ListChecks },
   { href: "/corridas", label: "Corridas", icon: History },
   { href: "/historial", label: "Historial", icon: FolderKanban },
   { href: "/estadisticas", label: "Estadísticas", icon: BarChart3 },
   { href: "/notificaciones", label: "Notificaciones", icon: Bell },
   { href: "/datos", label: "Datos", icon: Database },
   { href: "/metodo", label: "Método", icon: HelpCircle },
+  // Índice de todas las pantallas, para revisar la UI completa de un tirón.
+  { href: "/rutas", label: "Navegación de prueba", icon: Compass },
 ] as const;
 
 export interface AppShellProps {

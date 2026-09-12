@@ -835,7 +835,7 @@ export function investigarCluster() {
     // INSERT fallaría en ejecución aunque PREPARE lo acepte (comprobado con
     // psql contra 001–003; ver IMPORT.md §Verificación). `estado` solo admite
     // abierto|cerrado|cancelado|timeout: 'esperando' violaba el CHECK.
-    `={{ $json.caso_id }}, ={{ ${'`{${($json.tarea_ids ?? []).join(",")}}`'} }}, ={{ ${'`{${($json.snapshot_senales ?? []).join(",")}}`'} }}, ={{ $json.deadline }}`,
+    `={{ $json.caso_id }}, ={{ '{' + ($json.tarea_ids ?? []).join(',') + '}' }}, ={{ '{' + ($json.snapshot_senales ?? []).join(',') + '}' }}, ={{ $json.deadline }}`,
     'La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.',
   ));
 
@@ -1189,7 +1189,7 @@ export function reintento() {
       'SELECT $1::uuid AS caso_id, $4::text[] AS autores, false AS expandido,',
       "       'cuota_expansion_agotada'::text AS limitacion FROM ev",
     ].join('\n'),
-    `${R('caso_id')}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ${R('corrida_id')}, ={{ \`{\${($json.autores ?? []).join(",")}}\` }}`,
+    `${R('caso_id')}, ={{ JSON.stringify({ alcance: 'expansion', intento: $('Validar intento').first().json.intento }) }}, ${R('corrida_id')}, ={{ '{' + ($json.autores ?? []).join(',') + '}' }}`,
     'Si la única expansión del cluster ya se usó, se registra el límite y el reintento sigue SIN expandir (07 §3).',
   ));
 
@@ -1205,7 +1205,7 @@ export function reintento() {
   add(sql(
     'Crear tareas de revisión',
     'SELECT * FROM forense.crear_tareas_revision($1::uuid, $2::int, $3::text[], $4::jsonb)',
-    `${R('caso_id')}, ${R('intento')}, ={{ \`{\${($json.autores ?? []).join(",")}}\` }}, ${R('objetivo')}`,
+    `${R('caso_id')}, ${R('intento')}, ={{ '{' + ($json.autores ?? []).join(',') + '}' }}, ${R('objetivo')}`,
     'Ronda 2 con intento 1|2 y la version_contexto vigente; las señales nuevas se enlazan a las previas y la historia se conserva. DEPENDE de forense-db.',
   ));
 
