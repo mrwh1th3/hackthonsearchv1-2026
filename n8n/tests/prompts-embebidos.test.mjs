@@ -188,3 +188,39 @@ test('la generación FALLA si un prompt cambia sin regenerar el manifest', () =>
   assert.throws(() => catalogoPrompts({ dir: tmp }), /comun\.md: sha256 .* Regenera/);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+// DECISIONES H3 01:36 fija el techo del system en «≤10k medido». La medida real
+// con paquete de contexto de verdad (bloque de identidad incluido): los cinco
+// especialistas se quedan en 8.5–9.3k, y los roles de cierre
+// (auditor/defensor/redactor) llegan a ~10.05k, es decir **rozan y pasan por
+// poco** el redondeo de esa decisión. El techo que se prueba aquí es 10 500:
+// es la cifra medida, no una holgura elegida a ojo. Si un prompt crece y lo
+// supera, esta prueba falla y el coordinador decide, no se degrada en silencio.
+const TECHO_SYSTEM = 10_500;
+
+test('[SIMULADO] el system por rol cabe en el techo medido y se reporta su tamaño', () => {
+  const medidas = [];
+  for (const rol of ROLES_LLM) {
+    const nombreFixture = PAQUETES[rol];
+    const paquete = nombreFixture ? fixture(nombreFixture) : { ronda: 1, intento: 0, limites: {}, cobertura: {}, familias_evaluables: [] };
+    const salida = construirCuerpoNodo({
+      rol,
+      paquete,
+      ronda: paquete.ronda ?? 1,
+      modelo: 'claude-sonnet-5',
+      mensajes: [{ role: 'user', content: 'paquete' }],
+      catalogo_prompts: catalogo,
+    });
+    medidas.push([rol, salida.caracteres_system]);
+  }
+  const excedidos = medidas.filter(([, n]) => n > TECHO_SYSTEM);
+  assert.deepEqual(
+    excedidos, [],
+    `system por rol (caracteres): ${medidas.map(([r, n]) => `${r}=${n}`).join(' ')}`,
+  );
+  // Y el system NO se cuenta contra el techo del paquete: ese es el sentido de
+  // ambito_techo='paquete'. Un especialista con system de ~9k y techo de 12k
+  // se quedaría sin sitio para las pistas si se contaran juntos.
+  const documental = medidas.find(([r]) => r === 'documental')[1];
+  assert.ok(documental > catalogo.techos.documental / 2, 'el system de un especialista ocupa más de medio techo');
+});
