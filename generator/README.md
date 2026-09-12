@@ -46,3 +46,49 @@ código, el dataset se regenera.
 
 `--seed 42 --n 100 --meses 12` → 100 contribuyentes, 8,081 CFDI, 6,006
 movimientos, 1,787 complementos, 549 atributos, 0.5 s (objetivo: < 30 s).
+
+## Resolución intradía (`--horario`) — gen-v1 vs gen-v2
+
+```sh
+python3 generator/gen.py --seed 42 --n 100 --out data/gen/                    # gen-v1
+python3 generator/gen.py --seed 42 --n 100 --horario intradia --out data/v2/  # gen-v2
+```
+
+`--horario plano` es el **DEFAULT y no cambia**: `gen-v1` está cargado en la
+base compartida y las aserciones `db/tests/assertions_*_gen.sql` miden sobre
+esa corrida. `--horario intradia` produce `gen-v2`.
+
+**Por qué existe.** Con todo a las 10:30, la pierna (a) de **T2**
+(sincronía, cadena de ≥3 facturas en una ventana corta) es *no evaluable por
+construcción*: «menos de 6 horas» equivale a «el mismo día». Una de las 14
+pistas no se podía medir.
+
+| | `plano` (gen-v1) | `intradia` (gen-v2) |
+|---|---|---|
+| emisiones legítimas | todas 10:30 | `PESOS_HORA` 8:00–21:00, dos picos y cola de cierre; minuto uniforme |
+| `capas` | 4 saltos en 20 días | 4 saltos en **6 min**, mismo día y **mismo mes** que en gen-v1 |
+| `carrusel` | ciclo en días | ciclo en **6 min** (3 nodos → 2 saltos: T2(a) no lo captura, y es deliberado) |
+| trampa de T2(a) | — | el **grupo corporativo** timbra su cierre intercompañía en una corrida del ERP: 4 encadenadas en 6 min. Ráfaga **legítima**, declarada en `ground_truth` |
+| horas distintas en `cfdi` | 1 | 818 |
+| `dataset_hash` | `17a3e1ceb787d56d…` | cambia con la versión de las ráfagas |
+
+**Cómo se garantiza que gen-v1 no se movió.** El azar de la hora sale de un
+`random.Random` **aparte** (`Mundo.rng_hora`, sembrado con
+`"hora|<seed>|<fecha_corte>"`) que en modo `plano` **no se consume ni una
+vez**; la aleatorización vive en `factura()`, no en `ts()`, así que
+`cuenta()`, `complemento()` y `cancelar()` conservan su hora fija. Medido:
+
+1. los 8 CSV regenerados con el código nuevo en modo `plano` tienen el
+   **mismo sha256** que los del código anterior, archivo por archivo;
+2. el `dataset_hash` reproducido es
+   `17a3e1ceb787d56df08534c501284c9eb33a72bc143cc2f6c0a0ab2a73581778`, el
+   mismo que tiene cargada la corrida `gen-v1` de la base compartida;
+3. cargado en una base **desechable**, los conteos por tabla y por tipología
+   salen idénticos a los de esa corrida (diff vacío), y el `corrida_id`
+   determinista coincide: `3fc52b5a-3e4b-54f4-a714-b3303b6f0347`;
+4. `gen-v2` difiere de `gen-v1` **sólo en la columna `cfdi.fecha`**: 8047
+   filas cambian de hora y 19 de día (las tres ráfagas). Mismo padrón, mismas
+   cuentas, mismos importes (`sum(total)` idéntico).
+
+`gen-v2` entra **siempre como corrida nueva**, con su nombre, su
+`dataset_hash` y su `fecha_corte`. La corrida `gen-v1` no se toca.
