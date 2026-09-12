@@ -120,7 +120,10 @@ done
 # vistas de métricas. Condicionales por la misma razón que 009: el banco tiene
 # que correr contra el HEAD de hoy y contra el de mañana. Se aplican en orden
 # numérico: 011 lee objetos que crea 010.
-for n in 010 011 012; do
+# 013 (oleada 4, forense-db): reescribe F1 y añade índices. Sin ella el banco
+# mide la F1 correlacionada de 003 y la prueba de rendimiento (30 s, gate de
+# inyección en vivo de 21 §3) deja de significar lo que dice medir.
+for n in 010 011 012 013; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional
