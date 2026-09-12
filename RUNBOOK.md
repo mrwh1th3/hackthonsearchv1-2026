@@ -320,15 +320,35 @@ Ver `launch.config.json` para confirmación.
 
 ### Paso 1: Verificar migraciones en remoto
 
-Supabase `hackthon2026` tiene aplicadas:
-- 001_schema.sql (tablas, RLS, realtime, runtime)
-- 002_views.sql (helpers, fencing)
-- 003_pistas.sql (pistas D2, F1, F2, R1, R2, E1, T1)
-- seed_fake.sql (fixture UI)
+**Estado actual (2026-09-12):** **001–020 aplicadas y verificadas** en Supabase
+`hackthon2026`, con `seed_fake` y `seed_producto` cargados. La verificación no
+fue el "ok" del aplicador: para cada función tocada se comparó el `md5(prosrc)`
+remoto contra el cuerpo del archivo **que la define en último lugar** (varias se
+redefinen: `cobertura_caso` la fija 016, `paquete_auditor_final` y
+`guardar_dictamen` las fija 017, `v_contraste_caso` la fija 020, `correr_pistas`
+la fija 014). Ver `reports/handoff/ESTADO.md` para los hashes.
 
-**Estado actual (H5):** 001–008 confirmadas en Supabase, seed_fake y seed_producto cargados.
+Comprobar el estado en cualquier momento, sin escribir nada:
 
-**Tareas pendientes:**
+```sql
+-- ¿Qué migraciones registra el remoto?
+select version, name from supabase_migrations.schema_migrations order by version;
+
+-- ¿Alguna función del esquema quedó ejecutable por PUBLIC?
+select p.proname, p.proacl::text[]
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'forense'
+   and exists (select 1 from unnest(coalesce(p.proacl, '{}'::aclitem[])) a
+                where a::text like '=%');
+-- Se esperan CERO filas.
+```
+
+Nota: el remoto registra además una migración `003_pistas_recalibrada_2b` que no
+tiene archivo en `db/`. Es sólo el nombre con que se aplicó el 003 ya calibrado:
+los cuerpos de `pista_d3`, `pista_f3` y `pista_t2` coinciden byte a byte con
+`db/003_pistas.sql`. Una instalación limpia desde `db/` reproduce el mismo estado.
+
+**Tarea pendiente del usuario:**
 - Exponer el schema `forense` en Project Settings → API → Exposed Schemas (sin esto PostgREST rechaza llamadas).
 
 ### Paso 2: Crear credenciales en n8n
@@ -384,18 +404,36 @@ Ver `n8n/workflows/IMPORT.md` para detalles de subworkflows y resolutores de ref
 
 Cuando la base remota esté lista y los tests locales pasen:
 
+**Ojo: `--psql-host`, `--psql-user` y `--psql-password` NO EXISTEN.** La versión
+anterior de este runbook las documentaba y el comando fallaba. `load_gen.py`
+se conecta con `psql` tomando las variables `PG*` del entorno
+(`loaders/load_gen.py:426-431`, con `setdefault`, así que lo que exportes
+manda). Y en Supabase la base se llama `postgres`, no `forense`.
+
+Ensaya primero con `--solo-validar`, que corre todo y lo revierte sin dejar
+nada cargado:
+
 ```bash
-python3 loaders/load_gen.py \
-  --in data/gen/ \
-  --db forense \
-  --nombre gen-v1-remote \
-  --pgbin /opt/homebrew/opt/postgresql@17/bin \
-  --psql-host db.wplsldwzpyocmwzeyarj.supabase.co \
-  --psql-user postgres \
-  --psql-password <contraseña de la BD>
+export PGHOST=db.wplsldwzpyocmwzeyarj.supabase.co
+export PGUSER=postgres
+export PGPASSWORD='<contraseña de la BD del proyecto>'
+export PGSSLMODE=require
+
+python3 loaders/load_gen.py --in data/gen/ --db postgres \
+  --nombre gen-v1 --solo-validar        # ensayo: no deja nada
+python3 loaders/load_gen.py --in data/gen/ --db postgres --nombre gen-v1
 ```
 
-Esto realiza la validación y carga remota. Devuelve uuid de corrida.
+Devuelve el uuid de la corrida y su `dataset_hash`. Comprobado en local que la
+forma con variables de entorno funciona: `PGHOST=localhost PGUSER=postgres
+python3 loaders/load_gen.py --in <dir> --db <base> --nombre <x> --solo-validar`
+→ "todo corrió y se revirtió; no queda nada cargado", y cero filas después.
+
+Para el snapshot con hora intradía (gen-v2, el que hace evaluable a T2) el
+dataset se genera antes con `python3 generator/gen.py --seed 42 --n 100
+--meses 12 --horario intradia --out data/gen-v2/` y se carga con
+`--nombre gen-v2`. No reutilices el nombre `gen-v1`: las aserciones de datos
+reales seleccionan por ese nombre y medirían otra cosa en silencio.
 
 ### Paso 5: Smoke remoto (H4 gate)
 
