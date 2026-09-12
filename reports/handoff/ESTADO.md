@@ -23,8 +23,13 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 3. **ElevenLabs/Twilio**: número saliente pendiente de que el usuario lo configure en la UI de ElevenLabs; sin él no hay llamada real.
 4. ~~Repo público~~ resuelto (privado).
 
-## Oleada 1 (en curso desde ≈22:10)
-Workflow `forense-oleada-1` (run wf_51981d37-a2c): forense-db · forense-runtime · forense-webapp · forense-prompts en worktrees desde 26f0676; cada entrega pasa por un verificador de solo lectura (ownership, tests reproducidos, secretos, reglas). Cortes de 45–90 min con tests. Integración por el coordinador vía diff + tests.
+## Oleada 1 (continuación en curso, ≈00:25)
+Primer run `wf_51981d37-a2c` (33 min, 4 builders) se cortó sin JSON de entrega; el trabajo quedó en los worktrees `.claude/worktrees/wf_51981d37-a2c-{1..4}`:
+- db: commit f92e213 (001+002+seed_fake+tests); 003 sin commit; `bash db/tests/run.sh` → 99/99 OK (verificado por el coordinador).
+- runtime: 12 módulos + 8 tests sin commit; MANIFEST/JSON pendientes.
+- webapp: BFF + capa de datos (typecheck OK, 0 tests); shell y rutas pendientes.
+- prompts: 12 prompts + ensamblador; manifest desactualizado; sin tests.
+Continuación `wf_74e8de05-607`: los cuatro retoman su worktree, terminan corte 1 con tests y commit; verificador por entrega.
 
 ## Próxima entrega
 Gate H4: DB → herramienta → runtime (proveedor simulado) → evento persistido → UI con fixture.
