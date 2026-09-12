@@ -1,0 +1,618 @@
+"use client";
+
+import * as Dialog from "@radix-ui/react-dialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
+import { AlertTriangle, Check, FileText, History, Loader2, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+
+import { estadoCitas } from "@/lib/document/citas";
+import { hashTexto, normalizarDocumento } from "@/lib/document/documento";
+import { construirIndice } from "@/lib/document/secciones";
+import type { Documento, Reporte } from "@/lib/document/tipos";
+import { cn } from "@/lib/utils";
+
+import { guardarBorradorRemoto, revertirVersion, uuid } from "./cliente";
+import { CitaDrawer, type EvidenciaCita } from "./cita-drawer";
+import { DescargasExpediente } from "./descargas";
+import { EstilosHoja } from "./estilos-hoja";
+import { AtributosBloque, CitasDecoradas } from "./extensiones";
+import { IndiceSecciones } from "./indice-secciones";
+import { ReportChat, type SeleccionUI } from "./report-chat";
+import { EditorToolbar } from "./toolbar";
+import { VersionDiff } from "./version-diff";
+
+/**
+ * `DocumentWorkspace` (15 §10, 09 §8): editor tipo Docs sobre el JSON canónico
+ * del expediente.
+ *
+ * - Hoja A4 de 794 px con zoom 75/100/125/150 y "ajustar ancho"; en móvil,
+ *   continuo, sin recortar texto.
+ * - Índice plegable de las diez secciones (las ausentes se declaran, no se
+ *   inventan), toolbar compacta y chat de 360 px redimensionable.
+ * - Modos Editar / Sugerir / Lectura. En "Sugerir" el documento no se edita a
+ *   mano: los cambios entran por propuesta con diff (Aplicar/Descartar).
+ * - Autoguardado 1 s con `version_base` y control optimista; `Cmd/Ctrl+S` lo
+ *   fuerza. El autoguardado NO crea versión.
+ * - Citas como chips clicables (decoración de ProseMirror, no nodos): rojas si
+ *   el ID no está en evidencia validada. Con citas por revisar el expediente
+ *   sigue guardándose, pero no es entregable.
+ */
+
+export interface PropsDocumentWorkspace {
+  casoId: string;
+  rfc: string;
+  documento: Documento;
+  version: number;
+  estadoRevision: "borrador" | "validado";
+  referenciasValidadas: string[];
+  evidencia: EvidenciaCita[];
+  origen: "fixture" | "supabase";
+  nivel?: string;
+}
+
+type Modo = "editar" | "sugerir" | "lectura";
+type EstadoGuardado =
+  | { tipo: "limpio" }
+  | { tipo: "guardando" }
+  | { tipo: "guardado"; hora: string }
+  | { tipo: "conflicto"; versionActual: number }
+  | { tipo: "error"; mensaje: string };
+
+const ZOOMS = [75, 100, 125, 150] as const;
+
+interface VersionHistorial {
+  version: number;
+  autor: string;
+  estado_revision: string;
+  creado: string;
+  content_hash: string;
+  markdown: string;
+}
+
+export function DocumentWorkspace({
+  casoId,
+  rfc,
+  documento,
+  version: versionInicial,
+  estadoRevision,
+  referenciasValidadas,
+  evidencia,
+  origen,
+  nivel,
+}: PropsDocumentWorkspace) {
+  const validadas = useMemo(() => new Set(referenciasValidadas), [referenciasValidadas]);
+  const [documentoActual, setDocumentoActual] = useState<Documento>(documento);
+  const [version, setVersion] = useState(versionInicial);
+  const [revision, setRevision] = useState(estadoRevision);
+  const [modo, setModo] = useState<Modo>("editar");
+  const [zoom, setZoom] = useState<number | "ancho">(100);
+  const [guardado, setGuardado] = useState<EstadoGuardado>({ tipo: "limpio" });
+  const [seleccion, setSeleccion] = useState<SeleccionUI | null>(null);
+  const [citaAbierta, setCitaAbierta] = useState<string | null>(null);
+  const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [historial, setHistorial] = useState<VersionHistorial[]>([]);
+  const [comparando, setComparando] = useState<number | null>(null);
+  const [anchoChat, setAnchoChat] = useState(360);
+  const [titulo, setTitulo] = useState(`Expediente ${rfc}`);
+
+  const lienzoRef = useRef<HTMLDivElement>(null);
+  const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const versionRef = useRef(version);
+  versionRef.current = version;
+
+  const abrirCita = useCallback((referencia: string) => setCitaAbierta(referencia), []);
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable: modo === "editar",
+    extensions: [
+      // `codeBlock` y `hardBreak` quedan fuera: `editor.block` no los admite y
+      // un solo Shift+Enter invalidaría el documento.
+      StarterKit.configure({ codeBlock: false, hardBreak: false }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      AtributosBloque,
+      CitasDecoradas.configure({ referenciasValidadas: validadas, onCitaClick: abrirCita }),
+    ],
+    content: documento,
+    editorProps: {
+      attributes: { class: "hoja-prosa", "aria-label": "Documento del expediente", role: "textbox" },
+    },
+    onUpdate: ({ editor: instancia }) => {
+      const actualizado = normalizarDocumento(instancia.getJSON());
+      setDocumentoActual(actualizado);
+      programarAutoguardado(actualizado);
+    },
+    onSelectionUpdate: ({ editor: instancia }) => {
+      const { from, to, empty } = instancia.state.selection;
+      if (empty) {
+        setSeleccion(null);
+        return;
+      }
+      const ids: string[] = [];
+      instancia.state.doc.nodesBetween(from, to, (nodo) => {
+        const id = nodo.attrs?.id as string | undefined;
+        if (id && (nodo.isTextblock || nodo.type.name === "table") && !ids.includes(id)) ids.push(id);
+      });
+      if (ids.length === 0) {
+        setSeleccion(null);
+        return;
+      }
+      const texto = instancia.state.doc.textBetween(from, to, "\n", " ");
+      setSeleccion({ from, to, block_ids: ids.slice(0, 100), texto_hash: hashTexto(texto), texto });
+    },
+  });
+
+  useEffect(() => {
+    editor?.setEditable(modo === "editar");
+  }, [editor, modo]);
+
+  // --- Autoguardado (15 §10): 1 s sin escritura; no crea versión -----------
+  const guardar = useCallback(
+    async (doc: Documento) => {
+      setGuardado({ tipo: "guardando" });
+      const resultado = await guardarBorradorRemoto({ caso_id: casoId, version_base: versionRef.current, documento: doc });
+      if (resultado.ok) {
+        setGuardado({ tipo: "guardado", hora: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) });
+        return;
+      }
+      if (resultado.error.error === "conflicto_version" && resultado.error.version_actual) {
+        // El borrador local NO se descarta ni se sobrescribe con el servidor.
+        setGuardado({ tipo: "conflicto", versionActual: resultado.error.version_actual });
+        return;
+      }
+      setGuardado({
+        tipo: "error",
+        mensaje:
+          resultado.error.error === "backend_no_configurado"
+            ? "Sin backend configurado: el borrador no se está guardando."
+            : `No se pudo guardar (${resultado.error.error}).`,
+      });
+    },
+    [casoId],
+  );
+
+  const programarAutoguardado = useCallback(
+    (doc: Documento) => {
+      if (temporizador.current) clearTimeout(temporizador.current);
+      temporizador.current = setTimeout(() => void guardar(doc), 1000);
+    },
+    [guardar],
+  );
+
+  useEffect(() => {
+    function alTeclado(evento: KeyboardEvent) {
+      if ((evento.metaKey || evento.ctrlKey) && evento.key.toLowerCase() === "s") {
+        evento.preventDefault();
+        if (temporizador.current) clearTimeout(temporizador.current);
+        void guardar(documentoActual);
+      }
+    }
+    window.addEventListener("keydown", alTeclado);
+    return () => window.removeEventListener("keydown", alTeclado);
+  }, [documentoActual, guardar]);
+
+  useEffect(() => () => { if (temporizador.current) clearTimeout(temporizador.current); }, []);
+
+  // --- Versión nueva aplicada ---------------------------------------------
+  function adoptarVersion(reporte: Reporte, revisarCitas?: boolean) {
+    setVersion(reporte.version);
+    setRevision(reporte.estado_revision);
+    setDocumentoActual(reporte.contenido_json);
+    // `false` evita disparar onUpdate y, con él, un autoguardado espurio.
+    editor?.commands.setContent(reporte.contenido_json, { emitUpdate: false });
+    setGuardado({ tipo: "limpio" });
+    if (revisarCitas) toast.warning("La versión nueva tiene citas por revisar");
+  }
+
+  async function cargarHistorial() {
+    try {
+      const res = await fetch(`/api/reportes/versiones?caso_id=${encodeURIComponent(casoId)}`, { credentials: "same-origin" });
+      if (!res.ok) {
+        toast.error("No se pudo leer el historial de versiones");
+        return;
+      }
+      const json = (await res.json()) as { versiones: VersionHistorial[] };
+      setHistorial(json.versiones);
+      setComparando(json.versiones.length > 1 ? json.versiones[json.versiones.length - 2].version : null);
+    } catch {
+      toast.error("No se pudo leer el historial de versiones");
+    }
+  }
+
+  async function revertir(objetivo: number) {
+    const resultado = await revertirVersion({
+      caso_id: casoId,
+      version_objetivo: objetivo,
+      version_base: version,
+      idempotency_key: uuid(),
+    });
+    if (!resultado.ok) {
+      toast.error(
+        resultado.error.error === "conflicto_version"
+          ? `El expediente ya está en la versión ${resultado.error.version_actual}.`
+          : `No se pudo revertir (${resultado.error.error}).`,
+      );
+      return;
+    }
+    adoptarVersion(resultado.datos.reporte);
+    toast.success(`Versión ${resultado.datos.version} creada a partir de la ${objetivo}`);
+    setHistorialAbierto(false);
+  }
+
+  const indice = useMemo(() => construirIndice(documentoActual), [documentoActual]);
+  const citas = useMemo(() => estadoCitas(documentoActual, validadas), [documentoActual, validadas]);
+
+  function irABloque(blockId: string) {
+    const escapado = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(blockId) : blockId.replace(/["\\]/g, "\\$&");
+    const nodo = lienzoRef.current?.querySelector(`[data-id="${escapado}"]`);
+    nodo?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const escala = zoom === "ancho" ? 1 : zoom / 100;
+
+  return (
+    <div className="flex flex-col" data-testid="document-workspace">
+      <EstilosHoja />
+
+      {/* Cabecera: título, breadcrumb, versión y estado de guardado */}
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 print:hidden">
+        <div className="flex min-w-0 items-center gap-2">
+          <FileText size={16} className="shrink-0 text-text-muted" aria-hidden />
+          <input
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            aria-label="Título del documento"
+            className="min-w-0 max-w-[280px] flex-1 rounded-[var(--radius-input)] border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-text hover:border-border focus:border-border focus:outline-none"
+          />
+          <nav aria-label="Ruta" className="hidden items-center gap-1 text-xs text-text-subtle sm:flex">
+            <Link href="/" className="hover:text-text">
+              Cola
+            </Link>
+            <span aria-hidden>/</span>
+            <Link href={`/casos/${casoId}`} className="hover:text-text">
+              {rfc}
+            </Link>
+            <span aria-hidden>/</span>
+            <span className="text-text-muted">Expediente</span>
+          </nav>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11px] text-text-muted">
+            v{version} · {revision}
+            {nivel ? ` · ${nivel}` : ""}
+          </span>
+
+          <span
+            role="status"
+            aria-live="polite"
+            className={cn(
+              "inline-flex items-center gap-1 text-[11px]",
+              guardado.tipo === "error" || guardado.tipo === "conflicto" ? "text-error" : "text-text-subtle",
+            )}
+          >
+            {guardado.tipo === "guardando" && (
+              <>
+                <Loader2 size={11} className="animate-spin" aria-hidden /> Guardando…
+              </>
+            )}
+            {guardado.tipo === "guardado" && (
+              <>
+                <Check size={11} aria-hidden /> Guardado {guardado.hora}
+              </>
+            )}
+            {guardado.tipo === "conflicto" && (
+              <>
+                <AlertTriangle size={11} aria-hidden /> Conflicto: el expediente está en la v{guardado.versionActual}. Tu borrador
+                se conserva.
+              </>
+            )}
+            {guardado.tipo === "error" && (
+              <>
+                <AlertTriangle size={11} aria-hidden /> {guardado.mensaje}
+              </>
+            )}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              setHistorialAbierto(true);
+              void cargarHistorial();
+            }}
+            className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-input)] border border-border bg-surface px-2.5 text-xs text-text hover:bg-surface-hover"
+          >
+            <History size={14} aria-hidden /> Historial
+          </button>
+          <Link
+            href={`/casos/${casoId}`}
+            className="inline-flex h-8 items-center rounded-[var(--radius-input)] border border-border bg-surface px-2.5 text-xs text-text hover:bg-surface-hover"
+          >
+            Abrir evidencia
+          </Link>
+          <DescargasExpediente casoId={casoId} version={version} />
+        </div>
+      </header>
+
+      {/* Menú Archivo/Editar/Ver/Insertar/Formato */}
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-surface px-2 py-1 text-xs print:hidden">
+        {[
+          {
+            etiqueta: "Archivo",
+            opciones: [
+              { texto: "Guardar ahora (Cmd/Ctrl+S)", accion: () => void guardar(documentoActual) },
+              { texto: "Imprimir / PDF", accion: () => window.print() },
+            ],
+          },
+          {
+            etiqueta: "Editar",
+            opciones: [
+              { texto: "Deshacer", accion: () => editor?.chain().focus().undo().run() },
+              { texto: "Rehacer", accion: () => editor?.chain().focus().redo().run() },
+              { texto: "Seleccionar todo", accion: () => editor?.chain().focus().selectAll().run() },
+            ],
+          },
+          {
+            etiqueta: "Ver",
+            opciones: [
+              ...ZOOMS.map((z) => ({ texto: `Zoom ${z}%`, accion: () => setZoom(z) })),
+              { texto: "Ajustar ancho", accion: () => setZoom("ancho") },
+            ],
+          },
+          {
+            etiqueta: "Insertar",
+            opciones: [
+              { texto: "Tabla 3×3", accion: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+              { texto: "Línea horizontal", accion: () => editor?.chain().focus().setHorizontalRule().run() },
+              { texto: "Cita en bloque", accion: () => editor?.chain().focus().toggleBlockquote().run() },
+            ],
+          },
+          {
+            etiqueta: "Formato",
+            opciones: [
+              { texto: "Negrita", accion: () => editor?.chain().focus().toggleBold().run() },
+              { texto: "Cursiva", accion: () => editor?.chain().focus().toggleItalic().run() },
+              { texto: "Quitar formato", accion: () => editor?.chain().focus().unsetAllMarks().run() },
+            ],
+          },
+        ].map((menu) => (
+          <DropdownMenu.Root key={menu.etiqueta}>
+            <DropdownMenu.Trigger asChild>
+              <button type="button" className="rounded-[var(--radius-input)] px-2 py-1 text-text-muted hover:bg-surface-hover hover:text-text">
+                {menu.etiqueta}
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="start"
+                sideOffset={4}
+                className="z-50 min-w-[190px] rounded-[var(--radius-card)] border border-border bg-surface p-1 shadow-lg"
+              >
+                {menu.opciones.map((opcion) => (
+                  <DropdownMenu.Item
+                    key={opcion.texto}
+                    onSelect={opcion.accion}
+                    className="cursor-pointer rounded-md px-2 py-1.5 text-text outline-none hover:bg-surface-hover focus:bg-surface-hover"
+                  >
+                    {opcion.texto}
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        ))}
+
+        <span className="mx-1 h-4 w-px bg-border" aria-hidden />
+
+        <div className="inline-flex rounded-[var(--radius-input)] border border-border p-0.5" role="group" aria-label="Modo de edición">
+          {(["editar", "sugerir", "lectura"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setModo(m)}
+              aria-pressed={modo === m}
+              className={cn("rounded-[6px] px-2 py-0.5 capitalize", modo === m ? "bg-surface-muted text-text" : "text-text-muted")}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        <select
+          aria-label="Zoom"
+          value={String(zoom)}
+          onChange={(e) => setZoom(e.target.value === "ancho" ? "ancho" : Number(e.target.value))}
+          className="ml-1 h-7 rounded-[var(--radius-input)] border border-border bg-surface px-1.5 text-xs text-text"
+        >
+          {ZOOMS.map((z) => (
+            <option key={z} value={z}>
+              {z}%
+            </option>
+          ))}
+          <option value="ancho">Ajustar ancho</option>
+        </select>
+
+        <span
+          className={cn(
+            "ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+            citas.revisarCitas ? "border-error/40 bg-error/5 text-error" : "border-border bg-surface-muted text-text-muted",
+          )}
+          data-testid="estado-citas"
+        >
+          {citas.revisarCitas ? (
+            <>
+              <AlertTriangle size={11} aria-hidden /> Revisar citas ({citas.invalidas.length}) · no publicable
+            </>
+          ) : (
+            <>
+              <Check size={11} aria-hidden /> {citas.total} citas con evidencia validada
+            </>
+          )}
+        </span>
+      </div>
+
+      <EditorToolbar editor={editor} deshabilitado={modo !== "editar"} />
+
+      {modo === "sugerir" && (
+        <p className="border-b border-border bg-surface-muted px-3 py-1.5 text-[11px] text-text-muted print:hidden">
+          Modo sugerir: el documento no se edita a mano. Selecciona texto y pide el cambio en el chat; llega como propuesta con
+          diff y solo &quot;Aplicar&quot; crea versión.
+        </p>
+      )}
+
+      {/* Cuerpo: índice · hoja · chat */}
+      <div className="flex min-h-[70vh] flex-col lg:flex-row">
+        <div className="shrink-0 border-b border-border px-2 py-2 lg:w-[220px] lg:border-b-0 lg:border-r">
+          <IndiceSecciones entradas={indice} activa={seleccion?.block_ids[0]} onIr={irABloque} />
+        </div>
+
+        <div ref={lienzoRef} className="lienzo-editor min-w-0 flex-1 overflow-auto bg-app-bg p-4 sm:p-8">
+          <div
+            className="zoom-hoja mx-auto"
+            style={{
+              width: zoom === "ancho" ? "100%" : 794 * escala,
+              maxWidth: "100%",
+            }}
+          >
+            <div
+              className="hoja-a4 mx-auto max-w-full"
+              style={zoom === "ancho" ? { width: "100%", minWidth: 0 } : { transform: `scale(${escala})`, transformOrigin: "top left" }}
+            >
+              {editor ? (
+                <EditorContent editor={editor} />
+              ) : (
+                <p className="text-sm text-text-subtle">Cargando el documento…</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Chat: 360 px redimensionable en escritorio, apilado en móvil. */}
+        <div
+          className="flex w-full shrink-0 flex-col border-t border-border lg:w-[var(--ancho-chat)] lg:border-t-0"
+          style={{ "--ancho-chat": `${anchoChat}px` } as React.CSSProperties}
+        >
+          <div className="flex items-center gap-1 border-b border-border px-2 py-1 print:hidden">
+            <label htmlFor="ancho-chat" className="text-[10px] text-text-subtle">
+              ancho del panel
+            </label>
+            <input
+              id="ancho-chat"
+              type="range"
+              min={300}
+              max={520}
+              step={20}
+              value={anchoChat}
+              onChange={(e) => setAnchoChat(Number(e.target.value))}
+              className="h-1 w-24"
+              aria-label="Ancho del panel de chat"
+            />
+          </div>
+          <div className="h-[520px] min-h-0 lg:h-[calc(70vh-28px)]">
+            <ReportChat
+              casoId={casoId}
+              version={version}
+              seleccion={seleccion}
+              evidencia={evidencia}
+              origen={origen}
+              modoLectura={modo === "lectura"}
+              onAplicado={adoptarVersion}
+              onLimpiarSeleccion={() => setSeleccion(null)}
+              onAbrirCita={abrirCita}
+            />
+          </div>
+        </div>
+      </div>
+
+      <CitaDrawer
+        referencia={citaAbierta}
+        evidencia={evidencia.find((e) => e.referencia === citaAbierta) ?? null}
+        onOpenChange={(abierto) => !abierto && setCitaAbierta(null)}
+      />
+
+      <Dialog.Root open={historialAbierto} onOpenChange={setHistorialAbierto}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/20" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(900px,92vw)] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-auto rounded-[var(--radius-card)] border border-border bg-surface p-5 shadow-xl">
+            <Dialog.Title className="text-sm font-semibold text-text">Historial de versiones</Dialog.Title>
+            <Dialog.Description className="text-xs text-text-subtle">
+              Revertir no borra nada: copia la versión elegida a una versión nueva (07 §4, 09 §8).
+            </Dialog.Description>
+
+            <ul className="flex flex-col gap-1">
+              {historial.map((v) => (
+                <li key={v.version} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border border-border px-3 py-2 text-xs">
+                  <span className="font-medium text-text">v{v.version}</span>
+                  <span className="text-text-muted">{v.autor}</span>
+                  <span className="text-text-subtle">{v.estado_revision}</span>
+                  <span className="text-text-subtle">{v.creado}</span>
+                  <span className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setComparando(v.version)}
+                      className="rounded-[var(--radius-input)] border border-border px-2 py-0.5 text-text-muted hover:bg-surface-hover"
+                    >
+                      Comparar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={v.version === version}
+                      onClick={() => void revertir(v.version)}
+                      className="inline-flex items-center gap-1 rounded-[var(--radius-input)] border border-border px-2 py-0.5 text-text-muted hover:bg-surface-hover disabled:opacity-40"
+                    >
+                      <RotateCcw size={11} aria-hidden /> Revertir
+                    </button>
+                  </span>
+                </li>
+              ))}
+              {historial.length === 0 && <li className="text-xs text-text-subtle">Sin versiones cargadas.</li>}
+            </ul>
+
+            {comparando !== null && historial.length > 1 && (
+              <VersionDiff
+                titulo={`Diferencias v${comparando} → v${version}`}
+                diff={diffSimple(
+                  historial.find((v) => v.version === comparando)?.markdown ?? "",
+                  historial.find((v) => v.version === version)?.markdown ?? "",
+                )}
+                maxAltura={320}
+              />
+            )}
+
+            <Dialog.Close className="self-end rounded-[var(--radius-input)] border border-border px-3 py-1 text-xs text-text-muted hover:bg-surface-hover">
+              Cerrar
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
+  );
+}
+
+/**
+ * Diff de historial línea a línea. Es presentación: el diff normativo de una
+ * propuesta lo calcula el BFF con `diff` sobre el Markdown derivado.
+ */
+function diffSimple(antes: string, despues: string): string {
+  const a = antes.split("\n");
+  const b = despues.split("\n");
+  const salida: string[] = [`--- v anterior`, `+++ v actual`];
+  const maximo = Math.max(a.length, b.length);
+  for (let i = 0; i < maximo; i += 1) {
+    if (a[i] === b[i]) {
+      if (a[i] !== undefined) salida.push(` ${a[i]}`);
+      continue;
+    }
+    if (a[i] !== undefined) salida.push(`-${a[i]}`);
+    if (b[i] !== undefined) salida.push(`+${b[i]}`);
+  }
+  return salida.join("\n");
+}
