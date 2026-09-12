@@ -367,6 +367,93 @@
                     "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/limitacion"
                   },
                   "maxItems": 40
+                },
+                "trayectoria": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "maxItems": 36,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "mes": {
+                            "type": "string",
+                            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                          },
+                          "facturado": {
+                            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/importe"
+                          },
+                          "recibido": {
+                            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/importe"
+                          },
+                          "nomina": {
+                            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/importe"
+                          },
+                          "n_cfdi": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "n_movimientos": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "eventos": {
+                            "type": "array",
+                            "maxItems": 10,
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "tipo": {
+                                  "type": "string",
+                                  "enum": [
+                                    "alta",
+                                    "primer_cfdi",
+                                    "pico",
+                                    "silencio",
+                                    "publicacion_69b",
+                                    "cancelacion_masiva",
+                                    "inyeccion"
+                                  ]
+                                },
+                                "fecha": {
+                                  "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+                                },
+                                "referencia": {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "tipo",
+                                "fecha",
+                                "referencia"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "mes",
+                          "facturado",
+                          "recibido",
+                          "nomina",
+                          "n_cfdi",
+                          "n_movimientos",
+                          "eventos"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "required": [
@@ -684,6 +771,93 @@
                       "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/limitacion"
                     },
                     "maxItems": 40
+                  },
+                  "trayectoria": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "maxItems": 36,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "mes": {
+                              "type": "string",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                            },
+                            "facturado": {
+                              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/importe"
+                            },
+                            "recibido": {
+                              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/importe"
+                            },
+                            "nomina": {
+                              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/importe"
+                            },
+                            "n_cfdi": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "n_movimientos": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "eventos": {
+                              "type": "array",
+                              "maxItems": 10,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "tipo": {
+                                    "type": "string",
+                                    "enum": [
+                                      "alta",
+                                      "primer_cfdi",
+                                      "pico",
+                                      "silencio",
+                                      "publicacion_69b",
+                                      "cancelacion_masiva",
+                                      "inyeccion"
+                                    ]
+                                  },
+                                  "fecha": {
+                                    "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+                                  },
+                                  "referencia": {
+                                    "anyOf": [
+                                      {
+                                        "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "tipo",
+                                  "fecha",
+                                  "referencia"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "mes",
+                            "facturado",
+                            "recibido",
+                            "nomina",
+                            "n_cfdi",
+                            "n_movimientos",
+                            "eventos"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [

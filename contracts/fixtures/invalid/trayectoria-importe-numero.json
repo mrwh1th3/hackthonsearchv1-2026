@@ -1,0 +1,157 @@
+{
+  "schema_version": "contexto.v1",
+  "execution_id": "00000000-0000-4000-8000-000000000600",
+  "tarea_id": "00000000-0000-4000-8000-000000000300",
+  "editor_operacion_id": null,
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "corrida_id": "00000000-0000-4000-8000-000000000001",
+  "cluster_id": "00000000-0000-4000-8000-000000000200",
+  "rol": "redactor",
+  "ronda": 1,
+  "intento": 0,
+  "version_contexto": 1,
+  "dataset_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fecha_corte": "2026-01-31T12:00:00Z",
+  "familias_evaluables": [
+    "D",
+    "F",
+    "R",
+    "T",
+    "E"
+  ],
+  "prompt_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "context_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "directriz_id": null,
+  "directriz_version": null,
+  "objetivo": "Validar el formato del contexto; no ejecutar investigación.",
+  "limites": {
+    "tools_restantes": 0,
+    "requests_restantes": 66,
+    "deadline_at": "2026-01-31T12:12:00Z",
+    "input_tokens_max": 16000
+  },
+  "cobertura": {
+    "completa": true,
+    "periodo": {
+      "desde": "2026-01-01T00:00:00Z",
+      "hasta_exclusivo": "2026-02-01T00:00:00Z",
+      "timezone": "America/Monterrey"
+    },
+    "familias_evaluables": [
+      "D",
+      "F",
+      "R",
+      "T",
+      "E"
+    ],
+    "datos_ausentes": []
+  },
+  "datos": {
+    "senal_ids": [
+      "601"
+    ],
+    "evidencia": [
+      {
+        "id": "701",
+        "caso_id": "00000000-0000-4000-8000-000000000100",
+        "pista_id": "501",
+        "pista_codigo": "D2",
+        "familia": "D",
+        "tipo": "cfdi",
+        "ref_id": "00000000-0000-4000-8000-000000000901",
+        "rfcs_afectados": [
+          "DEMO:ENTIDAD-0"
+        ],
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000901"
+        ],
+        "valida_tecnica": true,
+        "refutada": false,
+        "validada": true,
+        "hecho_validado": {
+          "comprobacion": "D2",
+          "descripcion": "Resultado simulado para contrato, no verificación real.",
+          "monto_centavos": "100000",
+          "moneda": "MXN"
+        }
+      }
+    ],
+    "argumentos": [
+      {
+        "defensa_id": "801",
+        "argumento": {
+          "trampa_codigo": "margen_delgado",
+          "pista_objetivo": "501",
+          "evidencia_objetivo_ids": [
+            "701"
+          ],
+          "argumento": "Explicación de prueba para validar estructura.",
+          "ids": [
+            "CFDI:00000000-0000-4000-8000-000000000901"
+          ],
+          "resultado": "no_refuta"
+        }
+      }
+    ],
+    "resoluciones": [
+      {
+        "defensa_id": "801",
+        "decision": "rechaza",
+        "razon": "Respuesta sintética; no juicio sobre operaciones reales."
+      }
+    ],
+    "hipotesis": null,
+    "dictamen": {
+      "nivel": "presuncion",
+      "familias": [
+        "D",
+        "F"
+      ],
+      "monto_en_riesgo_centavos": "100000",
+      "moneda": "MXN",
+      "regla": "Resultado predefinido de fixture; no ejecuta clasificador.",
+      "limitaciones": []
+    },
+    "version_base": null,
+    "documento": null,
+    "seleccion": null,
+    "limitaciones": [],
+    "trayectoria": [
+      {
+        "mes": "2025-11",
+        "facturado": 1000,
+        "recibido": "0.00",
+        "nomina": "0.00",
+        "n_cfdi": 0,
+        "n_movimientos": 0,
+        "eventos": [
+          {
+            "tipo": "alta",
+            "fecha": "2025-11-03T00:00:00Z",
+            "referencia": null
+          }
+        ]
+      },
+      {
+        "mes": "2026-01",
+        "facturado": "1160000.00",
+        "recibido": "0.00",
+        "nomina": "0.00",
+        "n_cfdi": 1,
+        "n_movimientos": 2,
+        "eventos": [
+          {
+            "tipo": "primer_cfdi",
+            "fecha": "2026-01-15T16:02:00Z",
+            "referencia": "CFDI:0f2c1d4a-6b7e-4c8d-9e0f-1a2b3c4d5e6f"
+          },
+          {
+            "tipo": "pico",
+            "fecha": "2026-01-31T00:00:00Z",
+            "referencia": null
+          }
+        ]
+      }
+    ]
+  }
+}

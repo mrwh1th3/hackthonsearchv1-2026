@@ -617,7 +617,9 @@
             "redaccion_fin",
             "edicion",
             "error",
-            "presupuesto_agotado"
+            "presupuesto_agotado",
+            "corrida_cargada",
+            "inyeccion"
           ]
         },
         "payload": {

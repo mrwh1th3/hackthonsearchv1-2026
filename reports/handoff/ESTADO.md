@@ -23,13 +23,19 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 3. **ElevenLabs/Twilio**: número saliente pendiente de que el usuario lo configure en la UI de ElevenLabs; sin él no hay llamada real.
 4. ~~Repo público~~ resuelto (privado).
 
-## Oleada 1 (continuación en curso, ≈00:25)
-Primer run `wf_51981d37-a2c` (33 min, 4 builders) se cortó sin JSON de entrega; el trabajo quedó en los worktrees `.claude/worktrees/wf_51981d37-a2c-{1..4}`:
-- db: commit f92e213 (001+002+seed_fake+tests); 003 sin commit; `bash db/tests/run.sh` → 99/99 OK (verificado por el coordinador).
-- runtime: 12 módulos + 8 tests sin commit; MANIFEST/JSON pendientes.
-- webapp: BFF + capa de datos (typecheck OK, 0 tests); shell y rutas pendientes.
-- prompts: 12 prompts + ensamblador; manifest desactualizado; sin tests.
-Continuación `wf_74e8de05-607`: los cuatro retoman su worktree, terminan corte 1 con tests y commit; verificador por entrega.
+## Oleada 1 — integrada en main (H3, ≈01:45)
+| Builder | Entrega | Verificación reproducida |
+|---|---|---|
+| forense-db | 001/002/003 (D2,F1,F2,R1,R2,E1,T1), seed_fake, harness, generator (5 tipologías/8 trampas, determinista), loaders/load_gen.py | 109/109 aserciones; gen-v1: 8081 CFDI, 140 pistas, selector 16/17 fraudes, 0/15 trampas, 0/68 fondo |
+| forense-runtime | n8n/runtime (provider, ledger, presupuesto, checkpoint, barrera, despertar, contexto, auditor-final, transporte, dispatcher), 8 code nodes generados, MANIFEST + 2 workflows JSON | 181/181 tests; generadores --check OK. Devuelto al autor: rama `cerrar` de decidir-paso devuelve estado actual (alto); IDs de modelo a claude-sonnet-5/opus-5 |
+| forense-prompts | 12 prompts, ensamblar.mjs, manifest (version_prompts e4a2f861e988) | 79/79 tests; manifest --check OK |
+| forense-webapp | shell + 20 rutas con fixtures rotulados, BFF sesión/investigaciones/inyecciones, componentes compartidos | typecheck OK, lint 0 errores, 43/43 tests, build OK con selector de fuente fixture |
+Contratos **1.2.0** (CADENA, trayectoria, corrida_cargada/inyeccion): 100/100.
+
+## Acciones pendientes del usuario
+- Crear en n8n las credenciales `Forense Postgres` (host db.wplsldwzpyocmwzeyarj.supabase.co) y `Forense Supabase` (header apikey/Authorization con la service role del proyecto hackthon2026) y `Forense Webhook` (INTERNAL_WEBHOOK_SECRET). El coordinador no puede leer esas claves por MCP.
+- Crear el proyecto Vercel `forense` (root `web`) y sus variables (NEXT_PUBLIC_SUPABASE_URL/ANON_KEY, NEXT_PUBLIC_DATA_SOURCE, DEMO_PASSWORD, SESSION_SECRET, N8N_WEBHOOK_BASE, INTERNAL_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY).
+- Número saliente ElevenLabs cuando decida configurarlo.
 
 ## Próxima entrega
 Gate H4: DB → herramienta → runtime (proveedor simulado) → evento persistido → UI con fixture.

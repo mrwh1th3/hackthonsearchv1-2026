@@ -14,6 +14,9 @@ let cached: DataSource | null = null;
  */
 export function getDataSource(): DataSource {
   if (cached) return cached;
-  cached = isSupabaseConfigured() ? new SupabaseDataSource() : new FixtureDataSource();
+  // Selector explícito (decisión H3): Supabase solo con NEXT_PUBLIC_DATA_SOURCE=supabase
+  // y credenciales públicas presentes; en cualquier otro caso, fixtures rotulados.
+  const quiereSupabase = process.env.NEXT_PUBLIC_DATA_SOURCE === "supabase";
+  cached = quiereSupabase && isSupabaseConfigured() ? new SupabaseDataSource() : new FixtureDataSource();
   return cached;
 }

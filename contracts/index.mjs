@@ -20,7 +20,7 @@ for (const file of files) {
     refs.set(`${file.replace('.schema.json', '')}.${definition}`, `${schema.$id}#/$defs/${definition}`);
   }
 }
-export const contractVersion = '1.1.0';
+export const contractVersion = '1.2.0';
 export const schemaFingerprint = fingerprint.digest('hex');
 export const contractNames = Object.freeze([...refs.keys()].sort());
 

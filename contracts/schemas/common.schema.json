@@ -93,7 +93,7 @@
     },
     "referencia": {
       "type": "string",
-      "pattern": "^(CFDI|MOV|ATR|LISTA|CICLO|PAR):[^\\s]+$",
+      "pattern": "^(CFDI|MOV|ATR|LISTA|CICLO|CADENA|PAR):[^\\s]+$",
       "maxLength": 512
     },
     "importe": {

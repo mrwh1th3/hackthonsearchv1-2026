@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "purpose": "synthetic_contract_fixtures_not_evaluation",
   "contains_real_personal_data": false,
   "external_calls_allowed": false,
@@ -236,6 +236,10 @@
     {
       "file": "valid/inyeccion.json",
       "schema": "product.inyeccion"
+    },
+    {
+      "file": "valid/contexto-redactor-trayectoria.json",
+      "schema": "runtime.contexto"
     }
   ],
   "invalid": [
@@ -362,6 +366,10 @@
     {
       "file": "invalid/inyeccion-estado-desconocido.json",
       "schema": "product.inyeccion"
+    },
+    {
+      "file": "invalid/trayectoria-importe-numero.json",
+      "schema": "runtime.contexto"
     }
   ]
 }
