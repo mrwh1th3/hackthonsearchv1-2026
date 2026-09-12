@@ -496,7 +496,7 @@ node scripts/launch.mjs --start  # No implementado
 | Test | Comando | Resultado | Versión |
 |---|---|---|---|
 | Contratos | `npm test --prefix contracts` | 100/100 | 1.2.1 |
-| DB migraciones + concurrencia | `bash db/tests/run.sh` | 109/300 aserciones | 001–003 |
+| DB migraciones + concurrencia | `bash db/tests/run.sh` | 300/300 aserciones | 001–008 |
 | Runtime workflows | `node --test "n8n/tests/*.test.mjs"` | 326/326 | n8n 2.33.7 |
 | Prompts | `node --test "tests/prompts/*.test.mjs"` | 79/79 | manifest e4a2f861e988 |
 | Web typecheck | `npm --prefix web run typecheck` | 0 errores | Next.js 15 |

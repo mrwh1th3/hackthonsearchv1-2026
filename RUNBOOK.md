@@ -72,11 +72,20 @@ Si ya existe (verificar con `psql -l | grep forense`), puede reutilizarse. Los t
 psql -d forense -f db/001_schema.sql
 psql -d forense -f db/002_views.sql
 psql -d forense -f db/003_pistas.sql
+psql -d forense -f db/004_clusters.sql
+psql -d forense -f db/005_rpc.sql
+psql -d forense -f db/006_producto_ui.sql
+psql -d forense -f db/007_notificaciones_voz.sql
+psql -d forense -f db/008_ingesta.sql
 ```
 
 - `001_schema.sql`: tablas, índices, RLS, realtime, control de runtime.
 - `002_views.sql`: vistas de soporte, helpers de fencing, cálculos de presupuesto.
-- `003_pistas.sql`: siete pistas iniciales (D2, F1, F2, R1, R2, E1, T1) y `correr_pistas()`.
+- `003_pistas.sql`: siete pistas iniciales (D2, F1, F2, R1, R2, E1, T1) y `correr_pistas()`; la segunda entrega (D1, D3, D4, F3, F4, R3, T2) llega en la oleada 2b.
+- `004_clusters.sql`: `armar_clusters`, `expandir_cluster`, leases de cluster.
+- `005_rpc.sql`: las 11 herramientas `public.forense_*`, 3 funciones de sistema y las funciones que usa el runtime.
+- `006_producto_ui.sql` y `007_notificaciones_voz.sql`: perfiles, investigaciones, propuestas, outbox y llamadas (sin SELECT público).
+- `008_ingesta.sql`: ingestas, staging, `forense.inyecciones` y `clonar_corrida_con_inyeccion` (inyección en vivo, 21 §3).
 
 **Estado actual:** 001–008 aplicadas en la instancia `forense` local y en Supabase `hackthon2026` (H5).
 
