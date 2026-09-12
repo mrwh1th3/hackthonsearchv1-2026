@@ -81,8 +81,21 @@ no puede contener (`estado: 'refutada'`, `estado: 'confirmada'`).
 ensayo (c) con proveedor simulado no corre el Defensor, y sin defensa ese
 nivel es inalcanzable por construcción, así que el e2e lo reporta
 `requiere_api_real` **antes** de mirar el nivel. Las cifras de trampas
-(0/15) miden el **selector**, no el descarte. Queda como gate H8–10 con la
-API real: una trampa legítima que cierre en `anomalia_explicada`.
+(0/15) miden el **selector**, no el descarte.
+
+**Gate H8–10, redactado para que pueda fallar y se sepa por qué.** Con la API
+real, sobre el paquete (c) de `eval/inyecciones/`, medir en el momento del
+dictamen estas dos cosas y reportar las dos:
+
+1. `casos.pendientes` está **vacía**, y
+2. todas las pistas **evaluables** del caso tienen `resultado='descartada'` en `casos.evaluacion_pistas`.
+
+Si ambas se cumplen, el nivel tiene que ser `anomalia_explicada`. Si el nivel
+no sale, el informe debe decir **cuál de las dos falló**, no "el descarte no
+funcionó". El punto 1 no es un tecnicismo: `forense.revalidar_caso` construye
+limitaciones a partir de evidencia sin validar y no refutada, y 07 §153 hace
+que cualquier limitación deje el caso en `no_concluyente`, así que el caso
+puede quedarse ahí con 017 perfectamente correcto.
 
 ### Hallazgo H11-d (bajo, sin corregir): el contexto del especialista no ve el descarte
 `db/005_rpc.sql:416` proyecta el estado de la pista como
