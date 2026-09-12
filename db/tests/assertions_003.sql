@@ -134,10 +134,15 @@ end $$;
 do $$
 declare n_txt int; n_gt int;
 begin
+  -- Se mira el CÓDIGO, no los comentarios: un comentario que menciona una
+  -- columna no la lee, y un guardia que confunde prosa con lectura acaba
+  -- ignorándose. Lo que no puede aparecer es la columna dentro de una consulta.
   select count(*) into n_txt
     from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
    where ns.nspname = 'forense' and p.proname like 'pista\_%'
-     and (p.prosrc ~* '\mdescripcion\M' or p.prosrc ~* '\mrazon_social\M' or p.prosrc ~* '\mreferencia\M');
+     and (regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '\mdescripcion\M'
+       or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '\mrazon_social\M'
+       or regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~* '\mreferencia\M');
   perform pruebas.assert('ninguna pista usa texto libre (descripcion/razon_social/referencia)',
     n_txt = 0, 'funciones=' || n_txt);
 
@@ -202,4 +207,52 @@ begin
     n_ultimo >= 1, 'el nodo que recibe el dinero también es miembro del hallazgo');
 
   delete from forense.corridas where id = v;
+end $$;
+
+-- 11. Contrato de pista (contracts/schemas/entities.schema.json, entities.pista).
+--     005 proyectará cada fila como {id, corrida_id, codigo, familia, rfc, score,
+--     estado, resumen, referencias}. Si 003 no guarda 'resumen' y 'referencias',
+--     005 tendría que inventarlos. Estas aserciones replican en SQL las
+--     restricciones del schema para que una pista nueva no se salte el contrato.
+do $$
+declare v uuid; n int;
+begin
+  select id into v from t_corrida;
+
+  select count(*) into n from forense.pistas
+   where corrida_id = v and coalesce(btrim(detalle->>'resumen'), '') = '';
+  perform pruebas.assert('toda pista trae resumen no vacío (contrato entities.pista)',
+    n = 0, 'sin resumen=' || n);
+
+  select count(*) into n from forense.pistas
+   where corrida_id = v and length(detalle->>'resumen') > 1200;
+  perform pruebas.assert('el resumen cabe en el máximo del contrato (1200)', n = 0, 'largos=' || n);
+
+  select count(*) into n from forense.pistas
+   where corrida_id = v and jsonb_typeof(detalle->'referencias') is distinct from 'array';
+  perform pruebas.assert('toda pista trae referencias como arreglo', n = 0, 'sin arreglo=' || n);
+
+  select count(*) into n from forense.pistas p,
+       lateral jsonb_array_elements_text(p.detalle->'referencias') r
+   where p.corrida_id = v and r !~ '^(CFDI|MOV|ATR|LISTA|CICLO|PAR):[^[:space:]]+$';
+  perform pruebas.assert('cada referencia usa el espacio de nombres del contrato',
+    n = 0, 'fuera de patrón=' || n);
+
+  select count(*) into n from forense.pistas
+   where corrida_id = v and jsonb_array_length(detalle->'referencias') > 40;
+  perform pruebas.assert('ninguna pista cita más de 40 referencias (tope del contrato)',
+    n = 0, 'excedidas=' || n);
+
+  select count(*) into n from forense.pistas
+   where corrida_id = v and (score < 0 or score > 1);
+  perform pruebas.assert('score dentro de [0,1] como exige el contrato', n = 0, 'fuera=' || n);
+
+  -- el resumen es texto que redacta el código, no texto del contribuyente
+  select count(*) into n from forense.pistas p
+   where p.corrida_id = v
+     and exists (select 1 from forense.cfdi f
+                  where f.corrida_id = v and f.descripcion is not null
+                    and length(f.descripcion) > 12
+                    and position(f.descripcion in (p.detalle->>'resumen')) > 0);
+  perform pruebas.assert('ningún resumen copia texto libre del contribuyente', n = 0, 'copias=' || n);
 end $$;

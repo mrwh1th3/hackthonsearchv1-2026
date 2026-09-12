@@ -170,12 +170,18 @@ end $$;""".format(s=stg))
 
     # ---- 3. corrida -------------------------------------------------
     if reemplazar:
-        a("delete from forense.corridas where nombre = %s;" % sql_lit(nombre))
+        # --reemplazar sólo sustituye el MISMO snapshot: nombre y dataset_hash.
+        # Una corrida con ese nombre pero otro hash es otra cosa (y puede tener
+        # casos y dictámenes colgando por cascada): esa la borra una persona,
+        # no una bandera copiada de un README (regla 10).
+        a("delete from forense.corridas where nombre = {n} and dataset_hash = {h};".format(
+            n=sql_lit(nombre), h=sql_lit(man["dataset_hash"])))
     a("""do $$
 begin
   if exists (select 1 from forense.corridas where nombre = {n}) then
-    raise exception 'ya existe una corrida llamada % (usa --reemplazar si de verdad quieres '
-      'volver a cargar ese snapshot)', {n};
+    raise exception 'ya existe una corrida llamada %: usa --reemplazar para recargar el '
+      'snapshot idéntico, o bórrala a mano si el dataset_hash es otro (puede tener casos '
+      'y dictámenes colgando por cascada)', {n};
   end if;
 end $$;""".format(n=sql_lit(nombre)))
     a("""insert into forense.corridas

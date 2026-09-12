@@ -24,7 +24,12 @@ código, el dataset se regenera.
   comprobación final sin ajustes posteriores (docs/04 §Parámetros).
 - **Invariantes verificadas antes de escribir** (`gen.py:verificar`, con networkx):
   1. ninguna trampa a <3 saltos de un RFC `definitivo` (E1 marca a ≤2 saltos, y
-     una segunda familia gratis rompería la regla de dos familias);
+     una segunda familia gratis rompería la regla de dos familias). **Se cumple
+     por construcción, no por margen medido**: el fondo opera por zonas
+     disjuntas y las trampas nunca tocan la zona de los EDOS, así que en el
+     grafo CFDI no hay camino alguno (distancia ∞ para las 15). El corolario
+     honesto es que *este* dataset no ejercita la expansión de 2 saltos de E1
+     contra una trampa; medir eso necesita un dataset con las zonas conectadas;
   2. como mucho un contribuyente sin compras por giro (con dos, el p10 del giro
      cae a 0 y D2 no puede disparar nunca en ese giro);
   3. todo contribuyente con CLABE (F1 exige titularidad de ambas cuentas);

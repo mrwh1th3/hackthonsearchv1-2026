@@ -91,6 +91,25 @@ echo "== aserciones =="
 aplicar "$HERE/assertions.sql" "tests/assertions.sql"
 aplicar "$HERE/assertions_003.sql" "tests/assertions_003.sql"
 
+echo "== contrato de pistas (contracts/entities.pista) =="
+RAIZ="$(dirname "$DBDIR")"
+if command -v node >/dev/null 2>&1 && [ -d "$RAIZ/contracts/node_modules" ]; then
+  "$PSQL" -d "$DB" -X -t -A -c "
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id', p.id::text, 'corrida_id', p.corrida_id, 'codigo', p.codigo, 'familia', p.familia,
+      'rfc', p.rfc, 'score', p.score::float8, 'estado', p.estado,
+      'resumen', p.detalle->>'resumen', 'referencias', p.detalle->'referencias')), '[]'::jsonb)
+      from forense.pistas p" > "$TMP/pistas.json" 2>"$LOG"
+  if node "$HERE/contrato_pistas.mjs" "$TMP/pistas.json" "$RAIZ/contracts/index.mjs"; then
+    anotar "las pistas se proyectan al contrato entities.pista v1" true "validado con ajv"
+  else
+    anotar "las pistas se proyectan al contrato entities.pista v1" false "ver salida de ajv"
+    fallos=$((fallos + 1))
+  fi
+else
+  echo "  omitido: falta node o contracts/node_modules (npm ci --prefix contracts --ignore-scripts)"
+fi
+
 echo "== concurrencia ($WORKERS sesiones) =="
 aplicar "$HERE/concurrencia_setup.sql" "tests/concurrencia_setup.sql"
 pids=()

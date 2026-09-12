@@ -37,9 +37,14 @@ PGBIN=/otra/ruta/bin bash db/tests/run.sh
 ```
 
 Crea una base nueva, aplica 001+002+003+seed, los reaplica (idempotencia), corre las
-aserciones y una fase de concurrencia con varias sesiones (`next_seq`, carrera de
-leases). Imprime una línea por aserción y devuelve exit code 0/1. No toca servicios
-remotos ni la base compartida.
+aserciones, valida que las pistas se proyecten al contrato `entities.pista` de
+`contracts/` con ajv (se omite si falta `node` o `contracts/node_modules`) y termina
+con una fase de concurrencia con varias sesiones (`next_seq`, carrera de leases).
+Imprime una línea por aserción y devuelve exit code 0/1. No toca servicios remotos
+ni la base compartida.
+
+Última corrida: **109 aserciones, 0 fallidas, exit 0**; 20 pistas validadas contra
+`contracts` v1.0.0, 0 fuera de contrato.
 
 ## Base local compartida
 

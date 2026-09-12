@@ -151,22 +151,47 @@ on conflict (rfc, corrida_id) do nothing;
 insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella, estado)
 values
   ('00000000-0000-4000-8000-000000000001','D2','D','DEMO:ENTIDAD-0',0.90,
-   '{"facturacion_12m":"1500000.00","nomina_12m":"0.00","empleados_declarados":1,"ratio_nomina":0}'::jsonb,
+   jsonb_build_object(
+     'facturacion_12m','1500000.00','nomina_12m','0.00','empleados_declarados',1,'ratio_nomina',0,
+     'resumen','Facturó 1,500,000.00 en los 12 meses al corte con nómina de 0.00 y un empleado declarado, por debajo del p10 de sus pares de comercio_mayoreo.',
+     'referencias', jsonb_build_array('PAR:comercio_mayoreo','CFDI:00000000-0000-4000-9000-000000000001')),
    'fixture-d2-entidad0','disparada'),
   ('00000000-0000-4000-8000-000000000001','F1','F','DEMO:ENTIDAD-0',0.85,
-   '{"pct_dispersado":"0.93","destinos_fisicos":1,"dias":3,"movimientos":["MOV:4","MOV:5","MOV:6"]}'::jsonb,
+   jsonb_build_object(
+     'pct_dispersado','0.93','destinos_fisicos',1,'dias',3,
+     'movimientos', jsonb_build_array('MOV:4','MOV:5','MOV:6'),
+     'resumen','El 93% de lo que entró salió en 3 días hacia una cuenta de persona física.',
+     'referencias', jsonb_build_array('MOV:4','MOV:5','MOV:6')),
    'fixture-f1-entidad0','disparada'),
   ('00000000-0000-4000-8000-000000000001','R2','R','DEMO:ENTIDAD-0',0.75,
-   '{"tipo":"ciclo","ruta":["DEMO:ENTIDAD-0","DEMO:ENTIDAD-3","DEMO:ENTIDAD-4","DEMO:ENTIDAD-0"],"dias":15}'::jsonb,
+   jsonb_build_object(
+     'tipo','ciclo',
+     'ruta', jsonb_build_array('DEMO:ENTIDAD-0','DEMO:ENTIDAD-3','DEMO:ENTIDAD-4','DEMO:ENTIDAD-0'),
+     'dias',15,
+     'resumen','Ciclo de 3 saltos entre 3 RFC en 15 días: el monto vuelve al emisor original.',
+     'referencias', jsonb_build_array('CICLO:ciclo:fixture-r2-entidad0',
+                                      'CFDI:00000000-0000-4000-9000-000000000001')),
    'fixture-r2-entidad0','disparada'),
   ('00000000-0000-4000-8000-000000000001','E1','E','DEMO:ENTIDAD-0',0.60,
-   '{"contraparte":"DEMO:ENTIDAD-4","estatus":"presunto","saltos":1,"fecha_publicacion":"2025-12-15"}'::jsonb,
+   jsonb_build_object(
+     'contraparte','DEMO:ENTIDAD-4','estatus','presunto','saltos',1,
+     'fecha_publicacion','2025-12-15',
+     'resumen','Opera a 1 salto de DEMO:ENTIDAD-4, publicado en el listado del SAT con estatus "presunto" el 2025-12-15.',
+     'referencias', jsonb_build_array('LISTA:DEMO:ENTIDAD-4:presunto:2025-12-15')),
    'fixture-e1-entidad0','disparada'),
   ('00000000-0000-4000-8000-000000000001','R1','R','DEMO:ENTIDAD-1',0.40,
-   '{"atributo":"domicilio","valor":"Av. Demo 100, Piso 3","rfcs":["DEMO:ENTIDAD-0","DEMO:ENTIDAD-3","DEMO:ENTIDAD-4"]}'::jsonb,
+   jsonb_build_object(
+     'atributo','domicilio','valor','Av. Demo 100, Piso 3',
+     'rfcs', jsonb_build_array('DEMO:ENTIDAD-0','DEMO:ENTIDAD-3','DEMO:ENTIDAD-4'),
+     'se_facturan_entre_si', false, 'pct_monto_interno', 0,
+     'resumen','Comparte domicilio con otros 3 RFC, pero no se facturan entre sí: 0% del monto que factura el grupo se queda dentro.',
+     'referencias', jsonb_build_array('ATR:domicilio:' || md5('Av. Demo 100, Piso 3'))),
    'fixture-r1-entidad1','disparada'),
   ('00000000-0000-4000-8000-000000000001','T1','T','DEMO:ENTIDAD-2',0.20,
-   '{"nota":"variacion estacional dentro de rango de su giro"}'::jsonb,
+   jsonb_build_object(
+     'nota','variacion estacional dentro de rango de su giro',
+     'resumen','Variación estacional dentro del rango de su giro: no alcanza el umbral de concentración trimestral.',
+     'referencias', jsonb_build_array()),
    'fixture-t1-entidad2','disparada')
 on conflict (corrida_id, codigo, rfc, huella) do nothing;
 

@@ -14,11 +14,15 @@ final: staging → validación → carga transaccional → promoción a `lista`
 
 ```sh
 python3 generator/gen.py --seed 42 --n 100 --out data/gen/
-python3 loaders/load_gen.py --in data/gen/ --db forense --nombre gen-v1 --reemplazar
+python3 loaders/load_gen.py --in data/gen/ --db forense --nombre gen-v1
 ```
 
 Opciones: `--solo-validar` (corre todo y revierte), `--permitir-parcial`
-(publica excluyendo filas rechazadas, que quedan en el informe), `--pgbin`.
+(publica excluyendo filas rechazadas, que quedan en el informe), `--pgbin`,
+`--reemplazar` (recarga **el mismo** snapshot: sólo borra una corrida que tenga
+ese nombre **y** ese `dataset_hash`). Una corrida con el mismo nombre y otro
+hash no se toca: puede tener casos y dictámenes colgando por cascada, y eso lo
+decide una persona, no una bandera copiada de este README.
 
 1. **Registrar entrada.** Recalcula el sha256 de cada CSV y lo compara con
    `manifest.json`: un archivo tocado después de generarse detiene la carga.

@@ -51,7 +51,9 @@ begin
   select fecha_corte into v_corte from forense.corridas where id = p_corrida;
   insert into forense.pistas (corrida_id, codigo, familia, rfc, score, detalle, huella, estado)
   select p_corrida, c.codigo, left(c.codigo, 1), e.rfc, 0,
-         jsonb_build_object('motivo', p_motivo, 'no_evaluable', true),
+         jsonb_build_object('motivo', p_motivo, 'no_evaluable', true,
+                            'resumen', 'Pista no evaluable con los datos de esta corrida: ' || p_motivo,
+                            'referencias', '[]'::jsonb),
          forense.huella_pista('NE:' || c.codigo, e.rfc, v_corte),
          'no_evaluable'
     from unnest(p_codigos) as c(codigo)
@@ -88,6 +90,13 @@ begin
                                        'fact_p90', g.fact_p90, 'nomina_p10', g.nomina_p10,
                                        'compras_p10', g.compras_p10),
            'muestra_pequena', (g.n_pares < 3),
+           'resumen', format(
+             'Facturó %s en los 12 meses al corte, por encima de la mediana de su giro (%s), '
+             'con nómina de %s y compras por %s, debajo del p10 de sus %s pares de %s.',
+             a.facturacion_12m, round(g.fact_p50::numeric, 2), a.nomina_12m, a.compras_12m,
+             g.n_pares, a.giro),
+           'referencias', to_jsonb(array[
+             'PAR:' || regexp_replace(coalesce(a.giro, 'sin_giro'), '\s+', '_', 'g')]),
            'comprobacion', 'D2',
            'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
          forense.huella_pista('D2', a.rfc, v_corte)
@@ -165,6 +174,15 @@ begin
            'pue_sin_deposito', a.n_pue, 'ppd_sin_complemento', a.n_ppd,
            'uuids', to_jsonb(a.uuids),
            'truncado', (a.n_sin_conciliar > 20),
+           'resumen', format(
+             '%s de %s facturas emitidas en la ventana quedaron sin conciliar (%s): %s PUE sin '
+             'depósito del receptor por el mismo importe ±2%% en ±7 días y %s PPD sin complemento '
+             'de pago a más de 120 días.',
+             a.n_sin_conciliar, a.n_facturas,
+             to_char(round(100 * a.n_sin_conciliar::numeric / nullif(a.n_facturas, 0), 1), 'FM990.0%'),
+             a.n_pue, a.n_ppd),
+           'referencias', to_jsonb(coalesce(
+             (select array_agg('CFDI:' || u) from unnest(a.uuids) u), array[]::text[])),
            'comprobacion', 'F1',
            'cobertura', jsonb_build_object(
              'cuentas_conocidas', exists (select 1 from forense.cuentas cu
@@ -251,6 +269,18 @@ begin
            'ratio_salidas_entradas', round(d.ratio, 4),
            'pct_salidas_a_fisicas_o_efectivo', round(d.pct_fisico, 4),
            'saldo_fin_mes', d.saldo_fin::text,
+           'resumen', format(
+             'En %s entraron %s y salieron %s (%s de lo que entró); el %s de la salida fue a '
+             'personas físicas o efectivo y el saldo de fin de mes quedó en %s.',
+             to_char(d.mes, 'YYYY-MM'), d.entradas, d.salidas,
+             to_char(round(100 * d.ratio, 1), 'FM990.0%'),
+             to_char(round(100 * d.pct_fisico, 1), 'FM990.0%'), d.saldo_fin),
+           'referencias', (select coalesce(jsonb_agg('MOV:' || mv.id), '[]'::jsonb) from (
+              select m.id from forense.movimientos m
+                join forense.cuentas cu on cu.corrida_id = p_corrida and cu.clabe = m.cuenta_origen
+               where m.corrida_id = p_corrida and cu.rfc_titular = d.rfc
+                 and date_trunc('month', m.fecha) = d.mes
+               order by m.monto desc, m.id limit 20) mv),
            'comprobacion', 'F2',
            'cobertura', jsonb_build_object(
              'saldo_evaluable', coalesce(d.saldo_evaluable, false),
@@ -326,6 +356,16 @@ begin
            'monto_interno', m.monto_interno::text,
            'pct_monto_interno', round(m.monto_interno / nullif(m.monto_total_grupo, 0), 4),
            'hay_flujo_de_dinero_interno', (m.n_mov_internos > 0),
+           'resumen', format(
+             'Comparte %s con otros %s RFC. Entre los miembros del grupo hay %s facturas por %s '
+             '(%s del monto que factura el grupo) y %s movimientos internos.',
+             m.atributo, array_length(m.rfcs, 1) - 1, m.n_cfdi_internos, m.monto_interno,
+             to_char(round(100 * m.monto_interno / nullif(m.monto_total_grupo, 0), 1), 'FM990.0%'),
+             m.n_mov_internos),
+           -- El valor del atributo lo escribe el contribuyente: se cita su
+           -- huella md5, no el texto, y así el identificador no arrastra texto
+           -- libre ni espacios.
+           'referencias', to_jsonb(array['ATR:' || m.atributo || ':' || md5(m.valor)]),
            'comprobacion', 'R1'),
          forense.huella_pista('R1', r.rfc, v_corte, m.atributo || '|' || m.valor)
     from medidos m
@@ -414,6 +454,18 @@ begin
            'dias', extract(day from d.f_act - d.f_ini),
            'saltos', d.saltos,
            'decremento_por_salto_3_10', d.dec_ok,
+           'resumen', format(
+             '%s de %s saltos entre %s RFC en %s días: sale %s y llega %s, %s del monto inicial%s.',
+             d.tipo, d.saltos, array_length(d.ruta_canonica, 1) - 1,
+             extract(day from d.f_act - d.f_ini), d.monto_ini, d.monto_act,
+             to_char(round(100 * d.monto_act / nullif(d.monto_ini, 0), 1), 'FM990.0%'),
+             case when d.dec_ok then ', con decremento constante por salto' else '' end),
+           'referencias', to_jsonb(coalesce(
+               (select array_agg('CFDI:' || u) from unnest(d.uuids) u), array[]::text[])
+             -- El espacio de nombres de referencias del contrato v1 no tiene
+             -- prefijo para cadenas: el hallazgo de ruta viaja bajo CICLO con
+             -- su tipo dentro. Si el contrato añade CADENA, esto se ajusta.
+             || array['CICLO:' || d.tipo || ':' || d.clave]),
            'comprobacion', 'R2',
            'cobertura', jsonb_build_object(
              'hubs_excluidos', (select count(*) from hubs),
@@ -529,6 +581,20 @@ begin
                 and (f.emisor_rfc = coalesce(t.contraparte, t.rfc)
                      or f.receptor_rfc = coalesce(t.contraparte, t.rfc))
                 and (f.emisor_rfc = t.rfc or f.receptor_rfc = t.rfc)),
+           'resumen', case when t.saltos = 0 then format(
+               'El RFC aparece en el listado %s del SAT con estatus "%s" desde el %s (oficio %s); '
+               'después de esa publicación siguió operando en %s CFDI.',
+               t.lista, t.estatus, t.fecha_publicacion, coalesce(t.oficio, 'sin oficio'),
+               (select count(*) from forense.cfdi f
+                 where f.corrida_id = p_corrida and not f.cancelado
+                   and f.fecha > t.fecha_publicacion::timestamptz and f.fecha <= v_corte
+                   and (f.emisor_rfc = t.rfc or f.receptor_rfc = t.rfc)))
+             else format(
+               'Opera a %s salto(s) de %s, publicado en el listado del SAT con estatus "%s" el %s.',
+               t.saltos, t.contraparte, t.estatus, t.fecha_publicacion) end,
+           'referencias', to_jsonb(array[
+             'LISTA:' || coalesce(t.contraparte, t.rfc) || ':' || t.estatus
+             || ':' || t.fecha_publicacion::text]),
            'comprobacion', 'E1'),
          forense.huella_pista('E1', t.rfc, v_corte,
                               coalesce(t.contraparte, '') || '|' || t.estatus || '|' || t.fecha_publicacion::text)
@@ -608,6 +674,19 @@ begin
            'ultimo_mes_con_cfdi', to_char(e.ultimo_mes, 'YYYY-MM'),
            'meses_silencio', e.meses_silencio,
            'nomina_12m', e.nomina_12m::text,
+           'resumen', format(
+             'Dado de alta el %s; el %s de su facturación de 12 meses se concentra en el trimestre '
+             'que arranca en %s y lleva %s meses sin emitir CFDI (nómina de 12 meses: %s).',
+             (select fecha_alta from nuevos x where x.rfc = e.rfc),
+             to_char(round(100 * e.pct_pico, 1), 'FM990.0%'),
+             to_char(e.pico_trimestre, 'YYYY-MM'), e.meses_silencio, e.nomina_12m),
+           'referencias', (select coalesce(jsonb_agg('CFDI:' || fx.uuid), '[]'::jsonb) from (
+              select f.uuid from forense.cfdi f
+               where f.corrida_id = p_corrida and f.emisor_rfc = e.rfc and f.tipo = 'I'
+                 and not f.cancelado
+                 and f.fecha >= e.pico_trimestre
+                 and f.fecha < e.pico_trimestre + interval '3 months'
+               order by f.total desc, f.uuid limit 20) fx),
            'comprobacion', 'T1',
            'ventana', jsonb_build_object('desde', (v_corte - interval '12 months'), 'hasta', v_corte)),
          forense.huella_pista('T1', e.rfc, v_corte)
