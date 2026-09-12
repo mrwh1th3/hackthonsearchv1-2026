@@ -68,6 +68,14 @@ Señalar la comparación de corridas.
 
 Decirlo solo cuando esas ejecuciones existan. Con ocho trampas, cada error cambia la tasa en 12.5 puntos. Los pendientes, errores y casos sin conclusión se muestran en cobertura; no cuentan como absoluciones.
 
+**No decir que la regla de dos familias elimina los falsos positivos del baseline.** Medido (ver `eval/README.md`): en gen-v1 lo hacía (0/15 frente a 4/15), pero en gen-v2 —donde T2 ya es evaluable— el selector y el baseline de dos pistas son **idénticos**, 17/8/0/75. La causa es real y no se tapa: la trampa del grupo corporativo comparte domicilio y representante (familia R) **y** timbra en lote (familia T), y las dos cosas son ciertas de un grupo corporativo legítimo. Con T2 viva, dos familias no lo separa de un fraude.
+
+Lo que sí se puede decir, y es más fuerte porque distingue las dos etapas:
+
+> "El selector decide a quién investigamos; el dictamen decide a quién marcamos. Aquí están los dos números por separado. Y estas cuatro empresas legítimas entraron a investigación: lo que las salva no es el filtro, es la defensa."
+
+Esa es la lectura que pide `docs/10` §FPR, que define la tasa sobre las trampas **marcadas**, no sobre las que el selector encoló, y que dice con esas palabras que "las excluidas por el selector no demuestran una defensa". Si el número del dictamen todavía no existe cuando se ensaye el demo, decir que está sin medir. No sustituirlo por el del selector.
+
 ### 3:50–4:00 — Cierre
 
 > "También ejecutamos el mismo agente financiero sobre una muestra sintética de IBM. Solo F es evaluable: el sistema muestra las demás familias como no evaluables y deja explícitos sus límites."
