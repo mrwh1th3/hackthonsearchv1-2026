@@ -14,6 +14,10 @@ Orden de aplicación (docs/05 §Orden de migraciones + docs/17 §4):
 | `009_runtime_eventos.sql` | `paso_en_cola`/`paso_checkpoint` en el catálogo de `tipo_evento` + catálogo ClaveProdServ por giro. | hecho |
 | `010_runtime_funciones.sql` | Las 26 funciones que llaman los workflows (`abrir_corrida` … `eventos_salida_pendientes`), `revertir_expediente`, QA-002 y QA-003. Todas `returns table(...)` con las columnas exactas de `CONTRATOS_NODOS`. Aditiva: amplía los CHECK de `casos.estado` y `expedientes.estado_revision` re-declarándolos completos. | hecho |
 | `011_metricas_corrida.sql` | `v_metricas_corrida` COMPLETA (`parcial: false`): carril de datos (baseline de dos pistas y selector de dos familias), acierto de caché, tasa de ronda 2 y reintentos por motivo. Solo `costo_usd` queda como `null` declarado. | hecho |
+| `012_inyeccion_clusters.sql` | `asegurar_clusters_inyectados` (un cluster por RFC inyectado sin bajar el umbral) + `cola_corrida`. | hecho |
+| `013_rendimiento.sql` | Índices de apoyo y `pista_f1` sin subconsulta correlacionada (equivalencia comprobada con `EXCEPT`). | hecho |
+| `014_estadisticas.sql` | `analizar_snapshot()` + llamada al final de `clonar_corrida`, `clonar_corrida_con_inyeccion` y `cargar_o_clonar_snapshot`, y como primer paso de `correr_pistas`. El clon nace ANALIZADO. | hecho |
+| `015_cobertura.sql` | `cobertura_caso` / `recalcular_cobertura`: la regla determinista de cobertura del caso, calculada en `cerrar_ronda` y `revalidar_caso` y expuesta en `paquete_auditor_final`. | hecho |
 
 Fuera de migraciones: `seeds/seed_fake.sql` (fixture de UI, se aplica a mano tras
 001+002; no participa en métricas) y `seeds/seed_producto.sql` (requiere 006+007).
@@ -94,9 +98,19 @@ cluster (004) o por `/investigar`, no por el selector.
   `FORENSE_inyectar` hereda la garantía sin recablear) y devuelve **primero los
   garantizados**, después los afectados, después el resto por score. Mismas seis
   columnas de 010: el `SELECT *` del nodo no cambia.
-* El selector de dos familias **no se toca**: sobre el paquete (c) el RFC tiene
-  cluster y sigue fuera de `score_entidad`. Esa es la diferencia entre garantizar
+* El selector de dos familias **no se toca**: garantizar el cluster no cambia
+  `score_entidad` ni antes ni después (se afirma comparando el conteo antes y
+  después en `assertions_012_gen.sql`). Esa es la diferencia entre garantizar
   investigación y bajar el umbral (la alternativa que se rechazó en H9 07:32).
+  Corrección de la oleada 5: el paquete (c) **sí puede cruzar el selector** —
+  está diseñado para cruzarlo (R1 por domicilio compartido + F1 por crédito
+  comercial, ver `eval/inyecciones/README.md`), porque es ahí donde se mide la
+  defensa. La aserción que exigía "fuera del selector" medía otra cosa y
+  contradecía al propio paquete; ahora se afirma que el paquete trae con qué
+  explicar la anomalía (compras reales a proveedores de la base, salida de
+  dinero a personas morales identificadas, cero facturación interna) y el falso
+  positivo se mide sobre el DICTAMEN en `eval/metricas.py`, no sobre el
+  selector.
 * `estado_corrida` conserva sus SEIS columnas —cambiarle el tipo de retorno haría
   que reaplicar 010 fallara con «cannot change return type» y el orden de
   migraciones dejaría de ser reaplicable— pero cambia el criterio: `terminada` y
@@ -104,15 +118,21 @@ cluster (004) o por `/investigar`, no por el selector.
   cierra una corrida con clusters sin empezar. El número se expone aparte en
   `forense.cola_corrida(corrida)` → `(clusters_total, cola_restante,
   casos_activos)`, que es aditiva. Se cuenta "pendiente sin caso" porque el
-  cluster no pasa a `ronda1` hasta que el caso arranca la ronda 1.
+  cluster no pasa a `ronda1` hasta que el caso arranca la ronda 1. **Decisión
+  registrada (oleada 5):** no se amplía `estado_corrida`; quien necesite el
+  número llama a `cola_corrida`. Las dos conviven y ninguna migración posterior
+  cambia la firma de `estado_corrida`.
 
-### Rendimiento del barrido (013, medido)
+### Rendimiento del barrido (013 + 014, medido)
 
 Postgres 17 local, base desechable con el snapshot `gen-v1` (100 contribuyentes,
-8 081 CFDI, 6 006 movimientos), tiempos **cálidos** (segunda ejecución), medidos
-con `\timing` y `EXPLAIN (analyze, buffers)`:
+8 081 CFDI, 6 006 movimientos), medidos con `\timing` y `EXPLAIN (analyze,
+buffers)`.
 
-| paso | antes | después |
+**1. Barrido sobre una corrida con estadísticas al día (lo que arregló 013),
+tiempos cálidos:**
+
+| paso | antes de 013 | después de 013 |
 |---|---|---|
 | `correr_pistas` completo | **1 108 ms** | **906 ms** |
 | F1 conciliación | 372 ms | 70 ms |
@@ -123,19 +143,60 @@ con `\timing` y `EXPLAIN (analyze, buffers)`:
 | R1 atributos compartidos | 76 ms | 77 ms |
 | resto (D1–D4, F2, F4, R3, T1, T2) | < 70 ms c/u | igual |
 
-F1 era el `not exists` correlacionado: el plan lo ejecutaba 5 120 veces (una por
-CFDI PUE de la ventana) y tocaba 44 426 buffers para 6 006 movimientos. Resuelto
-los pagos una sola vez, baja a 13 ms la parte de conciliación. Mismo resultado
-comprobado con `EXCEPT` en las dos direcciones (los 1 471 CFDI PUE sin conciliar
-son los mismos) y con `db/tests/assertions_013.sql`, que recalcula F1 con la
-formulación original de 003 en cada corrida de la base de prueba.
+**2. Barrido sobre un CLON recién creado (el camino de la inyección en vivo, que
+es lo que ve el juez). Ésta es la causa real de los segundos que se habían
+atribuido a la formulación de F1:**
 
-**Sobre los ≈46 s del e2e de runtime:** no se reproducen en Postgres local. El
-barrido medía 1 101 ms en H7 (arriba) y 1 108 ms ahora sobre el mismo snapshot.
-Los 46 s son del e2e completo contra el proyecto remoto, no del SQL: ahí entran
-la latencia de red por llamada y una instancia compartida. Lo que sí escala mal
-y queda **abierto** es `refresh materialized view forense.v_pares_giro`: la
-matview es GLOBAL (agrupa por `corrida_id` sobre `v_agregado_rfc` de todas las
-corridas), así que cada clon de inyección encarece el refresh de todas las demás.
-Pasarla a por-corrida exige tocar las lecturas de D1/D2/D4 y no es aditivo: va a
-la oleada siguiente.
+| escenario | `clonar_corrida` | `correr_pistas` |
+|---|---|---|
+| clon sin analizar (hasta 013) | 205 ms | **no terminó en 300 s** (`statement_timeout`, dentro de `pista_f1`) |
+| clon analizado (014) | 417 ms (incluye `ANALYZE`) | **1 473 ms** (incluye un segundo `ANALYZE` de ~300 ms) |
+| corrida base ya analizada, de referencia | — | 918 ms |
+
+**Causa: estadísticas rancias, no la formulación de F1.** Las tablas de dominio
+son COMPARTIDAS entre corridas (`corrida_id` es una columna, no una base
+distinta). Al clonar se duplican miles de filas con un `corrida_id` que el
+planeador no ha visto nunca: la lista de valores frecuentes de esa columna no lo
+incluye, el estimador cree que la corrida nueva tiene ~1 fila y elige nested
+loops en todo el barrido. La prueba de que es estadística y no álgebra: la MISMA
+función, sobre la MISMA corrida, baja de minutos a ~1 s sólo con `analyze`.
+La verificación de la oleada 4 midió 42 s / 243 ms en su máquina; aquí, con la
+instancia local más cargada, el caso rancio ni siquiera terminó en 300 s. El
+orden de magnitud es el mismo y la conclusión no depende del número.
+
+**Arreglo (014):** `forense.analizar_snapshot()` corre al final de
+`clonar_corrida`, `clonar_corrida_con_inyeccion` y `cargar_o_clonar_snapshot`, y
+como primer paso de `correr_pistas` (defensa para cualquier corrida que llegue
+por otro camino). `ANALYZE` sin `VACUUM` es válido dentro de una función y de una
+transacción, y toma `ShareUpdateExclusiveLock`, que no bloquea lecturas ni
+escrituras normales. Cada llamada deja evento en `forense.bitacora`
+(`corrida_cargada` / `evento_real=estadisticas_analizadas`, regla 2). Medido por
+`db/tests/assertions_014_gen.sql`, que exige el barrido del clon por debajo de
+5 s.
+
+**Lo que escala mal y queda declarado:**
+
+* El `ANALYZE` es de TABLA COMPLETA: su costo crece con el total de filas de
+  todas las corridas juntas, no con las del clon. Con un puñado de clones son
+  ~300 ms; con decenas, hay que pasar a `analyze` por partición o a tablas por
+  corrida, que ya no es aditivo.
+* El histograma de `corrida_id` (statistics target 100 por omisión) se degrada a
+  medida que crece el número de corridas: llegado ese punto, el arreglo correcto
+  es `alter table ... alter column corrida_id set statistics`, no más índices.
+* `refresh materialized view forense.v_pares_giro` sigue siendo GLOBAL (agrupa
+  por `corrida_id` sobre `v_agregado_rfc` de todas las corridas), así que cada
+  clon encarece el refresh de todas las demás: ~180 ms hoy, y sube con cada
+  corrida viva. Pasarla a por-corrida exige tocar las lecturas de D1/D2/D4 y no
+  es aditivo: queda para la oleada siguiente.
+* **Índice por `corrida_id` en `v_pares_giro`:** ya existe. El índice ÚNICO
+  `ux_pares_giro (corrida_id, giro)` sirve `where corrida_id = ?` como columna
+  principal; añadir un segundo índice sólo por `corrida_id` sería redundante y
+  añadiría un índice más que reconstruir en cada `refresh` (coste por clon, que
+  es justo lo que se quiere bajar). 014 lo comprueba en tiempo de migración y
+  crea el índice sólo si algún día desaparece esa clave única;
+  `db/tests/assertions_014.sql` afirma que existe un índice con `corrida_id` como
+  primera columna.
+
+**Sobre los ≈46 s del e2e de runtime:** siguen sin reproducirse en Postgres local
+para el barrido de una corrida ya cargada (906–1 108 ms). Lo que sí se
+reproducía en local —y ya está arreglado— es el clon sin analizar.
