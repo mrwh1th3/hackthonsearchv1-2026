@@ -6,7 +6,11 @@ const x = $input.first().json;
 const BASE_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 8000;
 const MAX_REINTENTOS = Number(x.max_reintentos ?? 2);
-const status = x.status === undefined ? null : x.status;
+// n8n con `fullResponse: true` entrega `statusCode`; el transporte inyectado
+// de los tests usa `status`. Se aceptan ambos: si solo se leyera `status`, un
+// 200 real caería en la rama de error.
+const crudoStatus = x.status !== undefined && x.status !== null ? x.status : x.statusCode;
+const status = crudoStatus === undefined || crudoStatus === null ? null : Number(crudoStatus);
 const tipo = x.tipo ?? null;
 const intento = Number(x.intento ?? 1);
 const ahora = Number(x.ahora_ms ?? Date.parse(x.ahora ?? new Date().toISOString()));

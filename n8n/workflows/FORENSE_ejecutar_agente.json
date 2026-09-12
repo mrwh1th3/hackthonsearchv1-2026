@@ -82,6 +82,27 @@
     {
       "parameters": {
         "operation": "executeQuery",
+        "query": "-- Sin evento persistido no hay progreso visible (regla 2; 21 §3.3).\nSELECT forense.registrar_evento($1::uuid, 'paso_en_cola', $2::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify({ execution_id: $json.execution_id, motivo: $json.motivo }) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        880,
+        140
+      ],
+      "name": "Registrar en_cola",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
         "query": "-- DEPENDE de forense-db (17 §4). Confirmar el nombre de la columna de enlace contexto↔ejecución.\nSELECT e.*, a.contenido AS contexto, t.caso_id, t.agente, t.ronda, t.intento\n  FROM forense.ejecuciones_agente e\n  JOIN forense.artefactos_contexto a ON a.hash = e.context_hash\n  LEFT JOIN forense.tareas_agente t ON t.id = e.tarea_id\n WHERE e.id = $1::uuid",
         "options": {
           "queryReplacement": "={{ $json.execution_id }}"
@@ -276,7 +297,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/clasificar-transporte.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Worker: 429/5xx con Retry-After, timeout ambiguo (17 §6).\n\nconst x = $input.first().json;\nconst BASE_BACKOFF_MS = 500;\nconst MAX_BACKOFF_MS = 8000;\nconst MAX_REINTENTOS = Number(x.max_reintentos ?? 2);\nconst status = x.status === undefined ? null : x.status;\nconst tipo = x.tipo ?? null;\nconst intento = Number(x.intento ?? 1);\nconst ahora = Number(x.ahora_ms ?? Date.parse(x.ahora ?? new Date().toISOString()));\nconst limite = x.deadline_at ? Date.parse(x.deadline_at) : Number.POSITIVE_INFINITY;\nconst headers = x.headers ?? {};\n\nlet clase;\nif (tipo === 'timeout' || tipo === 'conexion_interrumpida') clase = 'ambiguo';\nelse if (status === null) clase = 'error';\nelse if (status >= 200 && status < 300) clase = 'ok';\nelse if (status === 429 || status === 408 || status >= 500) clase = 'reintentable';\nelse clase = 'error';\n\nconst crudo = headers['retry-after'] ?? headers['Retry-After'] ?? null;\nlet segundos = null;\nif (crudo !== null && crudo !== undefined && crudo !== '') {\n  const numero = Number(crudo);\n  if (Number.isFinite(numero)) segundos = numero;\n  else {\n    const fecha = Date.parse(String(crudo));\n    if (Number.isFinite(fecha)) segundos = Math.max(0, (fecha - ahora) / 1000);\n  }\n}\nconst aleatorio = x.aleatorio === undefined || x.aleatorio === null ? Math.random() : Number(x.aleatorio);\nconst techo = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, Math.max(0, intento - 1)));\nconst espera_ms = segundos !== null ? Math.max(0, Math.round(segundos * 1000)) : Math.round(techo * aleatorio);\n\nconst cabeEnDeadline = ahora + espera_ms < limite;\nconst reintentar = clase === 'reintentable' && intento <= MAX_REINTENTOS && cabeEnDeadline;\n// Ruta EXCLUYENTE para el switch del workflow: una respuesta correcta no\n// puede caer además en la rama de «desconocido».\nlet ruta;\nif (clase === 'ok') ruta = 'continuar';\nelse if (reintentar) ruta = 'reintentar';\nelse if (clase === 'ambiguo') ruta = 'desconocido';\nelse ruta = 'error';\nconst salida = {\n  clase,\n  ruta,\n  espera_ms: reintentar ? espera_ms : 0,\n  intento,\n  reintentar,\n  retry_after_respetado: segundos !== null,\n  motivo: clase === 'ambiguo'\n    ? 'timeout_ambiguo: posible consumo externo sin respuesta; no se reintenta automáticamente'\n    : clase === 'reintentable' && !reintentar\n      ? (cabeEnDeadline ? 'reintentos_transporte_agotados' : 'deadline_excedido')\n      : null,\n};\nreturn [{ json: salida }];"
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/clasificar-transporte.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Worker: 429/5xx con Retry-After, timeout ambiguo (17 §6).\n\nconst x = $input.first().json;\nconst BASE_BACKOFF_MS = 500;\nconst MAX_BACKOFF_MS = 8000;\nconst MAX_REINTENTOS = Number(x.max_reintentos ?? 2);\n// n8n con `fullResponse: true` entrega `statusCode`; el transporte inyectado\n// de los tests usa `status`. Se aceptan ambos: si solo se leyera `status`, un\n// 200 real caería en la rama de error.\nconst crudoStatus = x.status !== undefined && x.status !== null ? x.status : x.statusCode;\nconst status = crudoStatus === undefined || crudoStatus === null ? null : Number(crudoStatus);\nconst tipo = x.tipo ?? null;\nconst intento = Number(x.intento ?? 1);\nconst ahora = Number(x.ahora_ms ?? Date.parse(x.ahora ?? new Date().toISOString()));\nconst limite = x.deadline_at ? Date.parse(x.deadline_at) : Number.POSITIVE_INFINITY;\nconst headers = x.headers ?? {};\n\nlet clase;\nif (tipo === 'timeout' || tipo === 'conexion_interrumpida') clase = 'ambiguo';\nelse if (status === null) clase = 'error';\nelse if (status >= 200 && status < 300) clase = 'ok';\nelse if (status === 429 || status === 408 || status >= 500) clase = 'reintentable';\nelse clase = 'error';\n\nconst crudo = headers['retry-after'] ?? headers['Retry-After'] ?? null;\nlet segundos = null;\nif (crudo !== null && crudo !== undefined && crudo !== '') {\n  const numero = Number(crudo);\n  if (Number.isFinite(numero)) segundos = numero;\n  else {\n    const fecha = Date.parse(String(crudo));\n    if (Number.isFinite(fecha)) segundos = Math.max(0, (fecha - ahora) / 1000);\n  }\n}\nconst aleatorio = x.aleatorio === undefined || x.aleatorio === null ? Math.random() : Number(x.aleatorio);\nconst techo = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, Math.max(0, intento - 1)));\nconst espera_ms = segundos !== null ? Math.max(0, Math.round(segundos * 1000)) : Math.round(techo * aleatorio);\n\nconst cabeEnDeadline = ahora + espera_ms < limite;\nconst reintentar = clase === 'reintentable' && intento <= MAX_REINTENTOS && cabeEnDeadline;\n// Ruta EXCLUYENTE para el switch del workflow: una respuesta correcta no\n// puede caer además en la rama de «desconocido».\nlet ruta;\nif (clase === 'ok') ruta = 'continuar';\nelse if (reintentar) ruta = 'reintentar';\nelse if (clase === 'ambiguo') ruta = 'desconocido';\nelse ruta = 'error';\nconst salida = {\n  clase,\n  ruta,\n  espera_ms: reintentar ? espera_ms : 0,\n  intento,\n  reintentar,\n  retry_after_respetado: segundos !== null,\n  motivo: clase === 'ambiguo'\n    ? 'timeout_ambiguo: posible consumo externo sin respuesta; no se reintenta automáticamente'\n    : clase === 'reintentable' && !reintentar\n      ? (cabeEnDeadline ? 'reintentos_transporte_agotados' : 'deadline_excedido')\n      : null,\n};\nreturn [{ json: salida }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -467,6 +488,27 @@
     {
       "parameters": {
         "operation": "executeQuery",
+        "query": "-- DEPENDE de forense-db: validación de contrato + IDs + unidades. Un ID existente no prueba una frase (17 §8).\nSELECT * FROM forense.validar_salida_rol($1::uuid, $2::text, $3::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.execution_id }}, ={{ $json.rol }}, ={{ JSON.stringify($json.salida) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2640,
+        0
+      ],
+      "name": "Validar salida contra contrato",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
         "query": "UPDATE forense.llm_solicitudes\n   SET estado = 'completado', provider_request_id = $2::text,\n       usage = $3::jsonb, modelo = $4::text\n WHERE request_id = $1::uuid",
         "options": {
           "queryReplacement": "={{ $json.request_id }}, ={{ $json.provider_request_id }}, ={{ JSON.stringify($json.usage) }}, ={{ $json.modelo }}"
@@ -475,7 +517,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        2640,
+        2860,
         0
       ],
       "name": "Completar request",
@@ -799,6 +841,17 @@
         ]
       ]
     },
+    "Paso no reclamable": {
+      "main": [
+        [
+          {
+            "node": "Registrar en_cola",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Cargar ejecución": {
       "main": [
         [
@@ -956,6 +1009,17 @@
       ]
     },
     "Interpretar respuesta": {
+      "main": [
+        [
+          {
+            "node": "Validar salida contra contrato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar salida contra contrato": {
       "main": [
         [
           {

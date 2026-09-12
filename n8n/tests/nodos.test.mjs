@@ -133,6 +133,16 @@ test('[SIMULADO] transporte: el timeout ambiguo no se reintenta', () => {
   assert.match(r.motivo, /no se reintenta automáticamente/);
 });
 
+test('[SIMULADO] transporte: acepta la forma de n8n (statusCode) además de status', () => {
+  const base = { ahora_ms: AHORA, deadline_at: DEADLINE, aleatorio: 0.5, intento: 1 };
+  // Ítem tal como lo entrega httpRequest con fullResponse: true.
+  const comoN8n = { statusCode: 200, headers: {}, body: { stop_reason: 'end_turn' } };
+  const r = clasificarTransporteNodo({ ...base, ...comoN8n });
+  assert.equal(r.clase, 'ok', 'un 200 real no puede caer en la rama de error');
+  assert.equal(r.ruta, 'continuar');
+  assert.equal(clasificarTransporteNodo({ ...base, statusCode: 429, headers: { 'retry-after': '2' } }).ruta, 'reintentar');
+});
+
 test('[SIMULADO] transporte: la ruta es excluyente (una respuesta OK no cae también en desconocido)', () => {
   const base = { ahora_ms: AHORA, deadline_at: DEADLINE, aleatorio: 0.5, intento: 1 };
   const rutas = [

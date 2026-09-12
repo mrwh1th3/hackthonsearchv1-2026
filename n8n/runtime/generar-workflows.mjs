@@ -190,6 +190,14 @@ export function workerEjecutarAgente() {
     'const x = $input.first().json;',
     "return [{ json: { estado: 'en_cola', motivo: x.error ?? 'slot ocupado' } }];",
   ].join('\n')));
+  // Regla 2 de CLAUDE.md: si no escribió en bitacora, el paso no existió. La UI
+  // necesita este evento para mostrar «en cola» sin inventar animación.
+  add(sql(
+    'Registrar en_cola',
+    "SELECT forense.registrar_evento($1::uuid, 'paso_en_cola', $2::jsonb)",
+    '={{ $json.caso_id }}, ={{ JSON.stringify({ execution_id: $json.execution_id, motivo: $json.motivo }) }}',
+    'Sin evento persistido no hay progreso visible (regla 2; 21 §3.3).',
+  ));
 
   fila = 0; columna = 3;
   add(sql(
@@ -271,6 +279,16 @@ export function workerEjecutarAgente() {
 
   fila = 0; columna = 11;
   add(code('Interpretar respuesta', 'interpretar-respuesta'));
+  // 17 §8: la validación es de DOS niveles. El Code node solo comprueba
+  // estructura (no puede cargar ajv); la autoritativa contra el schema del rol
+  // y los IDs vive en backend. Sin este nodo, `salida_estructura_ok` llegaría al
+  // checkpoint como si fuera una salida válida.
+  add(sql(
+    'Validar salida contra contrato',
+    'SELECT * FROM forense.validar_salida_rol($1::uuid, $2::text, $3::jsonb)',
+    '={{ $json.execution_id }}, ={{ $json.rol }}, ={{ JSON.stringify($json.salida) }}',
+    'DEPENDE de forense-db: validación de contrato + IDs + unidades. Un ID existente no prueba una frase (17 §8).',
+  ));
   add(sql(
     'Completar request',
     [
@@ -381,6 +399,7 @@ export function workerEjecutarAgente() {
     ['Reclamar paso', '¿Claim vigente?'],
     ['¿Claim vigente?', 'Cargar ejecución', 0],
     ['¿Claim vigente?', 'Paso no reclamable', 1],
+    ['Paso no reclamable', 'Registrar en_cola'],
     ['Cargar ejecución', 'Decidir accion'],
     ['Decidir accion', 'Ruta del paso'],
     ['Ruta del paso', 'Reservar request', 0],
@@ -397,7 +416,8 @@ export function workerEjecutarAgente() {
     ['Backoff', 'POST /v1/messages'],
     ['Marcar desconocido', 'Guardar checkpoint'],
     ['Marcar error de request', 'Guardar checkpoint'],
-    ['Interpretar respuesta', 'Completar request'],
+    ['Interpretar respuesta', 'Validar salida contra contrato'],
+    ['Validar salida contra contrato', 'Completar request'],
     ['Completar request', 'Guardar checkpoint'],
     ['Reclamar tool', '¿Tool nueva?'],
     ['¿Tool nueva?', 'Llamar RPC forense', 0],
