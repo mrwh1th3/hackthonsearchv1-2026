@@ -6,9 +6,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensamblar, ErrorEnsamblado, ROLES_LLM, ROLES_ESPECIALISTA, TECHO_CARACTERES,
-  AMBITOS_TECHO, AMBITO_TECHO_POR_DEFECTO, FENCE_INICIO, FENCE_FIN,
+  AMBITOS_TECHO, AMBITO_TECHO_POR_DEFECTO, TECHO_SYSTEM_CARACTERES, FENCE_INICIO, FENCE_FIN,
 } from '../../n8n/prompts/ensamblar.mjs';
-import { CASOS_ROL, fixtureContrato, fixtureLocal, contar } from './ayuda.mjs';
+import { CASOS_ROL, fixtureContrato, fixtureLocal, contar, contextoEspecialista } from './ayuda.mjs';
 
 test('los techos son 12k para especialistas y 24k para los roles de cierre (17 §7)', () => {
   for (const rol of ROLES_LLM) {
@@ -17,17 +17,83 @@ test('los techos son 12k para especialistas y 24k para los roles de cierre (17 �
   }
   assert.equal(TECHO_CARACTERES.mapper, 24000);
   assert.deepEqual([...AMBITOS_TECHO], ['total', 'paquete']);
-  assert.equal(AMBITO_TECHO_POR_DEFECTO, 'total');
+  // Decisión H3 (reports/handoff/DECISIONES.md): el techo de 17 §7 mide el paquete.
+  assert.equal(AMBITO_TECHO_POR_DEFECTO, 'paquete');
 });
 
 test('ningún ensamblado con fixture publicado supera su techo', () => {
+  for (const ambito of AMBITOS_TECHO) {
+    for (const { rol, fixture } of CASOS_ROL) {
+      const r = ensamblar(rol, fixtureContrato(fixture), { ambito_techo: ambito });
+      // Cada ámbito mide lo suyo: 'total' el system + el paquete, 'paquete' sólo el paquete.
+      const usado = ambito === 'total' ? r.meta.caracteres : r.meta.caracteres_paquete;
+      assert.ok(
+        usado <= r.meta.techo_caracteres,
+        `${rol} (${ambito}): ${usado} > ${r.meta.techo_caracteres}`,
+      );
+      assert.equal(r.meta.techo_caracteres, TECHO_CARACTERES[rol]);
+      assert.equal(r.meta.ambito_techo, ambito);
+    }
+  }
+});
+
+test('con el ámbito por defecto el system de un especialista (>9k) no vacía el paquete', () => {
+  // El motivo de la decisión H3: con 'total', un system de 9.1k dejaba ~2.2k de los 12k al
+  // paquete y el peor caso del contrato se quedaba sin una sola pista. Con 'paquete' el
+  // techo mide el paquete inicial y el especialista sí recibe datos que investigar.
+  const paquete = fixtureLocal('contexto-r1-techo');
+
+  const porDefecto = ensamblar('documental', paquete);
+  assert.equal(porDefecto.meta.ambito_techo, 'paquete');
+  assert.ok(porDefecto.meta.caracteres_system > 9000, `system medido: ${porDefecto.meta.caracteres_system}`);
+  assert.ok(porDefecto.meta.bloques_incluidos > 0, 'el paquete quedó vacío de bloques');
+  assert.ok(
+    porDefecto.messages_iniciales[0].content.includes('[PISTA id='),
+    'el especialista no recibió ninguna pista que investigar',
+  );
+  assert.ok(porDefecto.meta.caracteres_paquete <= TECHO_CARACTERES.documental);
+
+  // Y entran estrictamente más bloques que con la lectura 'total', que es lo que se cambió.
+  const estricto = ensamblar('documental', paquete, { ambito_techo: 'total' });
+  assert.ok(
+    porDefecto.meta.bloques_incluidos > estricto.meta.bloques_incluidos,
+    `paquete=${porDefecto.meta.bloques_incluidos} total=${estricto.meta.bloques_incluidos}`,
+  );
+
+  // Los cinco especialistas, no sólo el documental.
+  for (const rol of ROLES_ESPECIALISTA) {
+    const r = ensamblar(rol, contextoEspecialista(rol));
+    assert.ok(r.meta.bloques_incluidos > 0, `${rol}: paquete sin bloques`);
+    assert.equal(r.meta.ambito_techo, 'paquete');
+  }
+});
+
+test('el system tiene su propio techo medido de 10k y se reporta en meta', () => {
+  assert.equal(TECHO_SYSTEM_CARACTERES, 10000);
+
+  // Los cinco especialistas, en su variante base, caben bajo el techo del system: es lo que
+  // deja sitio al paquete y lo que se vigila para que los .md no crezcan en silencio.
+  for (const rol of ROLES_ESPECIALISTA) {
+    const r = ensamblar(rol, contextoEspecialista(rol));
+    assert.ok(
+      r.meta.caracteres_system <= TECHO_SYSTEM_CARACTERES,
+      `${rol}: system de ${r.meta.caracteres_system} > ${TECHO_SYSTEM_CARACTERES}`,
+    );
+    assert.equal(r.meta.techo_system, TECHO_SYSTEM_CARACTERES);
+    assert.equal(r.meta.system_sobre_techo, false, rol);
+  }
+
+  // Las dos excepciones conocidas se miden en vez de dejarse crecer: los roles de cierre
+  // (techo de paquete 24k) y la variante fewshot. Si suben de aquí, es una decisión, no un
+  // descuido.
   for (const { rol, fixture } of CASOS_ROL) {
     const r = ensamblar(rol, fixtureContrato(fixture));
-    assert.ok(
-      r.meta.caracteres <= r.meta.techo_caracteres,
-      `${rol}: ${r.meta.caracteres} > ${r.meta.techo_caracteres}`,
-    );
-    assert.equal(r.meta.techo_caracteres, TECHO_CARACTERES[rol]);
+    assert.ok(r.meta.caracteres_system <= 11000, `${rol}: system de ${r.meta.caracteres_system}`);
+  }
+  for (const rol of ROLES_ESPECIALISTA) {
+    const r = ensamblar(rol, contextoEspecialista(rol), { fewshot: true });
+    assert.ok(r.meta.caracteres_system <= 11500, `${rol}+fewshot: ${r.meta.caracteres_system}`);
+    assert.equal(r.meta.system_sobre_techo, r.meta.caracteres_system > TECHO_SYSTEM_CARACTERES);
   }
 });
 
@@ -95,7 +161,7 @@ test('si el prompt base ya no cabe, el ensamblador falla en vez de recortar el s
   const paquete = fixtureContrato('contexto-r1');
   paquete.objetivo = 'x'.repeat(2400);
   assert.throws(
-    () => ensamblar('documental', paquete),
+    () => ensamblar('documental', paquete, { ambito_techo: 'total' }),
     e => e instanceof ErrorEnsamblado
       && ['prompt_base_excede_techo', 'bloque_obligatorio_no_cabe'].includes(e.codigo),
     'el system nunca se recorta: el fallo es explícito',

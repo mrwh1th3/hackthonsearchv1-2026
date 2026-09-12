@@ -43,14 +43,22 @@ sanitizado de 19, no `runtime.contexto`.
 12.000 caracteres para especialistas, 24.000 para los roles de cierre (08, reafirmado en
 17 §7). `ambito_techo` decide qué se mide:
 
-- `'total'` (por defecto): `system` + mensaje inicial. Lectura estricta.
-- `'paquete'`: sólo el paquete de contexto. Lectura literal de 17 §7 ("los límites de
-  caracteres del paquete inicial").
+- `'paquete'` (**por defecto**, decisión H3 de `reports/handoff/DECISIONES.md`): sólo el
+  paquete de contexto. Lectura literal de 17 §7 ("los límites de caracteres del paquete
+  inicial").
+- `'total'`: `system` + mensaje inicial. Lectura estricta; sigue disponible y probada.
 
 Medido con los fixtures de contracts: el `system` de un especialista ocupa **8.6k–9.5k**, así
 que en ámbito `'total'` quedan ~2.2k para los datos —una o dos pistas a tamaño máximo— y con
-`fewshot` activo quedan ~600. Es una decisión de configuración del runtime, no del prompt: si
-se quiere cargar más pistas por turno, el ámbito correcto es `'paquete'`.
+`fewshot` activo quedan ~600. Por eso el ámbito por defecto es `'paquete'`: con `'total'`, el
+peor caso del contrato dejaba al especialista sin una sola pista que investigar. Es una
+decisión de configuración del runtime, no del prompt.
+
+El `system` tiene además su propio techo **medido**, `TECHO_SYSTEM_CARACTERES` = 10.000. No
+aborta el ensamblado: lo vigilan los tests y cada ensamblado lo reporta en
+`meta.caracteres_system`, `meta.techo_system` y `meta.system_sobre_techo`, para que el
+runtime lo registre. Dos casos lo rebasan a propósito y están medidos: los roles de cierre
+(~10.0k–10.1k, con techo de paquete de 24k) y la variante `fewshot` (~10.3k–11.2k).
 
 Cuando no cabe, se omiten **bloques completos** (nunca medio JSON ni medio bloque de dato no
 confiable), se devuelve `truncado: true`, y el mensaje incluye un aviso con los IDs

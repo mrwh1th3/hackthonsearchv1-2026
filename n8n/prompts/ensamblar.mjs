@@ -119,12 +119,23 @@ export const TECHO_CARACTERES = Object.freeze({
   mapper: 24000,
 });
 
-// Ámbito del techo. 'total' (por defecto) cuenta system + messages_iniciales: es la lectura
-// estricta y la que se prueba. 'paquete' cuenta sólo el paquete de contexto, que es la
-// lectura literal de 17 §7 ("los límites de caracteres del paquete inicial de 08").
+// Ámbito del techo. 'paquete' (por defecto desde la decisión H3 de DECISIONES.md) cuenta
+// sólo el paquete de contexto, que es la lectura literal de 17 §7 ("los límites de
+// caracteres del paquete inicial de 08"). 'total' cuenta system + messages_iniciales: es la
+// lectura estricta, sigue disponible y se prueba, pero con ella el system de un especialista
+// (8.6k–9.5k medidos) se come el techo de 12k y deja al paquete sin pistas.
 // El cambio es de configuración del runtime, no del modelo.
 export const AMBITOS_TECHO = Object.freeze(['total', 'paquete']);
-export const AMBITO_TECHO_POR_DEFECTO = 'total';
+export const AMBITO_TECHO_POR_DEFECTO = 'paquete';
+
+// Techo propio del system (DECISIONES H3: "el system prompt tiene su propio techo medido
+// (≤10k)"). No es un throw: es el umbral que vigilan los tests para que los .md no crezcan
+// sin que nadie se entere. Dos variantes lo rebasan a propósito y por eso no se aborta:
+//  - los roles de cierre miden ~10.0k–10.1k (techo de paquete 24k, así que no aprietan);
+//  - la variante `fewshot` suma el ejemplo adversarial y llega a ~10.3k–11.2k.
+// `meta.caracteres_system` y `meta.system_sobre_techo` lo exponen en cada ensamblado para que
+// el runtime lo registre en bitácora en vez de descubrirlo en producción.
+export const TECHO_SYSTEM_CARACTERES = 10000;
 
 export const FENCE_INICIO = '<<<DATO_NO_CONFIABLE';
 export const FENCE_FIN = '<<<FIN_DATO_NO_CONFIABLE>>>';
@@ -709,6 +720,8 @@ export function ensamblar(rol, paqueteContexto, opciones = {}) {
       ambito_techo: ambito,
       caracteres: system.length + contenidoUsuario.length,
       caracteres_system: system.length,
+      techo_system: TECHO_SYSTEM_CARACTERES,
+      system_sobre_techo: system.length > TECHO_SYSTEM_CARACTERES,
       caracteres_paquete: contenidoUsuario.length,
       bloques_incluidos: incluidos.length,
       bloques_omitidos: omitidos.length,
