@@ -54,7 +54,11 @@ export function correr(db, sql, { rol = null, detener = false } = {}) {
   fs.writeFileSync(tmp, cuerpo, 'utf8');
   try {
     const r = spawnSync(PSQL, ['-d', db, '-X', '-q', '-t', '-A', '-f', tmp], {
-      env: ENTORNO_PG, encoding: 'utf8', timeout: 120000,
+      // 300 s, no 120: `correr_pistas` sobre gen-v1 tarda ~30 s con la base recién
+      // preparada y bastante más cuando la suite completa ha dejado varios clones de
+      // inyección en la misma base. Un timeout corto se ve como `psql exit -1` sin
+      // stderr, que es el peor diagnóstico posible.
+      env: ENTORNO_PG, encoding: 'utf8', timeout: 300000,
     });
     return { code: r.status ?? -1, salida: (r.stdout ?? '').trim(), error: (r.stderr ?? '').trim() };
   } finally {

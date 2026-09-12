@@ -37,7 +37,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { dictaminar, NIVELES } from '../../n8n/runtime/auditor-final.mjs';
-import { CORRIDA_GEN_V1, DB_QA, RAIZ, correrOk, escalar, filas, hayBase, json } from './_ayudas.mjs';
+import { CORRIDA_GEN_V1, DB_QA, RAIZ, correr, correrOk, escalar, filas, hayBase, json } from './_ayudas.mjs';
 
 const saltar = !hayBase(DB_QA) && 'sin base forense_qa (corre tests/integration/preparar-db.sh)';
 
@@ -103,6 +103,18 @@ function inyectar(archivo, marca) {
   return { inyeccion: reg.inyeccion_id, ingesta: reg.ingesta_id, corrida: nueva, rfcs };
 }
 
+/**
+ * Borra la corrida clonada al terminar el ensayo. Cada clon copia el dominio
+ * entero de gen-v1 (~8 mil CFDI); dejarlos acumulados hace que la siguiente
+ * corrida del banco tarde el doble y que un `psql` con timeout parezca un
+ * fallo de la prueba. No es cosmético: es la regla 10 aplicada al banco.
+ * No detiene la prueba si falla (la base de QA es desechable).
+ */
+function limpiar(corrida) {
+  const r = correr(DB_QA, `delete from forense.corridas where id = '${corrida}';`);
+  if (r.code !== 0) console.log(`[limpieza] no se pudo borrar la corrida ${corrida}: ${r.error.slice(0, 200)}`);
+}
+
 /** Códigos de pista disparados para un RFC en una corrida. */
 function codigos(corrida, rfc) {
   return filas(DB_QA, `select codigo from forense.pistas
@@ -150,6 +162,8 @@ test('(b) retorno-efos: la base queda intacta y F2 aparece en el EFOS sólo en e
       assert.ok(nuevas.length >= 1, 'el EFOS no ganó ninguna pista: no hay diff que enseñar');
     });
 
+    t.after(() => limpiar(r.corrida));
+
     await t.test('cada paso dejó evento en la bitácora de la corrida nueva (regla 2)', () => {
       const eventos = filas(DB_QA, `
         select distinct tipo_evento from forense.bitacora
@@ -173,6 +187,7 @@ test('(c) trampa-comercializadora: entra al selector y el dictamen determinista 
     assert.deepEqual(digest(CORRIDA_GEN_V1), antes, 'la inyección (c) modificó la corrida base');
 
     let cluster = null;
+    t.after(() => limpiar(r.corrida));
 
     await t.test('dispara R1 y F1 — dos familias — y por eso SÍ entra al selector', () => {
       const porRfc = Object.fromEntries(TRB.map((rfc) => [rfc, codigos(r.corrida, rfc)]));

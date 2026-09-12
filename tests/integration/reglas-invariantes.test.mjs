@@ -93,7 +93,11 @@ test('cada ocurrencia textual de "definitivo" está clasificada (estatus SAT o g
   // Red secundaria. Los dientes de la regla 7 son las cuatro pruebas anteriores (enum de
   // contratos, CHECK de la tabla, datos sembrados y barrido del dictamen determinista);
   // esto sólo detecta usos nuevos del término que nadie clasificó. Se clasifica con una
-  // ventana de ±3 líneas porque la guarda suele estar en el comentario de encima.
+  // ventana de ±6 líneas: la guarda suele estar en el comentario de encima, pero cuando
+  // la prueba demuestra el RECHAZO —un `begin … exception … end` que captura el error y
+  // luego afirma sobre el resultado— la aserción queda varias líneas más abajo
+  // (db/tests/assertions_010.sql B7). Sigue exigiéndose una palabra de guarda: ampliar
+  // la ventana no vuelve legítimo un uso sin clasificar.
   const dirs = ['db', 'n8n', 'loaders', 'generator', 'web/app', 'web/lib', 'web/components'];
   const sinClasificar = [];
   for (const dir of dirs) {
@@ -101,7 +105,7 @@ test('cada ocurrencia textual de "definitivo" está clasificada (estatus SAT o g
       const lineas = fs.readFileSync(archivo, 'utf8').split('\n');
       lineas.forEach((linea, i) => {
         if (!/definitiv/i.test(linea)) return;
-        const ventana = lineas.slice(Math.max(0, i - 3), i + 4).join('\n');
+        const ventana = lineas.slice(Math.max(0, i - 6), i + 7).join('\n');
         if (clasificar(linea, ventana)) return;
         sinClasificar.push(`${path.relative(RAIZ, archivo)}:${i + 1}: ${linea.trim().slice(0, 160)}`);
       });
@@ -157,9 +161,13 @@ test('ninguna función expuesta al agente referencia ground_truth (pg_proc.prosr
   //    inyección en vivo de 21 §3;
   //  - forense.validar_inyeccion RECHAZA payloads que traigan ground_truth (008:281),
   //    o sea que menciona la tabla para impedir que el juez se autoetiquete.
+  //  - forense.cargar_o_clonar_snapshot (010) es la versión de runtime del clonado:
+  //    copia el dominio y las etiquetas a la corrida nueva, igual que clonar_corrida,
+  //    y tampoco está en la superficie del agente.
   const permitidas = new Set([
     'forense.clonar_corrida', 'forense.v_metricas_corrida',
     'forense.clonar_corrida_con_inyeccion', 'forense.validar_inyeccion',
+    'forense.cargar_o_clonar_snapshot',
   ]);
   const sorpresas = tocan.filter((f) => !permitidas.has(f));
   assert.deepEqual(sorpresas, [],
