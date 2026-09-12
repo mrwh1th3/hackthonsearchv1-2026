@@ -477,14 +477,28 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- 12. Métricas parciales honestas (docs/10)
+-- 12. Métricas honestas (docs/10). Desde 011 ya no quedan huecos
+--     declarados: `parcial` es false y lo único sin implementar es
+--     costo_usd, que se publica como null con su motivo, no como 0.
 -- ---------------------------------------------------------------------
 do $$
 declare m jsonb;
 begin
   m := forense.v_metricas_corrida('00000000-0000-4000-8000-000000000001'::uuid);
-  perform pruebas.assert('v_metricas_corrida se declara parcial',
-    (m->>'parcial')::boolean, '');
+  perform pruebas.assert('v_metricas_corrida ya no se declara parcial (011 cierra los huecos)',
+    (m->>'parcial')::boolean = false, (m->>'parcial'));
+  perform pruebas.assert('v_metricas_corrida publica costo_usd como null, nunca como 0 ficticio',
+    m->'costo_usd' = 'null'::jsonb
+    and (m->'no_implementado')::text like '%costo_usd%', (m->'no_implementado')::text);
+  perform pruebas.assert('v_metricas_corrida trae el carril de datos (baseline y selector)',
+    m->'carril_datos' ? 'baseline_dos_pistas' and m->'carril_datos' ? 'selector_dos_familias',
+    (m->'carril_datos')::text);
+  perform pruebas.assert('v_metricas_corrida trae acierto de caché, ronda 2 y reintentos',
+    m ? 'acierto_de_cache' and m ? 'tasa_de_ronda_2' and m ? 'reintentos', '');
+  perform pruebas.assert('sin llamadas a herramientas el acierto de caché es null, no 0%',
+    (m->'acierto_de_cache'->>'llamadas')::int > 0
+      or m->'acierto_de_cache'->'reuso' = 'null'::jsonb,
+    (m->'acierto_de_cache')::text);
   perform pruebas.assert('v_metricas_corrida parte de todos los RFC con ground truth',
     (m->'cohorte'->>'total_ground_truth')::int = 8, (m->'cohorte')::text);
   perform pruebas.assert('v_metricas_corrida cuenta los RFC sin conclusión, no los da por negativos',

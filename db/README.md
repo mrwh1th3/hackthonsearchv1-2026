@@ -5,12 +5,15 @@ Orden de aplicación (docs/05 §Orden de migraciones + docs/17 §4):
 | Archivo | Contenido | Estado |
 |---|---|---|
 | `001_schema.sql` | Tablas de dominio, detección, pizarrón, casos/trazabilidad **y** control de runtime (`ejecuciones_agente`, `artefactos_contexto`, `llm_solicitudes`, `tool_ejecuciones`, `pasos_pipeline`, `slots_runtime`), índices, RLS, grants, realtime. `tipo_evento` incluye `inyeccion` (docs/21 §3.2). | hecho |
-| `002_views.sql` | `next_seq`, `log`, `reservar_tool`, leases de cluster/tarea, helpers de caché, helpers de runtime con fencing, `v_casos_lista`, `v_agregado_rfc`, `v_pares_giro` (materializada), `v_grafo`, `v_trayectoria_rfc`, `clonar_corrida`, `v_metricas_corrida` (**parcial**). | hecho |
+| `002_views.sql` | `next_seq`, `log`, `reservar_tool`, leases de cluster/tarea, helpers de caché, helpers de runtime con fencing, `v_casos_lista`, `v_agregado_rfc`, `v_pares_giro` (materializada), `v_grafo`, `v_trayectoria_rfc`, `clonar_corrida`, `v_metricas_corrida` (completada en 011). | hecho |
 | `003_pistas.sql` | Primera entrega de pistas (D2, F1, F2, R1, R2, E1, T1) + `correr_pistas` (claim atómico `lista`→`procesando`) + `marcar_no_evaluable` + `score_entidad` (regla de dos familias). Segunda entrega pendiente: D1, D3, D4, F3, F4, R3, T2. | hecho |
 | `004_clusters.sql` | `armar_clusters`, `expandir_cluster`. | pendiente |
 | `005_rpc.sql` | 11 herramientas `public.forense_*` + validación/despertar/frontera. | pendiente |
 | `006_producto_ui.sql` / `007_notificaciones_voz.sql` | perfiles, investigaciones, outbox, llamadas. | pendiente |
 | `008_ingesta.sql` | ingestas, staging, `forense.inyecciones`, `clonar_corrida_con_inyeccion`. | pendiente |
+| `009_runtime_eventos.sql` | `paso_en_cola`/`paso_checkpoint` en el catálogo de `tipo_evento` + catálogo ClaveProdServ por giro. | hecho |
+| `010_runtime_funciones.sql` | Las 26 funciones que llaman los workflows (`abrir_corrida` … `eventos_salida_pendientes`), `revertir_expediente`, QA-002 y QA-003. Todas `returns table(...)` con las columnas exactas de `CONTRATOS_NODOS`. Aditiva: amplía los CHECK de `casos.estado` y `expedientes.estado_revision` re-declarándolos completos. | hecho |
+| `011_metricas_corrida.sql` | `v_metricas_corrida` COMPLETA (`parcial: false`): carril de datos (baseline de dos pistas y selector de dos familias), acierto de caché, tasa de ronda 2 y reintentos por motivo. Solo `costo_usd` queda como `null` declarado. | hecho |
 
 Fuera de migraciones: `seeds/seed_fake.sql` (fixture de UI, se aplica a mano tras
 001+002; no participa en métricas) y `seeds/seed_producto.sql` (requiere 006+007).
