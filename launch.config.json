@@ -35,7 +35,7 @@
   },
   "runtime": {
     "provider": "messages_api",
-    "api_model_id": null,
+    "api_model_id": "claude-sonnet-5",
     "api_budget_usd": null,
     "github_auth_method": null,
     "preferred_families": {
@@ -51,7 +51,21 @@
       "editor": "sonnet",
       "mapper": "sonnet"
     },
-    "provider_fallback": "claude_code_actions (patrón eximapp ai-loop; no cumple concurrencia 8 ni observabilidad por request)"
+    "provider_fallback": "claude_code_actions (patrón eximapp ai-loop; no cumple concurrencia 8 ni observabilidad por request)",
+    "smoke": {
+      "fecha": "2026-09-12T03:29:46Z",
+      "workflow": "FORENSE_smoke_anthropic (Zu4l89FCEvVnfA6l, inactivo, ejecución manual 283972)",
+      "credencial": "Anthropic account (anthropicApi, sin leer valores)",
+      "modelo": "claude-sonnet-5",
+      "stop_reason": "tool_use",
+      "tool": "forense_perfil",
+      "usage": {
+        "input_tokens": 645,
+        "output_tokens": 45
+      },
+      "latencia_ms": 1089,
+      "opus": "pendiente de segundo smoke"
+    }
   },
   "authorizations": {
     "remote_writes": true,
