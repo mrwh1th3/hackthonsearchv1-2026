@@ -1,0 +1,490 @@
+{
+  "name": "FORENSE_corrida",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "forense/corrida",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook corrida",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Forense Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Reutiliza la corrida `lista` con la misma idempotency_key o crea una `preparando`. `dataset` selecciona un ORIGEN AUTORIZADO, nunca una URL arbitraria. DEPENDE de forense-db.\nSELECT * FROM forense.abrir_corrida($1::text, $2::text, $3::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.body.dataset }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.corrida_origen_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Validar e idempotencia",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ corrida_id: $json.corrida_id, estado: $json.estado }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        440,
+        140
+      ],
+      "name": "Responder corrida 202"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Snapshot COMPLETO; con corrida_origen_id clona (regla 10: corridas aisladas). DEPENDE de forense-db.\nSELECT * FROM forense.cargar_o_clonar_snapshot($1::uuid, $2::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Validar e idempotencia').first().json.corrida_origen_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Cargar o clonar snapshot",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Conteos, dataset_hash, fecha_corte y familias_evaluables → `lista`; fallo → `error` con causa. Una corrida vacía no se investiga. DEPENDE de forense-db.\nSELECT * FROM forense.verificar_integridad_corrida($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Verificar integridad",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- La función hace el claim atómico de `lista` a `procesando`: n8n NO anticipa el cambio de estado (003).\nSELECT forense.correr_pistas($1::uuid) AS pistas_insertadas",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        880,
+        0
+      ],
+      "name": "Correr pistas",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- DEPENDE de 004 (forense-db).\nSELECT forense.armar_clusters($1::uuid) AS clusters_armados",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Armar clusters",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Cola COMPLETA ordenada por score; el límite de 4 activos lo impone el nodo siguiente, no este SELECT.\nSELECT k.id AS cluster_id, k.corrida_id, k.score, k.estado,\n       $2::uuid AS investigacion_id, $3::text AS idempotency_key\n  FROM forense.clusters k\n WHERE k.corrida_id = $1::uuid\n ORDER BY k.score DESC NULLS LAST, k.id",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Validar e idempotencia').first().json.investigacion_id }}, ={{ $('Validar e idempotencia').first().json.idempotency_key }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Clusters por score",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 17 §2: el límite propio de DB controla ocho pasos y CUATRO clusters. Un\n// límite de n8n no sustituye ese control. Lo que no cabe queda EN COLA, no\n// fallido (regla 10: no se pierde la cola si se acaba el tiempo).\nconst MAX_ACTIVOS = 4;\nconst filas = $input.all().map((i) => i.json);\nconst admitidos = filas.slice(0, MAX_ACTIVOS);\nconst en_cola = filas.slice(MAX_ACTIVOS);\nreturn admitidos.map((f) => ({ json: {\n  cluster_id: f.cluster_id,\n  corrida_id: f.corrida_id,\n  investigacion_id: f.investigacion_id ?? null,\n  idempotency_key: `${f.idempotency_key}:${f.cluster_id}`,\n  admitidos: admitidos.length,\n  en_cola: en_cola.length,\n  cola_restante: en_cola.map((c) => c.cluster_id),\n} }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Despachar hasta 4"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_INVESTIGAR_CLUSTER",
+          "cachedResultName": "FORENSE_investigar_cluster"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "cluster_id": "={{ $json.cluster_id }}",
+            "corrida_id": "={{ $json.corrida_id }}",
+            "investigacion_id": "={{ $json.investigacion_id }}",
+            "idempotency_key": "={{ $json.idempotency_key }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1760,
+        0
+      ],
+      "name": "Despachar cluster"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Espera SOLO los clusters admitidos y reconcilia errores, timeouts y leases. Terminar de despachar NO cierra la corrida. DEPENDE de forense-db.\nSELECT * FROM forense.estado_corrida($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1980,
+        0
+      ],
+      "name": "Esperar y reconciliar",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.terminada }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        0
+      ],
+      "name": "¿Corrida terminada?"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ 10000 }}",
+        "unit": "ms"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        140
+      ],
+      "name": "Espera corrida"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb.\nSELECT forense.v_metricas_corrida($1::uuid) AS metricas",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2200,
+        0
+      ],
+      "name": "Métricas",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables.\nUPDATE forense.corridas\n   SET estado = $2::text, fin = now(), metricas = $3::jsonb\n WHERE id = $1::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Esperar y reconciliar').first().json.estado_final }}, ={{ JSON.stringify($json.metricas) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2420,
+        0
+      ],
+      "name": "Cerrar corrida",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_corrida (07 §1, 17 §2, regla 10).\n\nCuatro clusters activos como máximo; el resto queda EN COLA.\nUna corrida vacía no se investiga y terminar de despachar\nno es cerrar la corrida.",
+        "height": 220,
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ],
+      "name": "Nota corrida"
+    }
+  ],
+  "connections": {
+    "Webhook corrida": {
+      "main": [
+        [
+          {
+            "node": "Validar e idempotencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar e idempotencia": {
+      "main": [
+        [
+          {
+            "node": "Responder corrida 202",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cargar o clonar snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cargar o clonar snapshot": {
+      "main": [
+        [
+          {
+            "node": "Verificar integridad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar integridad": {
+      "main": [
+        [
+          {
+            "node": "Correr pistas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Correr pistas": {
+      "main": [
+        [
+          {
+            "node": "Armar clusters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar clusters": {
+      "main": [
+        [
+          {
+            "node": "Clusters por score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clusters por score": {
+      "main": [
+        [
+          {
+            "node": "Despachar hasta 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Despachar hasta 4": {
+      "main": [
+        [
+          {
+            "node": "Despachar cluster",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Esperar y reconciliar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar y reconciliar": {
+      "main": [
+        [
+          {
+            "node": "¿Corrida terminada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Corrida terminada?": {
+      "main": [
+        [
+          {
+            "node": "Métricas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Espera corrida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera corrida": {
+      "main": [
+        [
+          {
+            "node": "Esperar y reconciliar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Métricas": {
+      "main": [
+        [
+          {
+            "node": "Cerrar corrida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

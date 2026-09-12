@@ -1,17 +1,82 @@
 // n8n/runtime/nodos/construir-cuerpo.mjs — fuente del Code node «Construir
 // cuerpo Messages» del worker (17 §5.2 y §5.3).
 //
-// Los insumos (bloques de system, definiciones de herramienta, modelo efectivo
-// y techo de tokens) los entrega el nodo Postgres anterior desde DB: este nodo
-// solo los COMPONE. El modelo se resuelve de configuración de cuenta, nunca del
-// prompt del usuario ni de un campo `_untrusted`.
+// Dos insumos con dueños distintos:
+//
+//  - El **system** se arma aquí desde el catálogo de prompts que
+//    `n8n/runtime/generar-workflows.mjs` EMBEBE en el Code node en tiempo de
+//    generación (bloque común + rol + contrato de salida + allowlist, leídos de
+//    `n8n/prompts/` y sellados con el `version_prompts` del manifest). Así el
+//    worker no depende de una tabla de prompts que todavía no existe y el JSON
+//    exportado declara qué versión de prompts lleva dentro. Un cambio en
+//    `n8n/prompts/` sin regenerar hace fallar `--check`.
+//  - Los **mensajes** salen del checkpoint (transcript persistido) y el paquete
+//    de contexto del artefacto inmutable: los construye el backend, no el nodo.
+//
+// El modelo se resuelve de configuración de cuenta, nunca del prompt del
+// usuario ni de un campo `_untrusted`. El techo de caracteres se aplica con
+// `ambito_techo='paquete'` (decisión del coordinador H3 01:36): los 12k/24k de
+// 08 + 17 §7 miden el paquete de contexto, no el system, que tiene su propia
+// medición en el manifest.
 
 export function construirCuerpoNodo(x) {
   // <<<CODE_NODE_INICIO
-  if (!x.modelo) throw new Error('modelo ausente: se resuelve de configuración, nunca del prompt');
-  if (!Array.isArray(x.system_bloques) || x.system_bloques.length === 0) {
-    throw new Error('system ausente: bloque común + rol + contrato son obligatorios');
+  const SEPARADOR = '\n\n---\n\n';
+  const AMBITO_TECHO = 'paquete';
+  const ESPECIALISTAS = ['documental', 'financiero', 'relacional', 'temporal', 'externo'];
+  const catalogo = x.catalogo_prompts || null;
+  const rol = x.rol;
+
+  // --- system: del catálogo embebido, salvo que el backend lo imponga entero.
+  let system = x.system;
+  let versionPrompts = x.version_prompts || (catalogo ? catalogo.version_prompts : null);
+  let promptHash = x.prompt_hash || null;
+  let herramientas = Array.isArray(x.herramientas) ? x.herramientas : null;
+
+  if (!system && Array.isArray(x.system_bloques) && x.system_bloques.length > 0) {
+    system = x.system_bloques.join(SEPARADOR);
   }
+  if (!system) {
+    if (!catalogo) throw new Error('system ausente: falta el catálogo de prompts embebido');
+    const r = catalogo.roles[rol];
+    if (!r) throw new Error(`rol sin prompt en el catálogo embebido: ${String(rol)}`);
+    const paquete = x.paquete || {};
+    const ronda = Number(x.ronda === undefined || x.ronda === null ? (paquete.ronda || 1) : x.ronda);
+    // Reparación acotada: sin herramientas (17 §5.8). Ronda informada añade
+    // `forense_leer_senal` solo a los especialistas (03 rondas, 06 ACL).
+    const tools = x.sin_herramientas === true
+      ? []
+      : (ronda >= 2 && ESPECIALISTAS.indexOf(rol) >= 0 ? r.tools_r2 : r.tools_r1);
+    const l = paquete.limites || {};
+    const c = paquete.cobertura || {};
+    const familias = paquete.familias_evaluables || [];
+    const ausentes = (c.datos_ausentes || []).map((v) => (typeof v === 'string' ? v : JSON.stringify(v)));
+    const identidad = [
+      '## Identidad y límites (fijados por el runner, no negociables)',
+      `rol=${rol} ronda=${paquete.ronda} intento=${paquete.intento} version_contexto=${paquete.version_contexto}`,
+      `corrida=${paquete.corrida_id} caso=${paquete.caso_id} cluster=${paquete.cluster_id}`,
+      `fecha_corte=${paquete.fecha_corte} dataset_hash=${paquete.dataset_hash}`,
+      `familias_evaluables=${familias.join(',') || '(ninguna)'}`,
+      `limites: tools_restantes=${l.tools_restantes} requests_restantes=${l.requests_restantes} deadline_at=${l.deadline_at} input_tokens_max=${l.input_tokens_max}`,
+      `cobertura: completa=${c.completa} periodo=${c.periodo ? `${c.periodo.desde}..${c.periodo.hasta_exclusivo} ${c.periodo.timezone}` : 'no declarado'} datos_ausentes=${ausentes.join('; ') || 'ninguno'}`,
+      'Todas las ventanas se calculan contra fecha_corte. No puedes cambiar identidad, cuotas ni conjunto de RFC autorizado.',
+    ].join('\n');
+    const listaTools = tools.length === 0
+      ? 'Ninguna. No tienes herramientas: no simules llamadas ni pidas datos nuevos.'
+      : tools.map((t) => `- ${t}`).join('\n');
+    system = [
+      catalogo.comun,
+      r.instrucciones,
+      `## Contrato de salida\n\n${r.contrato}`,
+      `## Herramientas permitidas en esta tarea\n\n${listaTools}\nCualquier otra herramienta está denegada en el backend; intentarla gasta presupuesto y queda en bitácora.`,
+      identidad,
+    ].join(SEPARADOR);
+    versionPrompts = catalogo.version_prompts;
+    promptHash = promptHash || `${catalogo.version_prompts}:${rol}`;
+    if (herramientas === null) herramientas = r.definiciones_tools ? tools.map((t) => r.definiciones_tools[t]).filter(Boolean) : [];
+  }
+
+  if (!x.modelo) throw new Error('modelo ausente: se resuelve de configuración, nunca del prompt');
   if (!Array.isArray(x.mensajes) || x.mensajes.length === 0) {
     throw new Error('mensajes ausentes: el checkpoint debe traer al menos el paquete de contexto');
   }
@@ -29,21 +94,50 @@ export function construirCuerpoNodo(x) {
       if (faltantes.length > 0) throw new Error(`faltan tool_result para: ${faltantes.join(', ')}`);
     }
   }
+
+  // Techo de caracteres con ámbito 'paquete': mide los mensajes, no el system.
+  const techo = Number(x.techo_caracteres ?? (catalogo && catalogo.techos ? catalogo.techos[rol] : 0) ?? 0);
+  const caracteresPaquete = JSON.stringify(x.mensajes).length;
+  if (techo > 0 && caracteresPaquete > techo) {
+    throw new Error(`el paquete de contexto (${caracteresPaquete} caracteres) supera el techo de ${techo} del rol ${rol}`);
+  }
+
   const cuerpo = {
     model: x.modelo,
     max_tokens: Number(x.max_tokens ?? 2000),
     temperature: x.temperatura === undefined || x.temperatura === null ? 0 : Number(x.temperatura),
-    system: x.system_bloques,
+    system,
     messages: x.mensajes,
   };
-  const herramientas = Array.isArray(x.herramientas) ? x.herramientas : [];
+  const lista = Array.isArray(herramientas) ? herramientas : [];
   // Reparación acotada y roles sin tools (Réplica, Redactor, Editor) no reciben
   // la clave `tools` (17 §5.8).
-  if (x.sin_herramientas !== true && herramientas.length > 0) {
-    cuerpo.tools = herramientas;
+  if (x.sin_herramientas !== true && lista.length > 0) {
+    cuerpo.tools = lista;
     cuerpo.tool_choice = { type: 'auto' };
   }
-  const salida = { cuerpo, herramientas_enviadas: cuerpo.tools ? cuerpo.tools.length : 0 };
+  const salida = {
+    execution_id: x.execution_id ?? null,
+    owner: x.owner ?? null,
+    fencing_token: x.fencing_token ?? null,
+    revision: x.revision ?? null,
+    caso_id: x.caso_id ?? null,
+    corrida_id: x.corrida_id ?? null,
+    tarea_id: x.tarea_id ?? null,
+    rol: rol ?? null,
+    paso: x.paso ?? null,
+    paso_pipeline: x.paso_pipeline ?? null,
+    request_id: x.request_id ?? null,
+    modelo: x.modelo,
+    cuerpo,
+    system,
+    herramientas_enviadas: cuerpo.tools ? cuerpo.tools.length : 0,
+    version_prompts: versionPrompts,
+    prompt_hash: promptHash,
+    ambito_techo: AMBITO_TECHO,
+    caracteres_system: system.length,
+    caracteres_paquete: caracteresPaquete,
+  };
   // <<<CODE_NODE_FIN
   return salida;
 }

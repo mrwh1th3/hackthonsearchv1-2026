@@ -1,0 +1,36 @@
+{
+  "corrida_base_id": "3fc52b5a-3e4b-54f4-a714-b3303b6f0347",
+  "origen": "ensayo",
+  "idempotency_key": "aaaaaaaa-0000-4000-8000-00000000000a",
+  "nota": "Ensayo (a): carrusel nuevo de 3 RFC con ciclo de facturas y de dinero. Debe disparar R1 (atributos compartidos), R2 (ciclo de 3 saltos) y T1 (alta reciente + pico + silencio), y quedar en un mismo cluster.",
+  "tablas": {
+    "contribuyentes": [
+      {"rfc": "CRR250901AA1", "razon_social": "Carrusel Uno SA de CV", "giro": "comercializadora", "tipo_persona": "moral", "fecha_alta": "2025-09-01", "domicilio": "Calle Ficticia 101, Interior 3, Monterrey", "cp": "64000", "representante": "J. M. Prestanombre", "email": "contacto@carrusel-uno.invalid", "telefono": "8181110001", "empleados_declarados": 0},
+      {"rfc": "CRR250902BB2", "razon_social": "Carrusel Dos SA de CV", "giro": "comercializadora", "tipo_persona": "moral", "fecha_alta": "2025-09-02", "domicilio": "Calle Ficticia 101, Interior 3, Monterrey", "cp": "64000", "representante": "J. M. Prestanombre", "email": "contacto@carrusel-uno.invalid", "telefono": "8181110001", "empleados_declarados": 0},
+      {"rfc": "CRR250903CC3", "razon_social": "Carrusel Tres SA de CV", "giro": "comercializadora", "tipo_persona": "moral", "fecha_alta": "2025-09-03", "domicilio": "Calle Ficticia 101, Interior 3, Monterrey", "cp": "64000", "representante": "J. M. Prestanombre", "email": "contacto@carrusel-uno.invalid", "telefono": "8181110001", "empleados_declarados": 0}
+    ],
+    "cuentas": [
+      {"clabe": "012180000000900001", "rfc_titular": "CRR250901AA1", "banco": "012", "tipo": "moral", "moneda": "MXN", "saldo_inicial": "5000.00", "fecha_saldo_inicial": "2025-09-01T00:00:00-06:00"},
+      {"clabe": "012180000000900002", "rfc_titular": "CRR250902BB2", "banco": "012", "tipo": "moral", "moneda": "MXN", "saldo_inicial": "5000.00", "fecha_saldo_inicial": "2025-09-02T00:00:00-06:00"},
+      {"clabe": "012180000000900003", "rfc_titular": "CRR250903CC3", "banco": "012", "tipo": "moral", "moneda": "MXN", "saldo_inicial": "5000.00", "fecha_saldo_inicial": "2025-09-03T00:00:00-06:00"}
+    ],
+    "atributos_entidad": [
+      {"rfc": "CRR250901AA1", "atributo": "domicilio", "valor": "Calle Ficticia 101, Interior 3, Monterrey", "fuente": "padron"},
+      {"rfc": "CRR250902BB2", "atributo": "domicilio", "valor": "Calle Ficticia 101, Interior 3, Monterrey", "fuente": "padron"},
+      {"rfc": "CRR250903CC3", "atributo": "domicilio", "valor": "Calle Ficticia 101, Interior 3, Monterrey", "fuente": "padron"},
+      {"rfc": "CRR250901AA1", "atributo": "representante", "valor": "J. M. Prestanombre", "fuente": "padron"},
+      {"rfc": "CRR250902BB2", "atributo": "representante", "valor": "J. M. Prestanombre", "fuente": "padron"},
+      {"rfc": "CRR250903CC3", "atributo": "representante", "valor": "J. M. Prestanombre", "fuente": "padron"}
+    ],
+    "cfdi": [
+      {"uuid": "aaaa0001-0000-4000-8000-000000000001", "tipo": "I", "emisor_rfc": "CRR250901AA1", "receptor_rfc": "CRR250902BB2", "fecha": "2025-11-05T10:00:00-06:00", "subtotal": "1034482.76", "iva": "165517.24", "total": "1200000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "80121600", "descripcion": "Servicios integrales de consultoria comercial", "cancelado": false},
+      {"uuid": "aaaa0001-0000-4000-8000-000000000002", "tipo": "I", "emisor_rfc": "CRR250902BB2", "receptor_rfc": "CRR250903CC3", "fecha": "2025-11-12T10:00:00-06:00", "subtotal": "991379.31", "iva": "158620.69", "total": "1150000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "80121600", "descripcion": "Subcontratacion de servicios comerciales", "cancelado": false},
+      {"uuid": "aaaa0001-0000-4000-8000-000000000003", "tipo": "I", "emisor_rfc": "CRR250903CC3", "receptor_rfc": "CRR250901AA1", "fecha": "2025-11-20T10:00:00-06:00", "subtotal": "952586.21", "iva": "152413.79", "total": "1105000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "80121600", "descripcion": "Servicios administrativos y logisticos", "cancelado": false}
+    ],
+    "movimientos": [
+      {"id": 900001, "cuenta_origen": "012180000000900002", "cuenta_destino": "012180000000900001", "fecha": "2025-11-06T09:00:00-06:00", "monto": "1200000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA AAAA0001-1"},
+      {"id": 900002, "cuenta_origen": "012180000000900003", "cuenta_destino": "012180000000900002", "fecha": "2025-11-13T09:00:00-06:00", "monto": "1150000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA AAAA0001-2"},
+      {"id": 900003, "cuenta_origen": "012180000000900001", "cuenta_destino": "012180000000900003", "fecha": "2025-11-21T09:00:00-06:00", "monto": "1105000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA AAAA0001-3"}
+    ]
+  }
+}

@@ -19,7 +19,7 @@ export function TrayectoriaPanel({ rfc, puntos }: { rfc: string; puntos: Trayect
       alcance={`RFC ${rfc}`}
       columns={[
         { key: "periodo", header: "Periodo" },
-        { key: "evento", header: "Evento", render: (p) => p.evento ?? "—" },
+        { key: "eventos", header: "Eventos", render: (p) => (p.eventos.length > 0 ? p.eventos.join(", ") : "—") },
         { key: "monto_emitido", header: "Emitido", align: "right" },
         { key: "monto_recibido", header: "Recibido", align: "right" },
         { key: "n_cfdi", header: "N° CFDI", align: "right" },

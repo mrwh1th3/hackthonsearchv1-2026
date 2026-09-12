@@ -1,14 +1,16 @@
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import type { ExecutionHistoryRow } from "@/components/shared/execution-history";
 import { getDataSource } from "@/lib/data";
+import { obtenerHistorialPrivado, obtenerPerfilPrivado } from "@/lib/data/privado";
 import { HistorialTabs } from "./historial-tabs";
 
 export const metadata = { title: "Forense · Historial" };
+export const dynamic = "force-dynamic";
 
+/** Investigaciones/perfil del workspace son privados (CLAUDE.md regla 3): `lib/data/privado.ts`. `getCasoDetalle` sigue en el DataSource público — el caso en sí no es privado. */
 export default async function HistorialPage() {
   const ds = getDataSource();
-  const investigaciones = await ds.listInvestigaciones();
-  const perfil = await ds.getPerfil();
+  const [investigaciones, perfil] = await Promise.all([obtenerHistorialPrivado(), obtenerPerfilPrivado()]);
 
   const rows: ExecutionHistoryRow[] = await Promise.all(
     investigaciones.map(async (inv) => {

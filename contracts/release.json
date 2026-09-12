@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "schema_fingerprint_sha256": "b8fc2ad3e724248291af41aef88c473b757d06672e0bbb47e54fb2f43d384cb7",
+  "version": "1.2.1",
+  "schema_fingerprint_sha256": "b0211f16fa31b1d54646a7825e41c82c9eb99b0d9da58a403643eb760b7542c0",
   "definitions": [
     "agents.argumento",
     "agents.auditor",

@@ -61,6 +61,12 @@ export function dictaminar(x) {
   const monto = [...porFactura.values()].reduce((s, v) => s + v, 0n);
   const ordenadas = [...familias].sort();
   const salida = {
+    // Identidad del caso: el dictamen y el reintento la necesitan y no deben
+    // volver a resolverla (misma convención de cableado que el worker).
+    caso_id: x.caso_id ?? null,
+    cluster_id: x.cluster_id ?? null,
+    corrida_id: x.corrida_id ?? null,
+    investigacion_id: x.investigacion_id ?? null,
     rechazo,
     nivel,
     familias: ordenadas,

@@ -1,0 +1,26 @@
+{
+  "corrida_base_id": "3fc52b5a-3e4b-54f4-a714-b3303b6f0347",
+  "origen": "ensayo",
+  "idempotency_key": "bbbbbbbb-0000-4000-8000-00000000000b",
+  "nota": "Ensayo (b): retorno hacia un EFOS que YA existe en gen-v1 (ASE250301Z86, 69-B definitivo desde 2025-10-01). La entidad nueva paga la factura del EFOS y el dinero vuelve por una persona fisica. Debe disparar E1 (contraparte definitivo a 1 salto) y T1 en la entidad nueva, y anadir F2 al EFOS, que en la corrida base no lo tenia.",
+  "tablas": {
+    "contribuyentes": [
+      {"rfc": "RET251001DD4", "razon_social": "Retorno Comercial del Norte SA de CV", "giro": "comercializadora", "tipo_persona": "moral", "fecha_alta": "2025-10-01", "domicilio": "Av. Inventada 900, Piso 2, Monterrey", "cp": "64100", "representante": "L. R. Operador", "email": "admin@retorno-norte.invalid", "telefono": "8181120002", "empleados_declarados": 0},
+      {"rfc": "PFR251001EE5", "razon_social": "Persona Fisica Receptora", "giro": null, "tipo_persona": "fisica", "fecha_alta": "2019-04-18", "domicilio": "Privada Sin Numero 14, Monterrey", "cp": "64200", "representante": null, "email": null, "telefono": null, "empleados_declarados": 0}
+    ],
+    "cuentas": [
+      {"clabe": "012180000000910001", "rfc_titular": "RET251001DD4", "banco": "012", "tipo": "moral", "moneda": "MXN", "saldo_inicial": "20000.00", "fecha_saldo_inicial": "2025-10-01T00:00:00-06:00"},
+      {"clabe": "002180000000910002", "rfc_titular": "PFR251001EE5", "banco": "002", "tipo": "fisica", "moneda": "MXN", "saldo_inicial": "0.00", "fecha_saldo_inicial": "2025-10-01T00:00:00-06:00"}
+    ],
+    "cfdi": [
+      {"uuid": "bbbb0001-0000-4000-8000-000000000001", "tipo": "I", "emisor_rfc": "ASE250301Z86", "receptor_rfc": "RET251001DD4", "fecha": "2025-11-03T11:00:00-06:00", "subtotal": "2068965.52", "iva": "331034.48", "total": "2400000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "80101600", "descripcion": "Asesoria estrategica de expansion comercial", "cancelado": false},
+      {"uuid": "bbbb0001-0000-4000-8000-000000000002", "tipo": "I", "emisor_rfc": "RET251001DD4", "receptor_rfc": "ULI141106W91", "fecha": "2025-11-25T11:00:00-06:00", "subtotal": "2241379.31", "iva": "358620.69", "total": "2600000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "43211500", "descripcion": "Suministro de equipo y materiales diversos", "cancelado": false}
+    ],
+    "movimientos": [
+      {"id": 910001, "cuenta_origen": "012180000000910001", "cuenta_destino": "002180000000000699", "fecha": "2025-11-05T09:30:00-06:00", "monto": "2400000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO ASESORIA BBBB0001-1"},
+      {"id": 910002, "cuenta_origen": "002180000000000699", "cuenta_destino": "002180000000910002", "fecha": "2025-11-09T09:30:00-06:00", "monto": "2300000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "DISPERSION HONORARIOS"},
+      {"id": 910003, "cuenta_origen": "002180000000910002", "cuenta_destino": "012180000000910001", "fecha": "2025-11-12T09:30:00-06:00", "monto": "2250000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PRESTAMO SOCIO"},
+      {"id": 910004, "cuenta_origen": "072180000000000200", "cuenta_destino": "012180000000910001", "fecha": "2025-11-27T09:30:00-06:00", "monto": "2600000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA BBBB0001-2"}
+    ]
+  }
+}

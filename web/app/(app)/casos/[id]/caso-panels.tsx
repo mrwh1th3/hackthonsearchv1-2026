@@ -28,10 +28,13 @@ export function CasoPanels({ detalle }: { detalle: CasoDetalle }) {
                     {p.codigo}
                   </span>
                   <span className="text-xs text-text-subtle">score {p.score.toFixed(2)}</span>
-                  <span className="ml-auto rounded-full border border-border px-1.5 text-[10px] text-text-muted">{p.estado}</span>
+                  <span className="ml-auto rounded-full border border-border px-1.5 text-[10px] text-text-muted">
+                    {p.evaluacion_caso?.estado ?? p.estado}
+                  </span>
                 </div>
                 <p className="mt-0.5 text-xs text-text-subtle">{p.resumen}</p>
                 {p.motivo_no_evaluable && <p className="text-[11px] text-text-subtle">Motivo: {p.motivo_no_evaluable}</p>}
+                {p.evaluacion_caso?.motivo && <p className="text-[11px] text-text-subtle">Veredicto del caso: {p.evaluacion_caso.motivo}</p>}
               </li>
             ))}
           </ul>

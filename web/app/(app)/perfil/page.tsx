@@ -1,12 +1,13 @@
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { ProfileSettings } from "@/components/shared/profile-settings";
-import { getDataSource } from "@/lib/data";
+import { obtenerPerfilPrivado } from "@/lib/data/privado";
 
 export const metadata = { title: "Forense · Perfil" };
+export const dynamic = "force-dynamic";
 
+/** Perfil/teléfono son privados (CLAUDE.md regla 3): se leen de `lib/data/privado.ts`, nunca del DataSource público seleccionable. */
 export default async function PerfilPage() {
-  const ds = getDataSource();
-  const perfil = await ds.getPerfil();
+  const perfil = await obtenerPerfilPrivado();
 
   return (
     <div className="flex flex-col gap-4">

@@ -1,15 +1,18 @@
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
-import { EmbudoPanel, PorTipologiaPanel } from "./estadisticas-charts";
+import { CoberturaPanel, RecallPorTipologiaPanel } from "./estadisticas-charts";
 
 export const metadata = { title: "Forense · Estadísticas" };
+export const dynamic = "force-dynamic";
 
 /**
  * 09 §7 / 21 §2: métricas contra ground truth, con la FPR sobre la cohorte
- * de trampas legítimas destacada aparte (la métrica del pitch). Todo sale
- * del fixture/SQL, nunca calculado ad hoc por el LLM (CLAUDE.md regla 4).
- * Comparación entre corridas y evolución por `version_prompts` quedan
- * pendientes: este fixture solo trae una corrida (ver pendientes).
+ * de trampas legítimas destacada aparte (la métrica del pitch). Todo sale de
+ * `forense.v_metricas_corrida` (SQL, nunca calculado ad hoc por el LLM,
+ * CLAUDE.md regla 4). La vista SQL es hoy una IMPLEMENTACIÓN PARCIAL
+ * (db/002_views.sql §8): cuando `parcial: true`, esta página lo muestra
+ * arriba de todo con la lista exacta de lo que falta — nunca lo oculta ni
+ * completa un número que la vista no calculó (CLAUDE.md regla 10).
  */
 export default async function EstadisticasPage() {
   const ds = getDataSource();
@@ -29,40 +32,58 @@ export default async function EstadisticasPage() {
     );
   }
 
-  const tp = cuenta(stats.confusion, "positivo", "positivo");
-  const fn = cuenta(stats.confusion, "positivo", "negativo");
-  const fp = cuenta(stats.confusion, "negativo", "positivo");
-  const tn = cuenta(stats.confusion, "negativo", "negativo");
-  const precision = tp + fp > 0 ? tp / (tp + fp) : null;
-  const recall = tp + fn > 0 ? tp / (tp + fn) : null;
-  const f1 = precision !== null && recall !== null && precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : null;
-  const fprPct = stats.fpr_trampas.denominador > 0 ? (stats.fpr_trampas.numerador / stats.fpr_trampas.denominador) * 100 : null;
+  const { selectivas, fpr_trampas: fprTrampas, cohorte, cobertura, operacion } = stats;
+  const fprPct = fprTrampas.fpr_concluyentes !== null ? fprTrampas.fpr_concluyentes * 100 : null;
+
+  const etapasCobertura = [
+    { etapa: "Universo (ground truth)", cantidad: cohorte.total_ground_truth, denominador: cohorte.total_ground_truth },
+    { etapa: "Investigados con conclusión", cantidad: cobertura.concluyentes, denominador: cohorte.total_ground_truth },
+    { etapa: "Trampas legítimas investigadas", cantidad: cobertura.trampas_investigadas, denominador: cohorte.total_trampas },
+  ];
+
+  const recallFilas = Object.entries(stats.recall_por_tipologia).map(([tipologia, v]) => ({ tipologia, ...v }));
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-text">Estadísticas</h1>
-          <p className="text-xs text-text-subtle">{corrida.nombre}</p>
+          <p className="text-xs text-text-subtle">
+            {corrida.nombre} · dataset {stats.dataset} · corte {new Date(stats.fecha_corte).toLocaleDateString("es-MX")}
+          </p>
         </div>
         <FixtureBadge />
       </div>
+
+      {stats.parcial && (
+        <div className="rounded-[var(--radius-card)] border border-warn/40 bg-warn/5 p-4 text-sm">
+          <p className="font-medium text-warn">Métricas parciales</p>
+          <p className="mt-1 text-xs text-text-subtle">
+            `forense.v_metricas_corrida` todavía no calcula todo (db/002_views.sql §8). Lo que falta, tal cual lo declara la vista:
+          </p>
+          <ul className="mt-1 list-inside list-disc text-xs text-text-subtle">
+            {stats.no_implementado.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* FPR sobre trampas — la métrica del pitch */}
       <div className="rounded-[var(--radius-card)] border-2 border-primary bg-surface p-6 text-center">
         <p className="text-xs uppercase tracking-wide text-text-subtle">Tasa de falsos positivos sobre trampas legítimas</p>
         <p className="mt-1 text-4xl font-semibold tabular-nums text-text">{fprPct !== null ? `${fprPct.toFixed(1)}%` : "—"}</p>
-        <p className="mt-1 text-sm text-text-subtle">
-          {stats.fpr_trampas.numerador} / {stats.fpr_trampas.denominador} trampas marcadas por error
-        </p>
-        <p className="mt-1 text-[11px] text-text-subtle">Con {stats.fpr_trampas.denominador} trampas, cada FP cambia la FPR en {(100 / stats.fpr_trampas.denominador).toFixed(1)} puntos porcentuales.</p>
+        <p className="mt-1 text-sm text-text-subtle">{fprTrampas.texto} trampas marcadas por error{fprTrampas.sin_conclusion > 0 ? ` · ${fprTrampas.sin_conclusion} sin conclusión` : ""}</p>
+        {fprTrampas.n > 0 && (
+          <p className="mt-1 text-[11px] text-text-subtle">Con {fprTrampas.n} trampas, cada FP cambia la FPR en {(100 / fprTrampas.n).toFixed(1)} puntos porcentuales.</p>
+        )}
       </div>
 
-      <EmbudoPanel etapas={stats.embudo} />
+      <CoberturaPanel etapas={etapasCobertura} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-[var(--radius-card)] border border-border bg-surface p-4">
-          <h2 className="mb-3 text-sm font-medium text-text">Matriz de confusión</h2>
+          <h2 className="mb-3 text-sm font-medium text-text">Selectivas (contra ground truth)</h2>
           <table className="w-full border-collapse text-center text-sm">
             <thead>
               <tr>
@@ -74,52 +95,55 @@ export default async function EstadisticasPage() {
             <tbody>
               <tr>
                 <th className="p-2 text-left text-xs text-text-subtle">Real positivo</th>
-                <td className="rounded border border-border bg-ok/10 p-3 font-semibold text-ok">{tp}</td>
-                <td className="rounded border border-border bg-warn/10 p-3 font-semibold text-warn">{fn}</td>
+                <td className="rounded border border-border bg-ok/10 p-3 font-semibold text-ok">{selectivas.tp}</td>
+                <td className="rounded border border-border bg-warn/10 p-3 font-semibold text-warn">{selectivas.fn_selectivo}</td>
               </tr>
               <tr>
                 <th className="p-2 text-left text-xs text-text-subtle">Real negativo</th>
-                <td className="rounded border border-border bg-error/10 p-3 font-semibold text-error">{fp}</td>
-                <td className="rounded border border-border bg-surface-muted p-3 font-semibold text-text">{tn}</td>
+                <td className="rounded border border-border bg-error/10 p-3 font-semibold text-error">{selectivas.fp}</td>
+                <td className="rounded border border-border bg-surface-muted p-3 font-semibold text-text">{selectivas.tn}</td>
               </tr>
             </tbody>
           </table>
           <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
-            <Metric label="Precisión" value={precision} />
-            <Metric label="Recall" value={recall} />
-            <Metric label="F1" value={f1} />
+            <Metric label="Precisión" value={selectivas.precision} />
+            <Metric label="Recall" value={selectivas.recall} />
+            <Metric label="F1" value={selectivas.f1} />
           </dl>
         </section>
 
         <section className="rounded-[var(--radius-card)] border border-border bg-surface p-4">
-          <h2 className="mb-3 text-sm font-medium text-text">Costo y latencia</h2>
+          <h2 className="mb-3 text-sm font-medium text-text">Operación</h2>
           <dl className="grid grid-cols-2 gap-3 text-sm">
-            <Stat label="Tokens totales" value={stats.costo.tokens_totales.toLocaleString("es-MX")} />
-            <Stat label="Duración total" value={`${Math.round(stats.costo.duracion_ms_total / 1000)}s`} />
-            <Stat label="Llamadas totales" value={String(stats.costo.llamadas_totales)} />
-            <Stat label="Acierto de caché" value={`${Math.round(stats.costo.tasa_acierto_cache * 100)}%`} />
+            <Stat label="Casos" value={String(operacion.casos)} />
+            <Stat label="Reintentos" value={String(operacion.reintentos)} />
+            <Stat label="Tool calls" value={String(operacion.tool_calls)} />
+            <Stat label="Tokens totales" value={operacion.tokens_total.toLocaleString("es-MX")} />
+            <Stat label="Duración p50" value={operacion.duracion_ms_p50 !== null ? `${Math.round(operacion.duracion_ms_p50 / 1000)}s` : "—"} />
+            <Stat label="Duración p95" value={operacion.duracion_ms_p95 !== null ? `${Math.round(operacion.duracion_ms_p95 / 1000)}s` : "—"} />
+            <Stat label="Presupuesto agotado" value={String(operacion.presupuesto_agotado)} />
+            <Stat label="Extremo a extremo (recall)" value={stats.extremo_a_extremo.recall_conservador !== null ? `${Math.round(stats.extremo_a_extremo.recall_conservador * 100)}%` : "—"} />
           </dl>
-          <h3 className="mb-2 mt-4 text-xs font-medium text-text-muted">Rondas</h3>
-          <dl className="grid grid-cols-3 gap-3 text-sm">
-            <Stat label="% ronda 2" value={`${Math.round(stats.rondas.pct_ronda_2 * 100)}%`} />
-            <Stat label="% frontera expandida" value={`${Math.round(stats.rondas.pct_frontera_expandida * 100)}%`} />
-            <Stat label="% reintento" value={`${Math.round(stats.rondas.pct_reintento * 100)}%`} />
-          </dl>
+          {Object.keys(operacion.casos_por_nivel).length > 0 && (
+            <>
+              <h3 className="mb-2 mt-4 text-xs font-medium text-text-muted">Casos por nivel</h3>
+              <dl className="grid grid-cols-2 gap-2 text-xs">
+                {Object.entries(operacion.casos_por_nivel).map(([nivel, n]) => (
+                  <Stat key={nivel} label={nivel} value={String(n)} />
+                ))}
+              </dl>
+            </>
+          )}
         </section>
       </div>
 
-      <PorTipologiaPanel filas={stats.por_tipologia} />
+      {recallFilas.length > 0 && <RecallPorTipologiaPanel filas={recallFilas} />}
 
       <p className="text-xs text-text-subtle">
-        Evolución de precisión/recall/FPR entre corridas por `version_prompts` y comparación de dos corridas lado a lado: pendiente
-        (este fixture solo trae una corrida).
+        Evolución de precisión/recall/FPR entre corridas por `version_prompts` y comparación de dos corridas lado a lado: pendiente.
       </p>
     </div>
   );
-}
-
-function cuenta(confusion: Array<{ real: string; predicho: string; cantidad: number }>, real: string, predicho: string): number {
-  return confusion.find((c) => c.real === real && c.predicho === predicho)?.cantidad ?? 0;
 }
 
 function Metric({ label, value }: { label: string; value: number | null }) {

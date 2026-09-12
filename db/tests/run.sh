@@ -68,14 +68,23 @@ echo "== migraciones =="
 aplicar "$DBDIR/001_schema.sql" "001_schema.sql"
 aplicar "$DBDIR/002_views.sql"  "002_views.sql"
 aplicar "$DBDIR/003_pistas.sql" "003_pistas.sql"
+aplicar "$DBDIR/004_clusters.sql" "004_clusters.sql"
+aplicar "$DBDIR/005_rpc.sql" "005_rpc.sql"
+aplicar "$DBDIR/006_producto_ui.sql" "006_producto_ui.sql"
+aplicar "$DBDIR/007_notificaciones_voz.sql" "007_notificaciones_voz.sql"
+aplicar "$DBDIR/008_ingesta.sql" "008_ingesta.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
+aplicar "$DBDIR/seeds/seed_producto.sql" "seeds/seed_producto.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
 
 "$PSQL" -d "$DB" -q -X -c "create table pruebas.conteo_1 as select * from pruebas.conteos()" >/dev/null 2>&1
 
 echo "== reaplicación (idempotencia) =="
 reaplicar_ok=true
-for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" "$DBDIR/seeds/seed_fake.sql"; do
+for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" \
+         "$DBDIR/004_clusters.sql" "$DBDIR/005_rpc.sql" "$DBDIR/006_producto_ui.sql" \
+         "$DBDIR/007_notificaciones_voz.sql" "$DBDIR/008_ingesta.sql" \
+         "$DBDIR/seeds/seed_fake.sql" "$DBDIR/seeds/seed_producto.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
   else
@@ -85,11 +94,36 @@ for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" 
     fallos=$((fallos + 1))
   fi
 done
-anotar "reaplicar 001+002+seed no falla" "$reaplicar_ok" "aplicado dos veces sobre la misma base"
+anotar "reaplicar migraciones y seed no falla" "$reaplicar_ok" "aplicado dos veces sobre la misma base"
 
 echo "== aserciones =="
 aplicar "$HERE/assertions.sql" "tests/assertions.sql"
 aplicar "$HERE/assertions_003.sql" "tests/assertions_003.sql"
+aplicar "$HERE/assertions_004.sql" "tests/assertions_004.sql"
+aplicar "$HERE/assertions_005.sql" "tests/assertions_005.sql"
+aplicar "$HERE/assertions_006_007.sql" "tests/assertions_006_007.sql"
+aplicar "$HERE/assertions_008.sql" "tests/assertions_008.sql"
+
+echo "== paquetes de inyección (eval/inyecciones) =="
+bash "$HERE/cargar_paquetes.sh" "$DB" || fallos=$((fallos + 1))
+
+echo "== snapshot gen-v1 (opcional: GEN=0 lo omite) =="
+GEN="${GEN:-auto}"
+if [ "$GEN" = "0" ]; then
+  echo "  omitido por GEN=0"
+else
+  if bash "$HERE/cargar_gen.sh" "$DB"; then
+    aplicar "$HERE/assertions_gen.sql" "tests/assertions_gen.sql"
+  else
+    rc=$?
+    if [ "$rc" = "3" ] && [ "$GEN" != "1" ]; then
+      echo "  sin snapshot gen-v1 disponible: aserciones de datos reales omitidas"
+    else
+      echo "  FALLA carga de gen-v1"
+      fallos=$((fallos + 1))
+    fi
+  fi
+fi
 
 echo "== contrato de pistas (contracts/entities.pista) =="
 RAIZ="$(dirname "$DBDIR")"
@@ -104,6 +138,16 @@ if command -v node >/dev/null 2>&1 && [ -d "$RAIZ/contracts/node_modules" ]; the
     anotar "las pistas se proyectan al contrato entities.pista v1" true "validado con ajv"
   else
     anotar "las pistas se proyectan al contrato entities.pista v1" false "ver salida de ajv"
+    fallos=$((fallos + 1))
+  fi
+
+  "$PSQL" -d "$DB" -X -t -A -c "
+    select coalesce(jsonb_agg(jsonb_build_object('tool', tool, 'envelope', envelope)), '[]'::jsonb)
+      from pruebas.envelopes" > "$TMP/envelopes.json" 2>"$LOG"
+  if node "$HERE/contrato_envelope.mjs" "$TMP/envelopes.json" "$RAIZ/contracts/index.mjs"; then
+    anotar "cada RPC de 005 devuelve el envelope de tools.envelope v1" true "validado con ajv"
+  else
+    anotar "cada RPC de 005 devuelve el envelope de tools.envelope v1" false "ver salida de ajv"
     fallos=$((fallos + 1))
   fi
 else

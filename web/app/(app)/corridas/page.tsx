@@ -3,6 +3,7 @@ import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
 
 export const metadata = { title: "Forense · Corridas" };
+export const dynamic = "force-dynamic";
 
 /**
  * 09 §5-6: vista técnica de corridas (15 §7 la nombra "historial de

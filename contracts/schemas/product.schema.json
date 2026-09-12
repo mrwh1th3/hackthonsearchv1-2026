@@ -619,7 +619,9 @@
             "error",
             "presupuesto_agotado",
             "corrida_cargada",
-            "inyeccion"
+            "inyeccion",
+            "paso_en_cola",
+            "paso_checkpoint"
           ]
         },
         "payload": {

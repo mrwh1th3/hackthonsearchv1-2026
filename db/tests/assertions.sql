@@ -359,23 +359,28 @@ begin
   update forense.tareas_agente set estado = 'completada'
    where id = '00000000-0000-4000-8000-0000000009d1';
 
-  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 0);
+  -- Firma de tres argumentos (DECISIONES H3 01:35): la barrera es POR PASO.
+  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 'ronda1', 0);
   perform pruebas.assert('la barrera no avanza con una tarea pendiente',
     coalesce((a->>'ok')::boolean,false) and not (a->>'avanzo')::boolean, a::text);
 
-  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 7);
+  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 'ronda1', 7);
   perform pruebas.assert('la barrera rechaza una revisión equivocada (CAS)',
     (a->>'error') = 'revision_conflicto', a::text);
 
   update forense.tareas_agente set estado = 'completada'
    where id = '00000000-0000-4000-8000-0000000009d4';
-  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 0);
+  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 'ronda1', 0);
   perform pruebas.assert('la barrera avanza cuando todas las tareas son terminales',
     coalesce((a->>'avanzo')::boolean,false), a::text);
 
-  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 0);
+  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 'ronda1', 0);
   perform pruebas.assert('un segundo callback no vuelve a avanzar el mismo paso',
     not coalesce((a->>'avanzo')::boolean,false), a::text);
+
+  a := forense.advance_case_if_ready('00000000-0000-4000-8000-0000000009c1', 'ronda2', 0);
+  perform pruebas.assert('la barrera solo cierra el paso nombrado, no el último abierto',
+    coalesce((a->>'ok')::boolean,false) and (a->>'motivo') = 'sin_paso_abierto', a::text);
 end $$;
 
 -- ---------------------------------------------------------------------

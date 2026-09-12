@@ -1,0 +1,323 @@
+{
+  "name": "FORENSE_notificar_completada",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "forense/investigacion-completa",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Webhook investigación completa",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Forense Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- NO confía en el payload: relee evento y estado desde DB. Un teléfono en el payload se IGNORA (16 §2). DEPENDE de 007 (forense-db).\nSELECT * FROM forense.leer_evento_salida($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.body.evento_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Releer evento desde DB",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Claim atómico con lease; unicidad (investigacion_id, tipo_evento). Cinco entregas del webhook NO generan cinco llamadas (16 §2). DEPENDE de 007.\nSELECT * FROM forense.reclamar_evento_salida($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $('Releer evento desde DB').first().json.evento_id }}, ={{ $execution.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Reclamar evento",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Perfil propietario, teléfono E.164, preferencia de llamadas vigente y permiso guardado. El teléfono sale del PERFIL, jamás del prompt (16 §3). DEPENDE de 007.\nSELECT * FROM forense.destinatario_aviso($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Releer evento desde DB').first().json.investigacion_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Resolver destinatario",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.puede_llamar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        0
+      ],
+      "name": "¿Puede llamar?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Estado `omitida` con motivo; el aviso DENTRO de la app se mantiene: la voz es un extra, no el canal (16 §2).\nSELECT * FROM forense.omitir_llamada($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $('Releer evento desde DB').first().json.investigacion_id }}, ={{ $json.motivo_omision }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1100,
+        140
+      ],
+      "name": "Omitir con motivo",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Congela destinatario y configuración y reclama `solicitando` ANTES del POST (16 §2.5). Devuelve las dynamic_variables ya normalizadas: sin RFC, montos ni sospechas. DEPENDE de 007.\nSELECT * FROM forense.crear_intento_llamada($1::uuid, $2::uuid)",
+        "options": {
+          "queryReplacement": "={{ $('Releer evento desde DB').first().json.investigacion_id }}, ={{ $('Releer evento desde DB').first().json.evento_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Crear intento de llamada",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.cuerpo_elevenlabs) }}",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        0
+      ],
+      "name": "POST outbound-call",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "ElevenLabs Forense"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- HTTP 200 = solicitud ACEPTADA, no que alguien contestó. Timeout después de enviar → `resultado_desconocido` y reconciliación, nunca redial ciego (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.guardar_aceptacion_llamada($1::uuid, $2::int, $3::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $('Crear intento de llamada').first().json.llamada_id }}, ={{ $json.statusCode }}, ={{ JSON.stringify($json.body) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Guardar aceptación",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_notificar_completada (16 §2).\n\nUna llamada por INVESTIGACIÓN, nunca una por cluster ni una por\ncada entrega duplicada del webhook. Editar el reporte no vuelve\na llamar. El fallo de la llamada no invalida el reporte.\n\nBloqueo externo conocido (21 §5): la cuenta ElevenLabs tiene CERO\nnúmeros salientes. Se entrega el circuito y la interfaz; la\nllamada real no se ha ejecutado.",
+        "height": 260,
+        "width": 430,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        420
+      ],
+      "name": "Nota voz"
+    }
+  ],
+  "connections": {
+    "Webhook investigación completa": {
+      "main": [
+        [
+          {
+            "node": "Releer evento desde DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Releer evento desde DB": {
+      "main": [
+        [
+          {
+            "node": "Reclamar evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reclamar evento": {
+      "main": [
+        [
+          {
+            "node": "Resolver destinatario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolver destinatario": {
+      "main": [
+        [
+          {
+            "node": "¿Puede llamar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Puede llamar?": {
+      "main": [
+        [
+          {
+            "node": "Crear intento de llamada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Omitir con motivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear intento de llamada": {
+      "main": [
+        [
+          {
+            "node": "POST outbound-call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST outbound-call": {
+      "main": [
+        [
+          {
+            "node": "Guardar aceptación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

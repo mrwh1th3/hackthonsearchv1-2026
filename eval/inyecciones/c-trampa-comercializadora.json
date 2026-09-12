@@ -1,0 +1,45 @@
+{
+  "corrida_base_id": "3fc52b5a-3e4b-54f4-a714-b3303b6f0347",
+  "origen": "ensayo",
+  "idempotency_key": "cccccccc-0000-4000-8000-00000000000c",
+  "nota": "Ensayo (c): trampa legitima. Comercializadora de margen delgado con compras reales, en un edificio compartido con otras dos empresas del mismo grupo. Debe disparar R1 (domicilio compartido) y F1 (credito comercial: PPD sin complemento), entrar al selector por dos familias y cerrar anomalia_explicada: no se facturan entre si, las compras existen y el dinero va a personas morales.",
+  "tablas": {
+    "contribuyentes": [
+      {"rfc": "TRB190311FF6", "razon_social": "Trampa Comercial del Bajio SA de CV", "giro": "comercializadora", "tipo_persona": "moral", "fecha_alta": "2019-03-11", "domicilio": "Av. Reforma 222, Piso 8, Ciudad de Mexico", "cp": "06600", "representante": "A. Gomez Real", "email": "contacto@trampa-bajio.invalid", "telefono": "5555550101", "empleados_declarados": 12},
+      {"rfc": "TRB200714GG7", "razon_social": "Servicios Bajio Integrales SA de CV", "giro": "servicios_personal", "tipo_persona": "moral", "fecha_alta": "2020-07-14", "domicilio": "Av. Reforma 222, Piso 8, Ciudad de Mexico", "cp": "06600", "representante": "B. Ruiz Real", "email": "contacto@servicios-bajio.invalid", "telefono": "5555550102", "empleados_declarados": 8},
+      {"rfc": "TRB180205HH8", "razon_social": "Logistica Bajio SA de CV", "giro": "transporte", "tipo_persona": "moral", "fecha_alta": "2018-02-05", "domicilio": "Av. Reforma 222, Piso 8, Ciudad de Mexico", "cp": "06600", "representante": "C. Lara Real", "email": "contacto@logistica-bajio.invalid", "telefono": "5555550103", "empleados_declarados": 5}
+    ],
+    "cuentas": [
+      {"clabe": "012180000000920001", "rfc_titular": "TRB190311FF6", "banco": "012", "tipo": "moral", "moneda": "MXN", "saldo_inicial": "410000.00", "fecha_saldo_inicial": "2025-02-01T00:00:00-06:00"},
+      {"clabe": "012180000000920002", "rfc_titular": "TRB200714GG7", "banco": "012", "tipo": "moral", "moneda": "MXN", "saldo_inicial": "180000.00", "fecha_saldo_inicial": "2025-02-01T00:00:00-06:00"},
+      {"clabe": "012180000000920003", "rfc_titular": "TRB180205HH8", "banco": "012", "tipo": "moral", "moneda": "MXN", "saldo_inicial": "260000.00", "fecha_saldo_inicial": "2025-02-01T00:00:00-06:00"}
+    ],
+    "atributos_entidad": [
+      {"rfc": "TRB190311FF6", "atributo": "domicilio", "valor": "Av. Reforma 222, Piso 8, Ciudad de Mexico", "fuente": "padron"},
+      {"rfc": "TRB200714GG7", "atributo": "domicilio", "valor": "Av. Reforma 222, Piso 8, Ciudad de Mexico", "fuente": "padron"},
+      {"rfc": "TRB180205HH8", "atributo": "domicilio", "valor": "Av. Reforma 222, Piso 8, Ciudad de Mexico", "fuente": "padron"}
+    ],
+    "cfdi": [
+      {"uuid": "cccc0001-0000-4000-8000-000000000001", "tipo": "I", "emisor_rfc": "TRB190311FF6", "receptor_rfc": "ULI141106W91", "fecha": "2025-11-08T10:00:00-06:00", "subtotal": "1000000.00", "iva": "160000.00", "total": "1160000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "43211500", "descripcion": "Venta de equipo de computo y perifericos", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000002", "tipo": "I", "emisor_rfc": "TRB190311FF6", "receptor_rfc": "IND121121C52", "fecha": "2025-12-03T10:00:00-06:00", "subtotal": "844827.59", "iva": "135172.41", "total": "980000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "43211500", "descripcion": "Venta de material de oficina y consumibles", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000003", "tipo": "I", "emisor_rfc": "TRB190311FF6", "receptor_rfc": "ULI141106W91", "fecha": "2025-08-12T10:00:00-06:00", "subtotal": "551724.14", "iva": "88275.86", "total": "640000.00", "moneda": "MXN", "metodo_pago": "PPD", "forma_pago": "99", "uso_cfdi": "G03", "clave_prod_serv": "43211500", "descripcion": "Venta a credito 90 dias, equipo diverso", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000004", "tipo": "I", "emisor_rfc": "TRB190311FF6", "receptor_rfc": "IND121121C52", "fecha": "2025-08-20T10:00:00-06:00", "subtotal": "448275.86", "iva": "71724.14", "total": "520000.00", "moneda": "MXN", "metodo_pago": "PPD", "forma_pago": "99", "uso_cfdi": "G03", "clave_prod_serv": "43211500", "descripcion": "Venta a credito 90 dias, consumibles", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000005", "tipo": "I", "emisor_rfc": "TRB190311FF6", "receptor_rfc": "ULI141106W91", "fecha": "2025-08-28T10:00:00-06:00", "subtotal": "413793.10", "iva": "66206.90", "total": "480000.00", "moneda": "MXN", "metodo_pago": "PPD", "forma_pago": "99", "uso_cfdi": "G03", "clave_prod_serv": "43211500", "descripcion": "Venta a credito 90 dias, refacciones", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000006", "tipo": "I", "emisor_rfc": "CLU190919B42", "receptor_rfc": "TRB190311FF6", "fecha": "2025-11-12T10:00:00-06:00", "subtotal": "905172.41", "iva": "144827.59", "total": "1050000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G01", "clave_prod_serv": "31162800", "descripcion": "Compra de inventario, lote 2025-11", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000007", "tipo": "I", "emisor_rfc": "COR141025P88", "receptor_rfc": "TRB190311FF6", "fecha": "2025-12-08T10:00:00-06:00", "subtotal": "775862.07", "iva": "124137.93", "total": "900000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G01", "clave_prod_serv": "31162800", "descripcion": "Compra de inventario, lote 2025-12", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000008", "tipo": "I", "emisor_rfc": "CLU190919B42", "receptor_rfc": "TRB190311FF6", "fecha": "2025-08-05T10:00:00-06:00", "subtotal": "603448.28", "iva": "96551.72", "total": "700000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G01", "clave_prod_serv": "31162800", "descripcion": "Compra de inventario, lote 2025-08", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-000000000009", "tipo": "N", "emisor_rfc": "TRB190311FF6", "receptor_rfc": "NOMTRB900101AA1", "fecha": "2025-11-30T10:00:00-06:00", "subtotal": "180000.00", "iva": "0.00", "total": "180000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "CN01", "clave_prod_serv": "84111505", "descripcion": "Nomina quincenal noviembre", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-00000000000a", "tipo": "I", "emisor_rfc": "TRB200714GG7", "receptor_rfc": "IND121121C52", "fecha": "2025-11-18T10:00:00-06:00", "subtotal": "310344.83", "iva": "49655.17", "total": "360000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "80121600", "descripcion": "Servicios administrativos noviembre", "cancelado": false},
+      {"uuid": "cccc0001-0000-4000-8000-00000000000b", "tipo": "I", "emisor_rfc": "TRB180205HH8", "receptor_rfc": "ULI141106W91", "fecha": "2025-11-22T10:00:00-06:00", "subtotal": "241379.31", "iva": "38620.69", "total": "280000.00", "moneda": "MXN", "metodo_pago": "PUE", "forma_pago": "03", "uso_cfdi": "G03", "clave_prod_serv": "78101800", "descripcion": "Fletes y maniobras noviembre", "cancelado": false}
+    ],
+    "movimientos": [
+      {"id": 920001, "cuenta_origen": "072180000000000200", "cuenta_destino": "012180000000920001", "fecha": "2025-11-10T09:00:00-06:00", "monto": "1160000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA CCCC0001-1"},
+      {"id": 920002, "cuenta_origen": "021180000000000266", "cuenta_destino": "012180000000920001", "fecha": "2025-12-05T09:00:00-06:00", "monto": "980000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA CCCC0001-2"},
+      {"id": 920003, "cuenta_origen": "012180000000920001", "cuenta_destino": "072180000000000255", "fecha": "2025-11-15T09:00:00-06:00", "monto": "1050000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO PROVEEDOR CCCC0001-6"},
+      {"id": 920004, "cuenta_origen": "012180000000920001", "cuenta_destino": "002180000000001299", "fecha": "2025-12-10T09:00:00-06:00", "monto": "900000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO PROVEEDOR CCCC0001-7"},
+      {"id": 920005, "cuenta_origen": "012180000000920001", "cuenta_destino": "072180000000000255", "fecha": "2025-08-08T09:00:00-06:00", "monto": "700000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO PROVEEDOR CCCC0001-8"},
+      {"id": 920006, "cuenta_origen": "021180000000000266", "cuenta_destino": "012180000000920002", "fecha": "2025-11-20T09:00:00-06:00", "monto": "360000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA CCCC0001-A"},
+      {"id": 920007, "cuenta_origen": "072180000000000200", "cuenta_destino": "012180000000920003", "fecha": "2025-11-24T09:00:00-06:00", "monto": "280000.00", "moneda": "MXN", "tipo": "transferencia", "referencia": "PAGO FACTURA CCCC0001-B"}
+    ]
+  }
+}
