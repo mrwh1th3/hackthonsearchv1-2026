@@ -1,0 +1,616 @@
+{
+  "schema_version": "contexto.v1",
+  "execution_id": "00000000-0000-4000-8000-000000000600",
+  "tarea_id": "00000000-0000-4000-8000-000000000300",
+  "editor_operacion_id": null,
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "corrida_id": "00000000-0000-4000-8000-000000000001",
+  "cluster_id": "00000000-0000-4000-8000-000000000200",
+  "rol": "documental",
+  "ronda": 1,
+  "intento": 0,
+  "version_contexto": 1,
+  "dataset_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fecha_corte": "2026-01-31T12:00:00Z",
+  "familias_evaluables": [
+    "D",
+    "F",
+    "R",
+    "T",
+    "E"
+  ],
+  "prompt_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "context_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "directriz_id": null,
+  "directriz_version": null,
+  "objetivo": "Validar el formato del contexto; no ejecutar investigación.",
+  "limites": {
+    "tools_restantes": 8,
+    "requests_restantes": 66,
+    "deadline_at": "2026-01-31T12:12:00Z",
+    "input_tokens_max": 8000
+  },
+  "cobertura": {
+    "completa": true,
+    "periodo": {
+      "desde": "2026-01-01T00:00:00Z",
+      "hasta_exclusivo": "2026-02-01T00:00:00Z",
+      "timezone": "America/Monterrey"
+    },
+    "familias_evaluables": [
+      "D",
+      "F",
+      "R",
+      "T",
+      "E"
+    ],
+    "datos_ausentes": []
+  },
+  "datos": {
+    "rfcs": [
+      "DEMO:ENTIDAD-0",
+      "DEMO:ENTIDAD-1",
+      "DEMO:ENTIDAD-2",
+      "DEMO:ENTIDAD-3",
+      "DEMO:ENTIDAD-4",
+      "DEMO:ENTIDAD-5",
+      "DEMO:ENTIDAD-6",
+      "DEMO:ENTIDAD-7",
+      "DEMO:ENTIDAD-8",
+      "DEMO:ENTIDAD-9",
+      "DEMO:ENTIDAD-10",
+      "DEMO:ENTIDAD-11",
+      "DEMO:ENTIDAD-12",
+      "DEMO:ENTIDAD-13",
+      "DEMO:ENTIDAD-14",
+      "DEMO:ENTIDAD-15",
+      "DEMO:ENTIDAD-16",
+      "DEMO:ENTIDAD-17",
+      "DEMO:ENTIDAD-18",
+      "DEMO:ENTIDAD-19",
+      "DEMO:ENTIDAD-20",
+      "DEMO:ENTIDAD-21",
+      "DEMO:ENTIDAD-22",
+      "DEMO:ENTIDAD-23",
+      "DEMO:ENTIDAD-24",
+      "DEMO:ENTIDAD-25",
+      "DEMO:ENTIDAD-26",
+      "DEMO:ENTIDAD-27",
+      "DEMO:ENTIDAD-28",
+      "DEMO:ENTIDAD-29",
+      "DEMO:ENTIDAD-30",
+      "DEMO:ENTIDAD-31",
+      "DEMO:ENTIDAD-32",
+      "DEMO:ENTIDAD-33",
+      "DEMO:ENTIDAD-34",
+      "DEMO:ENTIDAD-35",
+      "DEMO:ENTIDAD-36",
+      "DEMO:ENTIDAD-37",
+      "DEMO:ENTIDAD-38",
+      "DEMO:ENTIDAD-39"
+    ],
+    "pistas": [
+      {
+        "id": "600",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p0",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000900"
+        ]
+      },
+      {
+        "id": "601",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p1",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000901"
+        ]
+      },
+      {
+        "id": "602",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p2",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000902"
+        ]
+      },
+      {
+        "id": "603",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p3",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000903"
+        ]
+      },
+      {
+        "id": "604",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p4",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000904"
+        ]
+      },
+      {
+        "id": "605",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p5",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000905"
+        ]
+      },
+      {
+        "id": "606",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p6",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000906"
+        ]
+      },
+      {
+        "id": "607",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p7",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000907"
+        ]
+      },
+      {
+        "id": "608",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p8",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000908"
+        ]
+      },
+      {
+        "id": "609",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p9",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000909"
+        ]
+      },
+      {
+        "id": "610",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p10",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000910"
+        ]
+      },
+      {
+        "id": "611",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p11",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000911"
+        ]
+      },
+      {
+        "id": "612",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p12",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000912"
+        ]
+      },
+      {
+        "id": "613",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p13",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000913"
+        ]
+      },
+      {
+        "id": "614",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p14",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000914"
+        ]
+      },
+      {
+        "id": "615",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p15",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000915"
+        ]
+      },
+      {
+        "id": "616",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p16",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000916"
+        ]
+      },
+      {
+        "id": "617",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p17",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000917"
+        ]
+      },
+      {
+        "id": "618",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p18",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000918"
+        ]
+      },
+      {
+        "id": "619",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p19",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000919"
+        ]
+      },
+      {
+        "id": "620",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p20",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000920"
+        ]
+      },
+      {
+        "id": "621",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p21",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000921"
+        ]
+      },
+      {
+        "id": "622",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p22",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000922"
+        ]
+      },
+      {
+        "id": "623",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p23",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000923"
+        ]
+      },
+      {
+        "id": "624",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p24",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000924"
+        ]
+      },
+      {
+        "id": "625",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p25",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000925"
+        ]
+      },
+      {
+        "id": "626",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p26",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000926"
+        ]
+      },
+      {
+        "id": "627",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p27",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000927"
+        ]
+      },
+      {
+        "id": "628",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p28",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000928"
+        ]
+      },
+      {
+        "id": "629",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p29",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000929"
+        ]
+      },
+      {
+        "id": "630",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p30",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000930"
+        ]
+      },
+      {
+        "id": "631",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p31",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000931"
+        ]
+      },
+      {
+        "id": "632",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p32",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000932"
+        ]
+      },
+      {
+        "id": "633",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p33",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000933"
+        ]
+      },
+      {
+        "id": "634",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p34",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000934"
+        ]
+      },
+      {
+        "id": "635",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p35",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000935"
+        ]
+      },
+      {
+        "id": "636",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D1",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p36",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000936"
+        ]
+      },
+      {
+        "id": "637",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D2",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p37",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000937"
+        ]
+      },
+      {
+        "id": "638",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D3",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p38",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000938"
+        ]
+      },
+      {
+        "id": "639",
+        "corrida_id": "00000000-0000-4000-8000-000000000001",
+        "codigo": "D4",
+        "familia": "D",
+        "rfc": "DEMO:ENTIDAD-0",
+        "score": 0.5,
+        "estado": "disparada",
+        "resumen": "Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la pista D para probar el techo de caracteres. Resumen sintetico de la  p39",
+        "referencias": [
+          "CFDI:00000000-0000-4000-8000-000000000939"
+        ]
+      }
+    ],
+    "titulares": []
+  }
+}

@@ -1,0 +1,333 @@
+{
+  "version_manifest": "prompts.v1",
+  "contracts_version": "1.0.0",
+  "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
+  "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
+  "version_prompts": "e4a2f861e988",
+  "archivos": [
+    {
+      "name": "README.md",
+      "sha256": "dd5e6fd49dd44ad4b960a87e6c2299c225293c74454996922e8896a81df81069",
+      "chars": 5796
+    },
+    {
+      "name": "auditor.md",
+      "sha256": "f0b47b38d63ab0fef1904d91787093a694c699152bf53a92feb2cf4cc51beae8",
+      "chars": 4018
+    },
+    {
+      "name": "comun.md",
+      "sha256": "67c8cd28922c23adc9d11115b6fb01cc6a5b50048557a63387fef0e60e5dd156",
+      "chars": 4179
+    },
+    {
+      "name": "defensor.md",
+      "sha256": "26ba86647833c4f5887b0c018bb439c42454e8d64b5d8a4b04b4e230090d844d",
+      "chars": 4466
+    },
+    {
+      "name": "editor.md",
+      "sha256": "f5791df1ceb6d1a53a054e215a569c5be3ddd1fad885b83c8da45bcf85183689",
+      "chars": 2956
+    },
+    {
+      "name": "ensamblar.mjs",
+      "sha256": "5de34624fabd6cbb75145017def1ecd620b3581fb76b4ca945c403a95ab02546",
+      "chars": 33619
+    },
+    {
+      "name": "esp-documental.md",
+      "sha256": "8af9a20168602ad65afa594929c1add8889505b23b3c2e1def18e89ad9b4a59d",
+      "chars": 3562
+    },
+    {
+      "name": "esp-externo.md",
+      "sha256": "162cc0f3b907a480574628e37df91c55d851875a18651c2f0a90b4036ab45e87",
+      "chars": 3652
+    },
+    {
+      "name": "esp-financiero.md",
+      "sha256": "e223b20ac6ae9ccf20567cb246e1bc7ad334c095b2fcdbc4f4418815dce5a08a",
+      "chars": 3894
+    },
+    {
+      "name": "esp-relacional.md",
+      "sha256": "ef167e3b22134652345848abc50bb282cdaddec52c64bba533fdb597f841caec",
+      "chars": 3297
+    },
+    {
+      "name": "esp-temporal.md",
+      "sha256": "4271706bdfbff4666c393a8ab1a4bcba18bb234598a9fb6291fc8ac236d4b002",
+      "chars": 3102
+    },
+    {
+      "name": "fewshot-documental.md",
+      "sha256": "6781ec4750c23d07e7e73304fd0dc88c7106d0ad6fff478e39ee954e2b859836",
+      "chars": 1650
+    },
+    {
+      "name": "fewshot-externo.md",
+      "sha256": "551b7b52391525af631379081b61a3808de6edcd7476d01d7450d07f687a4595",
+      "chars": 1624
+    },
+    {
+      "name": "fewshot-financiero.md",
+      "sha256": "bf63b4760683d75c96d36896d6f3c318f60f7775d0ac4f109dd0922f88cf7ad2",
+      "chars": 1690
+    },
+    {
+      "name": "fewshot-relacional.md",
+      "sha256": "58b0ac18b8791a816f1496da14caebeed9c4d1b765ba572255338720d1720f2e",
+      "chars": 1577
+    },
+    {
+      "name": "fewshot-temporal.md",
+      "sha256": "6618ccafb3e3e13bfe8fa01f2e3219764cc70d9711cf8efb4ab290f32917f3f7",
+      "chars": 1592
+    },
+    {
+      "name": "manifest.mjs",
+      "sha256": "b17ea5104c936f2e48154ffb85c47a45a51d672623625f985fb7f3a9fdfe5898",
+      "chars": 5509
+    },
+    {
+      "name": "mapper.md",
+      "sha256": "0eacd3990659f345f918a96965942e866498b7f61e80b3daaaab5ce8d0dadcd2",
+      "chars": 3664
+    },
+    {
+      "name": "redactor.md",
+      "sha256": "f15c9de004f5b2a3ffe16af22575b06c88fc6cc576e7f646f1908d90611a8df3",
+      "chars": 4645
+    },
+    {
+      "name": "replica.md",
+      "sha256": "a3c3a994714bf67bea08f19a56d4b1e16f0f5604612caca4cba33d1299393e64",
+      "chars": 1946
+    }
+  ],
+  "roles": [
+    "documental",
+    "financiero",
+    "relacional",
+    "temporal",
+    "externo",
+    "auditor",
+    "defensor",
+    "replica",
+    "redactor",
+    "editor",
+    "mapper"
+  ],
+  "tools_por_rol": {
+    "documental": {
+      "r1": [
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_pares",
+        "forense_perfil"
+      ],
+      "r2": [
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_pares",
+        "forense_perfil"
+      ]
+    },
+    "financiero": {
+      "r1": [
+        "forense_conciliar",
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_seguir_dinero"
+      ],
+      "r2": [
+        "forense_conciliar",
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_seguir_dinero"
+      ]
+    },
+    "relacional": {
+      "r1": [
+        "forense_ciclos",
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_relacionados"
+      ],
+      "r2": [
+        "forense_ciclos",
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_relacionados"
+      ]
+    },
+    "temporal": {
+      "r1": [
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_pares",
+        "forense_perfil"
+      ],
+      "r2": [
+        "forense_escribir_senal",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_pares",
+        "forense_perfil"
+      ]
+    },
+    "externo": {
+      "r1": [
+        "forense_escribir_senal",
+        "forense_listas",
+        "forense_relacionados"
+      ],
+      "r2": [
+        "forense_escribir_senal",
+        "forense_leer_senal",
+        "forense_listas",
+        "forense_relacionados"
+      ]
+    },
+    "auditor": {
+      "r1": [
+        "forense_ciclos",
+        "forense_conciliar",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_listas",
+        "forense_pares",
+        "forense_perfil",
+        "forense_registrar_evidencia",
+        "forense_relacionados",
+        "forense_seguir_dinero"
+      ],
+      "r2": [
+        "forense_ciclos",
+        "forense_conciliar",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_listas",
+        "forense_pares",
+        "forense_perfil",
+        "forense_registrar_evidencia",
+        "forense_relacionados",
+        "forense_seguir_dinero"
+      ]
+    },
+    "defensor": {
+      "r1": [
+        "forense_ciclos",
+        "forense_conciliar",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_listas",
+        "forense_pares",
+        "forense_perfil",
+        "forense_relacionados",
+        "forense_seguir_dinero"
+      ],
+      "r2": [
+        "forense_ciclos",
+        "forense_conciliar",
+        "forense_facturas",
+        "forense_leer_senal",
+        "forense_listas",
+        "forense_pares",
+        "forense_perfil",
+        "forense_relacionados",
+        "forense_seguir_dinero"
+      ]
+    },
+    "replica": {
+      "r1": [],
+      "r2": []
+    },
+    "redactor": {
+      "r1": [],
+      "r2": []
+    },
+    "editor": {
+      "r1": [],
+      "r2": []
+    },
+    "mapper": {
+      "r1": [],
+      "r2": []
+    }
+  },
+  "tools_de_sistema_prohibidas": [
+    "forense_validar_evidencia",
+    "forense_evaluar_frontera",
+    "forense_despertar"
+  ],
+  "fewshot_por_rol": {
+    "documental": "fewshot-documental.md",
+    "financiero": "fewshot-financiero.md",
+    "relacional": "fewshot-relacional.md",
+    "temporal": "fewshot-temporal.md",
+    "externo": "fewshot-externo.md"
+  },
+  "fewshot_por_defecto": false,
+  "variantes": [
+    "documental",
+    "financiero",
+    "relacional",
+    "temporal",
+    "externo",
+    "auditor",
+    "defensor",
+    "replica",
+    "redactor",
+    "editor",
+    "mapper",
+    "documental+fewshot",
+    "financiero+fewshot",
+    "relacional+fewshot",
+    "temporal+fewshot",
+    "externo+fewshot"
+  ],
+  "schema_salida_por_rol": {
+    "documental": "agents.especialista",
+    "financiero": "agents.especialista",
+    "relacional": "agents.especialista",
+    "temporal": "agents.especialista",
+    "externo": "agents.especialista",
+    "auditor": "agents.auditor",
+    "defensor": "agents.defensor",
+    "replica": "agents.replica",
+    "redactor": "agents.redactor",
+    "editor": "agents.editor",
+    "mapper": "ingesta.mapper"
+  },
+  "modelo_propuesto_por_rol": {
+    "documental": "sonnet",
+    "financiero": "opus",
+    "relacional": "opus",
+    "temporal": "sonnet",
+    "externo": "sonnet",
+    "auditor": "opus",
+    "defensor": "opus",
+    "replica": "opus",
+    "redactor": "sonnet",
+    "editor": "sonnet",
+    "mapper": "sonnet"
+  },
+  "techo_caracteres_por_rol": {
+    "documental": 12000,
+    "financiero": 12000,
+    "relacional": 12000,
+    "temporal": 12000,
+    "externo": 12000,
+    "auditor": 24000,
+    "defensor": 24000,
+    "replica": 24000,
+    "redactor": 24000,
+    "editor": 24000,
+    "mapper": 24000
+  }
+}
