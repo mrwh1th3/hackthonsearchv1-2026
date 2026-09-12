@@ -61,9 +61,22 @@ function workspace(documento: Documento) {
   );
 }
 
+/**
+ * jsdom no implementa geometría: ProseMirror llama `getClientRects()` sobre
+ * nodos de texto al desplazar la selección. Se stubea con un rectángulo vacío
+ * (no se prueba layout aquí; el render a 1440/1024/390 px se verifica en
+ * navegador, ver `pendientes`).
+ */
+const RECT = { top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async () => respuestaJson({ ok: true })));
   Element.prototype.scrollIntoView = vi.fn();
+  Object.defineProperty(document, "elementFromPoint", { value: () => document.body, configurable: true, writable: true });
+  for (const proto of [Element.prototype, Text.prototype, Range.prototype]) {
+    Object.defineProperty(proto, "getClientRects", { value: () => [RECT], configurable: true, writable: true });
+    Object.defineProperty(proto, "getBoundingClientRect", { value: () => RECT, configurable: true, writable: true });
+  }
 });
 
 afterEach(() => {
@@ -106,6 +119,43 @@ describe("DocumentWorkspace", () => {
     expect(within(indice).getByRole("button", { name: /cadena de explicación/i })).toBeDisabled();
     expect(within(indice).getByRole("button", { name: /dictamen/i })).toBeEnabled();
   });
+
+  it("autoguarda el borrador 1 s después de escribir, contra la versión base y sin crear versión", async () => {
+    const usuario = userEvent.setup();
+    const llamadas: Array<{ url: string; cuerpo: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        llamadas.push({ url, cuerpo: JSON.parse(String(init?.body ?? "{}")) });
+        return respuestaJson({
+          origen: "fixture",
+          guardado: "2026-09-11T23:00:00Z",
+          version_base: 1,
+          content_hash: "c".repeat(64),
+          revisar_citas: false,
+          citas_invalidas: [],
+        });
+      }),
+    );
+
+    render(workspace(desdeMarkdown(`## 1. Resumen\n\nTexto base [${CITA_VALIDA}].`)));
+    const hoja = await waitFor(() => {
+      const nodo = document.querySelector(".hoja-prosa");
+      expect(nodo).not.toBeNull();
+      return nodo as HTMLElement;
+    });
+
+    hoja.focus();
+    await usuario.keyboard("Nota del auditor. ");
+
+    await waitFor(() => expect(llamadas.length).toBeGreaterThan(0), { timeout: 4000 });
+    expect(llamadas[0].url).toBe("/api/reportes/borrador");
+    expect(llamadas[0].cuerpo.version_base).toBe(1);
+    expect(JSON.stringify(llamadas[0].cuerpo.documento)).toContain("Nota del auditor");
+    // El autoguardado no versiona: la cabecera sigue en v1.
+    expect(screen.getByText(/v1 · validado/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Guardado /)).toBeInTheDocument();
+  }, 15000);
 
   it("ofrece los tres modos y explica el modo sugerir", async () => {
     const usuario = userEvent.setup();
