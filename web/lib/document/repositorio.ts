@@ -8,7 +8,12 @@ import { createClient } from "@supabase/supabase-js";
  */
 export interface RespuestaPostgrest {
   data: unknown;
-  error: { message: string } | null;
+  /**
+   * `code` es el código de PostgREST (`PGRST202` = función ausente del cache
+   * de esquema). Se necesita para distinguir «la RPC todavía no existe» de
+   * «la RPC existe y falló», que exigen caminos opuestos (ver `revertir`).
+   */
+  error: { message: string; code?: string } | null;
 }
 
 export interface ConsultaForense extends PromiseLike<RespuestaPostgrest> {
@@ -27,12 +32,11 @@ export interface ClienteForense {
 
 import {
   aplicarPropuestaGuardada,
-  registrarPropuesta as registrarPropuestaDemo,
   descartarPropuestaGuardada,
   guardarBorrador as guardarBorradorDemo,
   hashContenido,
-  obtenerPropuesta,
   obtenerVersion as obtenerVersionDemo,
+  registrarPropuesta as registrarPropuestaDemo,
   revertirAVersion,
   versionActual as versionActualDemo,
   versiones as versionesDemo,
@@ -189,6 +193,30 @@ function aReporte(fila: FilaExpediente): Reporte {
 
 const COLUMNAS = "caso_id,idempotency_key,version,markdown,contenido_json,autor,estado_revision,creado";
 
+/** Fila de `forense.propuestas_edicion` (006 §5) en lo que el BFF necesita. */
+interface FilaPropuesta {
+  id: string;
+  caso_id: string;
+  version_base: number;
+  modo: string;
+  estado: string;
+  patch: unknown;
+  version_resultante: number | null;
+}
+const COLUMNAS_PROPUESTA = "id,caso_id,version_base,modo,estado,patch,version_resultante";
+
+/**
+ * `patch` viaja como `jsonb`: vuelve como `unknown`. Se acepta solo si tiene
+ * la forma de documento TipTap; cualquier otra cosa es un dato corrupto y se
+ * dice, en vez de versionar el expediente con basura.
+ */
+export function documentoDe(valor: unknown): Documento | null {
+  if (!valor || typeof valor !== "object") return null;
+  const posible = valor as { type?: unknown; content?: unknown };
+  if (posible.type !== "doc" || !Array.isArray(posible.content)) return null;
+  return normalizarDocumento(valor as Documento);
+}
+
 export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioExpediente {
   async function filas(casoId: string): Promise<FilaExpediente[]> {
     const { data, error } = await cliente
@@ -218,6 +246,18 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
       .from("bitacora")
       .insert({ corrida_id: corridaId, caso_id: casoId, agente: "editor", tipo_evento: "edicion", payload });
     return !escritura.error;
+  }
+
+  /** Fila de la propuesta, SIEMPRE acotada al caso de la petición. */
+  async function leerPropuesta(casoId: string, propuestaId: string): Promise<FilaPropuesta | null> {
+    const { data, error } = await cliente
+      .from("propuestas_edicion")
+      .select(COLUMNAS_PROPUESTA)
+      .eq("id", propuestaId)
+      .eq("caso_id", casoId)
+      .maybeSingle();
+    if (error) throw new Error(`propuestas_edicion: ${error.message}`);
+    return (data as FilaPropuesta | null) ?? null;
   }
 
   return {
@@ -286,18 +326,37 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
      * (doble click) la resuelve la función: propuesta ya aplicada devuelve la
      * MISMA versión con `aplicada:false`.
      *
-     * `p_contenido_json`/`p_markdown` se envían con la previsualización que
-     * este BFF calculó al construir la propuesta cuando la tiene en memoria;
-     * si no la tiene, van `null` y la función usa el `patch` persistido.
+     * La previsualización se lee de `forense.propuestas_edicion.patch` —la
+     * fila que `/propuestas` insertó—, **nunca** de un almacén en memoria: el
+     * proceso que aplica puede no ser el que propuso (otro worker, un
+     * reinicio, un despliegue nuevo), y entonces la memoria está vacía.
+     * Además `aplicar_propuesta` hace `coalesce(p_markdown, markdown de la
+     * versión anterior)` (006 §7 línea 237): si el BFF mandara `p_markdown`
+     * nulo, la versión nueva tendría el JSON editado y el Markdown VIEJO. Por
+     * eso el markdown se deriva aquí del mismo `patch` que versiona.
      */
     async aplicar(casoId, args, ctx) {
-      const guardada = obtenerPropuesta(casoId, args.propuesta_id);
-      const previsualizacion = guardada?.previsualizacion ?? null;
+      const fila = await leerPropuesta(casoId, args.propuesta_id);
+      // El filtro por `caso_id` es una frontera de autorización, no una
+      // comodidad: `aplicar_propuesta(p_propuesta)` NO comprueba el caso, así
+      // que una propuesta de otro expediente versionaría aquel mientras esta
+      // ruta responde con versiones de este.
+      if (!fila) return { ok: false, motivo: "propuesta_desconocida" };
+      // Desacuerdo cliente↔fila sobre qué versión se está editando: 409 antes
+      // de escribir. El contraste fila↔`max(version)` lo sigue haciendo la
+      // función del servidor, que además marca la fila `estado='conflicto'`
+      // (006 §7 línea 228); adelantarlo aquí perdería esa transición.
+      if (fila.version_base !== args.version_base) {
+        const actual = await cabeza(casoId);
+        return { ok: false, motivo: "conflicto_version", version_actual: actual?.version ?? fila.version_base };
+      }
+      const previsualizacion = documentoDe(fila.patch);
+      if (!previsualizacion) return { ok: false, motivo: "propuesta_sin_patch" };
       const { data, error } = await cliente.rpc("aplicar_propuesta", {
         p_propuesta: args.propuesta_id,
         p_perfil: ctx?.perfilId ?? null,
         p_contenido_json: previsualizacion,
-        p_markdown: previsualizacion ? aMarkdown(previsualizacion) : null,
+        p_markdown: aMarkdown(previsualizacion),
       });
       if (error) throw new Error(`aplicar_propuesta: ${error.message}`);
       const res = (data ?? {}) as {
@@ -327,9 +386,8 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
      * segunda propuesta, reutiliza la que ya estaba.
      */
     async registrarPropuesta(casoId, propuesta, previsualizacion, ctx) {
-      // La previsualización se cachea en memoria para no recalcularla al
-      // aplicar; la VERDAD está en la fila que se inserta aquí.
-      registrarPropuestaDemo(casoId, propuesta, previsualizacion);
+      // Nada se cachea en memoria: la ÚNICA copia de la previsualización es
+      // la columna `patch` de esta fila, que es lo que `aplicar` vuelve a leer.
       const fila = {
         id: propuesta.propuesta_id,
         caso_id: casoId,

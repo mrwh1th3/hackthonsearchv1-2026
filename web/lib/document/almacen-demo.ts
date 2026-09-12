@@ -131,7 +131,15 @@ export function borradorActual(casoId: string): Borrador | null {
 export type ResultadoEscritura<T> =
   | { ok: true; valor: T }
   | { ok: false; motivo: "conflicto_version"; version_actual: number }
-  | { ok: false; motivo: "propuesta_desconocida" | "propuesta_descartada" | "version_inexistente" };
+  | {
+      ok: false;
+      motivo:
+        | "propuesta_desconocida"
+        | "propuesta_descartada"
+        | "version_inexistente"
+        /** La fila existe pero su `patch` no es un documento: dato corrupto. */
+        | "propuesta_sin_patch";
+    };
 
 /** Autoguardado: sobrescribe el borrador de `version_base`. NO crea versión. */
 export function guardarBorrador(

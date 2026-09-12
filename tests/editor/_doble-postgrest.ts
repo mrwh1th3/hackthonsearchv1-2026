@@ -131,13 +131,24 @@ export function clienteFalso(almacen: Almacen): ClienteForense {
         });
       }
       const maxima = Math.max(...almacen.expedientes.map((e) => Number(e.version)));
+      if (Number(propuesta.version_base) !== maxima) {
+        propuesta.estado = "conflicto";
+        return Promise.resolve({
+          data: { ok: false, error: "conflicto_version", version_base: propuesta.version_base, version_actual: maxima },
+          error: null,
+        });
+      }
       const nueva = maxima + 1;
+      const anterior = almacen.expedientes.find((e) => Number(e.version) === maxima);
       almacen.expedientes.push({
         caso_id: CASO,
         idempotency_key: `propuesta:${String(args.p_propuesta)}`,
         version: nueva,
-        markdown: args.p_markdown ?? "",
-        contenido_json: args.p_contenido_json ?? {},
+        // 006 §7: `coalesce(p_markdown, markdown de la versión anterior)` y
+        // `coalesce(p_contenido_json, p.patch)`. Reproducirlos es lo que hace
+        // visible el desfase JSON/Markdown si el BFF no manda el markdown.
+        markdown: args.p_markdown ?? anterior?.markdown ?? "",
+        contenido_json: args.p_contenido_json ?? propuesta.patch ?? {},
         autor: "humano",
         estado_revision: "borrador",
         creado: "2026-09-12T01:00:00Z",

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import redactorFixture from "@contracts/fixtures/valid/redactor.json";
 import { signSession } from "@/lib/auth/session";
 import { reiniciarAlmacen } from "@/lib/document/almacen-demo";
+import { aMarkdown } from "@/lib/document/markdown";
 import { hashTexto } from "@/lib/document/documento";
 import { desdeMarkdown } from "@/lib/document/markdown";
 import { crearRepositorioSupabase, forzarRepositorio } from "@/lib/document/repositorio";
@@ -142,6 +143,79 @@ describe("BFF del editor en modo supabase (repositorio inyectado)", () => {
     expect(cuerpo.estado).toBe("descartada");
     expect(db.propuestas_edicion[0].estado).toBe("descartada");
     expect(db.expedientes).toHaveLength(1);
+  });
+
+  /**
+   * Hallazgo ALTO: Aplicar NO puede leer la previsualización de la memoria del
+   * proceso. `reiniciarAlmacen()` deja el almacén de demostración vacío —lo
+   * mismo que ve un proceso distinto del que propuso, o el mismo tras un
+   * redespliegue— y a pesar de eso la versión nueva tiene que salir del
+   * `patch` persistido, JSON **y** Markdown.
+   */
+  it("Aplicar reconstruye la versión desde el patch persistido con la memoria vacía", async () => {
+    const db = montar();
+    const { json } = await pedirPropuesta("00000000-0000-4000-8000-000000000460");
+    const patch = db.propuestas_edicion[0].patch as Parameters<typeof aMarkdown>[0];
+    expect(patch).toBeTruthy();
+
+    reiniciarAlmacen(); // se borra todo rastro en memoria del proceso
+
+    const res = await postAplicar(
+      await post(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        propuesta_id: json.propuesta.propuesta_id,
+        version_base: 1,
+        idempotency_key: "00000000-0000-4000-8000-000000000461",
+      }),
+    );
+    expect(res.status).toBe(200);
+    const nueva = db.expedientes.find((e) => e.version === 2)!;
+    expect(nueva.contenido_json).toEqual(patch);
+    // Y el Markdown se deriva del MISMO patch: si el BFF mandara `p_markdown`
+    // nulo, 006 §7 copiaría el markdown de la versión 1 y el expediente
+    // quedaría con JSON nuevo y texto viejo.
+    expect(nueva.markdown).toBe(aMarkdown(patch));
+    expect(nueva.markdown).not.toBe(db.expedientes[0].markdown);
+  });
+
+  it("una propuesta de otro caso no versiona este expediente", async () => {
+    const db = montar();
+    const ajena = "00000000-0000-4000-8000-000000000462";
+    db.propuestas_edicion.push({
+      id: ajena,
+      caso_id: "00000000-0000-4000-8000-000000000199",
+      version_base: 1,
+      modo: "propuesta",
+      estado: "propuesta",
+      patch: documentoBase,
+    });
+    const res = await postAplicar(
+      await post(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        propuesta_id: ajena,
+        version_base: 1,
+        idempotency_key: "00000000-0000-4000-8000-000000000463",
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe("propuesta_desconocida");
+    // Ni siquiera se llamó a la función del servidor.
+    expect(db.rpc.filter((r) => r.nombre === "aplicar_propuesta")).toHaveLength(0);
+    expect(db.expedientes).toHaveLength(1);
+  });
+
+  it("version_base del cliente distinta a la de la fila: 409 y sin escritura", async () => {
+    const db = montar();
+    const { json } = await pedirPropuesta("00000000-0000-4000-8000-000000000464");
+    const res = await postAplicar(
+      await post(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        propuesta_id: json.propuesta.propuesta_id,
+        version_base: 7,
+        idempotency_key: "00000000-0000-4000-8000-000000000465",
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()).version_actual).toBe(1);
+    expect(db.expedientes).toHaveLength(1);
+    expect(db.propuestas_edicion[0].estado).toBe("propuesta");
   });
 
   it("dos peticiones con el mismo idempotency_key no crean dos propuestas", async () => {
