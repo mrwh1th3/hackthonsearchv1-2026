@@ -1,0 +1,1248 @@
+{
+  "name": "FORENSE_investigar_cluster",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Desde corrida"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "forense/investigar",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        140
+      ],
+      "name": "Webhook investigar",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Forense Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/normalizar-investigacion.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Investigación: une webhook y subworkflow; rechaza campos no aceptados.\n\nconst x = $input.first().json;\nconst PROHIBIDOS = ['system', 'system_prompt', 'prompt', 'instrucciones_sistema',\n  'telefono', 'to_number', 'destinatario', 'model', 'modelo', 'nivel', 'dictamen',\n  'service_role', 'apikey', 'authorization'];\nconst crudo = x.body ?? x;\nconst presentes = PROHIBIDOS.filter((k) => crudo[k] !== undefined);\nif (presentes.length > 0) {\n  throw new Error(`campos no aceptados en el payload: ${presentes.join(', ')}`);\n}\nconst corrida_id = crudo.corrida_id ?? null;\nif (!corrida_id) throw new Error('corrida_id obligatorio: nunca se elige corrida por aproximación');\nconst cluster_id = crudo.cluster_id ?? null;\nconst origen = crudo.origen ?? null;\nconst valor = crudo.valor ?? null;\nif (!cluster_id && !(origen && valor)) {\n  throw new Error('se requiere cluster_id, o bien origen + valor para resolver el cluster');\n}\nconst idempotency_key = crudo.idempotency_key ?? null;\nif (!idempotency_key) throw new Error('idempotency_key obligatoria: misma clave devuelve el mismo caso');\nconst salida = {\n  corrida_id,\n  cluster_id,\n  origen,\n  valor_untrusted: valor,\n  investigacion_id: crudo.investigacion_id ?? null,\n  idempotency_key,\n  entrada: x.body ? 'webhook' : 'subworkflow',\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Normalizar entrada"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Primero resuelve/arma el cluster en el snapshot y DESPUÉS lo reclama (07 §2). Ocupado → en_cola, sin duplicar caso.\nSELECT * FROM forense.reclamar_cluster($1::uuid, $2::uuid, $3::text, $4::text, $5::text)",
+        "options": {
+          "queryReplacement": "={{ $json.corrida_id }}, ={{ $json.cluster_id }}, ={{ $json.origen }}, ={{ $json.valor_untrusted }}, ={{ $json.idempotency_key }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Resolver y reclamar cluster",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ caso_id: $json.caso_id, cluster_id: $json.cluster_id, corrida_id: $json.corrida_id, estado: $json.estado }) }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        660,
+        140
+      ],
+      "name": "Responder 202"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Una sola vez, con n8n_execution_id e intento=0. Emite caso_creado, cluster_armado y pista_cargada en bitacora.\nSELECT * FROM forense.crear_caso($1::uuid, $2::uuid, $3::text, $4::text)",
+        "options": {
+          "queryReplacement": "={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $execution.id }}, ={{ $json.idempotency_key }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        880,
+        0
+      ],
+      "name": "Crear caso",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Resumen ≤40 RFC y pistas POR FAMILIA. R1 no recibe señales ajenas (17 §7); persiste ronda1 y ronda_inicio.\nSELECT * FROM forense.preparar_contexto_ronda1($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Contexto ronda 1",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Omite familias no evaluables con resultado.motivo_omision = no_evaluable. Devuelve el conjunto exacto de tarea_id.\nSELECT * FROM forense.crear_tareas_ronda($1::uuid, 1, 0, $2::text[])",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json.roles_evaluables) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1320,
+        0
+      ],
+      "name": "Crear tareas R1",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1540,
+        0
+      ],
+      "name": "Despachar especialistas"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.\nINSERT INTO forense.pasos_pipeline\n       (caso_id, paso, revision, tareas_esperadas, snapshot_senales, estado, deadline)\nVALUES ($1::uuid, 'ronda1', 1, $2::uuid[], $3::jsonb, 'esperando', $4::timestamptz)\nRETURNING *",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json.tarea_ids) }}, ={{ JSON.stringify($json.snapshot_senales) }}, ={{ $json.deadline }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1760,
+        0
+      ],
+      "name": "Registrar barrera R1",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Conexión corta: {completa, faltantes, vencida}. Nunca un bucle SQL bloqueante esperando al modelo (17 §2).\nSELECT * FROM forense.estado_barrera($1::uuid, 'ronda1')",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1980,
+        0
+      ],
+      "name": "Esperar barrera R1",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.completa || $json.vencida }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        0
+      ],
+      "name": "¿Barrera completa?"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ 10000 }}",
+        "unit": "ms"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        140
+      ],
+      "name": "Espera barrera"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Cero señales también exige resultado explícito y tarea completada (07 §2.5).\nSELECT forense.registrar_evento($1::uuid, 'ronda_fin', $2::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify({ ronda: 1, resultados: $json.resultados, limitaciones: $json.limitaciones }) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2200,
+        0
+      ],
+      "name": "Ronda fin R1",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/evaluar-frontera.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Investigación: tabla de despertar de 03 y frontera material (07 §2.6).\n\nconst x = $input.first().json;\nconst TABLA_DISPARO = {\n  R: ['documental', 'financiero'],\n  F: ['documental', 'temporal'],\n  D: ['financiero'],\n  T: ['relacional'],\n  E: [],\n};\nconst ROL_POR_FAMILIA = { D: 'documental', F: 'financiero', R: 'relacional', T: 'temporal', E: 'externo' };\nconst FAMILIA_POR_ROL = { documental: 'D', financiero: 'F', relacional: 'R', temporal: 'T', externo: 'E' };\nconst MAX_EXPANSIONES_POR_CLUSTER = 1;\n\nconst senales = Array.isArray(x.senales) ? x.senales : [];\nconst evaluables = new Set(x.familias_evaluables ?? ['D', 'F', 'R', 'T', 'E']);\nconst porId = new Map(senales.map((s) => [String(s.id), s]));\nconst motivos = {};\nconst agregar = (rol, motivo) => {\n  if (!rol) return;\n  const familia = FAMILIA_POR_ROL[rol];\n  if (!familia || !evaluables.has(familia)) return;\n  if (!motivos[rol]) motivos[rol] = [];\n  motivos[rol].push(motivo);\n};\nfor (const senal of senales) {\n  if (senal.refuta === true) {\n    const objetivo = (senal.refuta_senal_id !== undefined && porId.has(String(senal.refuta_senal_id)))\n      ? porId.get(String(senal.refuta_senal_id)).familia\n      : (senal.familia_refutada ?? null);\n    if (objetivo) agregar(ROL_POR_FAMILIA[objetivo], `refuta:${senal.id}`);\n    continue;\n  }\n  if (senal.familia === 'E') {\n    const afectadas = senal.familias_afectadas ?? [...evaluables].filter((f) => f !== 'E');\n    for (const f of afectadas) agregar(ROL_POR_FAMILIA[f], `E:${senal.id}`);\n    continue;\n  }\n  for (const rol of (TABLA_DISPARO[senal.familia] ?? [])) agregar(rol, `${senal.familia}:${senal.id}`);\n}\nconst despertados = Object.keys(motivos).sort();\n\n// Frontera material.\nconst dentro = new Set(x.rfcs_cluster ?? []);\nconst metricas = x.metricas_frontera ?? {};\nconst umbral = String(x.umbral_facturacion_centavos ?? '0');\nconst candidatos = new Set();\nfor (const senal of senales) for (const rfc of (senal.frontera ?? [])) if (!dentro.has(rfc)) candidatos.add(rfc);\nconst relevantes = [...candidatos].filter((rfc) => {\n  const m = metricas[rfc];\n  if (!m) return false;\n  if (m.relevante === true) return true;\n  if (m.facturacion_centavos === undefined) return false;\n  return BigInt(m.facturacion_centavos) > BigInt(umbral);\n}).sort();\nconst rutaMaterial = (x.rutas_materiales_cortadas ?? []).filter((rfc) => !dentro.has(rfc)).sort();\nconst version_contexto = Number(x.version_contexto ?? 1);\nconst cuotaDisponible = Number(x.expansiones_previas ?? 0) < MAX_EXPANSIONES_POR_CLUSTER;\nconst cumpleUmbral = relevantes.length >= 2 || rutaMaterial.length >= 1;\n\nlet frontera;\nif (!cumpleUmbral) {\n  frontera = {\n    expandir: false, motivo: 'frontera_no_significativa', rfcs_nuevos: [],\n    version_contexto_nueva: version_contexto, pendientes: [...candidatos].sort(),\n    limitaciones: candidatos.size > 0 ? [{\n      codigo: 'cobertura_incompleta',\n      descripcion: `La cadena continúa hacia ${candidatos.size} RFC no investigados.`,\n      referencias: [],\n    }] : [],\n  };\n} else if (!cuotaDisponible) {\n  frontera = {\n    expandir: false, motivo: 'cuota_expansion_agotada', rfcs_nuevos: [],\n    version_contexto_nueva: version_contexto, pendientes: relevantes,\n    limitaciones: [{\n      codigo: 'cobertura_incompleta',\n      descripcion: `Ya se usó la única expansión del cluster; la cadena continúa hacia ${relevantes.length} RFC no investigados.`,\n      referencias: [],\n    }],\n  };\n} else {\n  const nuevos = [...new Set([...relevantes, ...rutaMaterial])].sort();\n  frontera = {\n    expandir: true,\n    motivo: relevantes.length >= 2 ? 'frontera_significativa' : 'ruta_material_cortada',\n    rfcs_nuevos: nuevos, version_contexto_nueva: version_contexto + 1,\n    pendientes: [], limitaciones: [],\n  };\n}\n\nconst porExpansion = frontera.expandir ? (x.roles_por_expansion ?? []) : [];\nconst conjunto = [...new Set([...despertados, ...porExpansion])]\n  .filter((rol) => evaluables.has(FAMILIA_POR_ROL[rol]))\n  .sort();\nconst salida = {\n  despertados: conjunto,\n  motivos,\n  frontera,\n  saltar_ronda2: conjunto.length === 0,\n  version_contexto: frontera.version_contexto_nueva,\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        0
+      ],
+      "name": "Evaluar frontera y despertar"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.saltar_ronda2 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2640,
+        0
+      ],
+      "name": "¿Hay ronda 2?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- La expansión usa la ÚNICA cuota del cluster e incrementa version_contexto; no vuelve a ronda 1 (07 §2.6–2.8).\nSELECT * FROM forense.expandir_y_crear_tareas_r2($1::uuid, $2::text[], $3::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json.despertados) }}, ={{ JSON.stringify($json.frontera) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2860,
+        140
+      ],
+      "name": "Expandir y crear tareas R2",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3080,
+        140
+      ],
+      "name": "Despachar R2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Dos tareas despertadas NO esperan cinco.\nSELECT * FROM forense.estado_barrera($1::uuid, 'ronda2')",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3300,
+        140
+      ],
+      "name": "Barrera R2",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Auditor y Defensor TAMBIÉN crean tarea: necesitan p_tarea válido y consumen la cuota global (07).\nSELECT * FROM forense.abrir_tarea_cierre($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ 'auditor' }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2860,
+        0
+      ],
+      "name": "Auditoría",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3080,
+        0
+      ],
+      "name": "Ejecutar auditor"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Pertenencia, valores y soporte resueltos desde DB: un ID existente no demuestra la hipótesis.\nSELECT public.forense_validar_evidencia($1::uuid, $2::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.tarea_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3300,
+        0
+      ],
+      "name": "Validar evidencia propuesta",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Persiste defendiendo y emite defensa_inicio. Hasta 15 herramientas.\nSELECT * FROM forense.abrir_tarea_cierre($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ 'defensor' }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3520,
+        0
+      ],
+      "name": "Defensa",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3740,
+        0
+      ],
+      "name": "Ejecutar defensor"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_replica_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3960,
+        0
+      ],
+      "name": "Réplica"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Transacción: evaluacion_pistas del caso y solo evidencias objetivo. NUNCA cambia pistas.estado global (07 §15).\nSELECT * FROM forense.aplicar_resolucion_replica($1::uuid, $2::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.tarea_replica_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        4180,
+        0
+      ],
+      "name": "Aplicar resolución",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Entrada preparada por backend, nunca JSON de agente sin validar (07 §Code node).\nSELECT * FROM forense.paquete_auditor_final($1::uuid)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        4400,
+        0
+      ],
+      "name": "Paquete auditor final",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/auditor-final.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Auditor Final (07). Entrada preparada por backend, nunca JSON de agente sin validar.\n\nconst x = $input.first().json;\nconst pistas = x.pistas ?? [];\nconst ev = (x.evidencia ?? []).filter(e =>\n  e.valida_tecnica === true && e.refutada !== true && e.validada === true);\nconst permitidas = new Set(['D', 'F', 'R', 'T', 'E']);\nconst familias = new Set(ev.map(e => e.familia).filter(f => permitidas.has(f)));\nconst pendientes = x.pendientes ?? [];\nconst prioridades = ['evidencia_invalida', 'contradiccion',\n  'defensa_no_considerada', 'cadena_incompleta', 'evidencia_insuficiente'];\nconst pendiente = prioridades.map(m => pendientes.find(p =>\n  p.motivo === m && p.reparable === true && p.objetivo)).find(Boolean);\nconst puedeReintentar = Number(x.caso.n_reintentos) < 2\n  && x.presupuesto.permite_reintento === true;\nconst rechazo = pendiente && puedeReintentar\n  ? { motivo: pendiente.motivo, objetivo: pendiente.objetivo } : null;\nconst completo = x.cobertura_completa === true && pendientes.length === 0;\nconst todasRefutadas = pistas.length > 0\n  && pistas.every(p => p.estado === 'refutada');\nconst e1def = ev.some(e => e.pista_codigo === 'E1' && e.familia === 'E'\n  && e.hecho_validado?.estatus === 'definitivo'\n  && e.hecho_validado?.saltos === 0);\nlet nivel;\nif (!completo) nivel = 'no_concluyente';\nelse if (todasRefutadas) nivel = 'anomalia_explicada';\nelse if (ev.length === 0 && pistas.length === 0) nivel = 'sin_hallazgos';\nelse if (familias.size >= 3 || (familias.size >= 2 && e1def)) nivel = 'presuncion_alta';\nelse if (familias.size >= 2) nivel = 'presuncion';\nelse nivel = 'no_concluyente';\n\n// monto_centavos: entero decimal resuelto desde NUMERIC de DB, no del modelo.\n// El mismo CFDI citado por varias familias cuenta una vez.\nconst porFactura = new Map();\nfor (const e of ev.filter(e => e.tipo === 'cfdi')) {\n  const centavos = e.hecho_validado?.monto_centavos;\n  if (!/^[0-9]+$/.test(String(centavos ?? ''))) {\n    throw new Error(`Monto validado ausente/inválido para ${e.ref_id}`);\n  }\n  const valor = BigInt(centavos);\n  if (porFactura.has(e.ref_id) && porFactura.get(e.ref_id) !== valor) {\n    throw new Error(`Monto inconsistente para ${e.ref_id}`);\n  }\n  porFactura.set(e.ref_id, valor);\n}\nconst monto = [...porFactura.values()].reduce((s, v) => s + v, 0n);\nconst ordenadas = [...familias].sort();\nconst salida = {\n  rechazo,\n  nivel,\n  familias: ordenadas,\n  monto_en_riesgo_centavos: monto.toString(),\n  regla: `${ordenadas.length} familia(s) sustentadas: ${ordenadas.join(', ')} → ${nivel}`,\n  limitaciones: pendientes.map(p => p.motivo),\n};\nreturn [{ json: salida }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        0
+      ],
+      "name": "Auditor Final"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.rechazo !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4840,
+        0
+      ],
+      "name": "¿Rechazo reparable?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Autoriza 1 y 2. Emite rechazo_auditor_final y reintento_inicio.\nUPDATE forense.casos\n   SET n_reintentos = n_reintentos + 1\n WHERE id = $1::uuid AND n_reintentos < 2\nRETURNING n_reintentos",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        4840,
+        280
+      ],
+      "name": "Claim de reintento",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_REINTENTO",
+          "cachedResultName": "FORENSE_reintento"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "caso_id": "={{ $json.caso_id }}",
+            "intento": "={{ $json.n_reintentos }}",
+            "motivo": "={{ $json.rechazo.motivo }}",
+            "objetivo": "={{ $json.rechazo.objetivo }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        5060,
+        280
+      ],
+      "name": "Llamar reintento"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Nivel máximo presuncion_alta (regla 7). Guarda familias, monto deduplicado y resultado_por_rfc; no hereda el nivel a satélites.\nSELECT * FROM forense.guardar_dictamen($1::uuid, $2::jsonb)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json) }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        4840,
+        0
+      ],
+      "name": "Guardar dictamen",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Sin tools. Incluye las secciones fijas Trayectoria y Cadena de explicación (21 §2 y §4).\nSELECT * FROM forense.abrir_tarea_cierre($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ 'redactor' }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        5060,
+        0
+      ],
+      "name": "Redacción",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_EJECUTAR_AGENTE",
+          "cachedResultName": "FORENSE_ejecutar_agente"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tarea_id": "={{ $json.tarea_id }}",
+            "owner": "={{ $execution.id }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        5280,
+        0
+      ],
+      "name": "Ejecutar redactor"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Cada cita resuelve a un ID validado; cada paso de la cadena cita un ID o declara «sin evidencia».\nSELECT * FROM forense.validar_expediente($1::uuid, $2::int)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.version }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        5500,
+        0
+      ],
+      "name": "Validar citas",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- dictaminado | error, terminado, duracion_ms, libera lease. Presupuesto agotado → parcial con no_concluyente.\nSELECT * FROM forense.cerrar_caso($1::uuid, $2::text)",
+        "options": {
+          "queryReplacement": "={{ $json.caso_id }}, ={{ $json.estado_final }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        5720,
+        0
+      ],
+      "name": "Cerrar caso",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_NOTIFICAR_COMPLETADA",
+          "cachedResultName": "FORENSE_notificar_completada"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "investigacion_id": "={{ $json.investigacion_id }}",
+            "caso_id": "={{ $json.caso_id }}"
+          }
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        5940,
+        0
+      ],
+      "name": "Avisar agregador"
+    },
+    {
+      "parameters": {
+        "content": "FORENSE_investigar_cluster (07 §2, 17 §3).\n\nLa barrera espera el CONJUNTO de tarea_id despachados hasta que todas\nestén completada|error|timeout|omitida. Si se despertaron dos\nespecialistas, no se esperan cinco.\n\nEl nivel lo calcula el Code node «Auditor Final» (determinista,\ngenerado desde n8n/runtime/auditor-final.mjs). El LLM no lo decide.\nMáximo: presuncion_alta.",
+        "height": 280,
+        "width": 440,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        560
+      ],
+      "name": "Nota barrera"
+    }
+  ],
+  "connections": {
+    "Desde corrida": {
+      "main": [
+        [
+          {
+            "node": "Normalizar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook investigar": {
+      "main": [
+        [
+          {
+            "node": "Normalizar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar entrada": {
+      "main": [
+        [
+          {
+            "node": "Resolver y reclamar cluster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolver y reclamar cluster": {
+      "main": [
+        [
+          {
+            "node": "Responder 202",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Crear caso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear caso": {
+      "main": [
+        [
+          {
+            "node": "Contexto ronda 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contexto ronda 1": {
+      "main": [
+        [
+          {
+            "node": "Crear tareas R1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear tareas R1": {
+      "main": [
+        [
+          {
+            "node": "Despachar especialistas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Registrar barrera R1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar barrera R1": {
+      "main": [
+        [
+          {
+            "node": "Esperar barrera R1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar barrera R1": {
+      "main": [
+        [
+          {
+            "node": "¿Barrera completa?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Barrera completa?": {
+      "main": [
+        [
+          {
+            "node": "Ronda fin R1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Espera barrera",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera barrera": {
+      "main": [
+        [
+          {
+            "node": "Esperar barrera R1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ronda fin R1": {
+      "main": [
+        [
+          {
+            "node": "Evaluar frontera y despertar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar frontera y despertar": {
+      "main": [
+        [
+          {
+            "node": "¿Hay ronda 2?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay ronda 2?": {
+      "main": [
+        [
+          {
+            "node": "Expandir y crear tareas R2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auditoría",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expandir y crear tareas R2": {
+      "main": [
+        [
+          {
+            "node": "Despachar R2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Barrera R2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Barrera R2": {
+      "main": [
+        [
+          {
+            "node": "Auditoría",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auditoría": {
+      "main": [
+        [
+          {
+            "node": "Ejecutar auditor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar auditor": {
+      "main": [
+        [
+          {
+            "node": "Validar evidencia propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar evidencia propuesta": {
+      "main": [
+        [
+          {
+            "node": "Defensa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Defensa": {
+      "main": [
+        [
+          {
+            "node": "Ejecutar defensor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar defensor": {
+      "main": [
+        [
+          {
+            "node": "Réplica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Réplica": {
+      "main": [
+        [
+          {
+            "node": "Aplicar resolución",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar resolución": {
+      "main": [
+        [
+          {
+            "node": "Paquete auditor final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Paquete auditor final": {
+      "main": [
+        [
+          {
+            "node": "Auditor Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auditor Final": {
+      "main": [
+        [
+          {
+            "node": "¿Rechazo reparable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Rechazo reparable?": {
+      "main": [
+        [
+          {
+            "node": "Claim de reintento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar dictamen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim de reintento": {
+      "main": [
+        [
+          {
+            "node": "Llamar reintento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Llamar reintento": {
+      "main": [
+        [
+          {
+            "node": "Paquete auditor final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar dictamen": {
+      "main": [
+        [
+          {
+            "node": "Redacción",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redacción": {
+      "main": [
+        [
+          {
+            "node": "Ejecutar redactor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar redactor": {
+      "main": [
+        [
+          {
+            "node": "Validar citas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar citas": {
+      "main": [
+        [
+          {
+            "node": "Cerrar caso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cerrar caso": {
+      "main": [
+        [
+          {
+            "node": "Avisar agregador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
