@@ -53,6 +53,7 @@ export default async function ExpedientePage({ params }: { params: Promise<{ id:
           referenciasValidadas={[...referenciasValidadas]}
           evidencia={detalle.evidencia.map((e) => ({
             id: e.id,
+            referencias: e.referencias,
             referencia: e.referencias[0] ?? e.ref_id,
             tipo: e.tipo,
             pista_codigo: e.pista_codigo,

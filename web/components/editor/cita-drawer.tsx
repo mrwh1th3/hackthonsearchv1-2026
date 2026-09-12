@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils";
 export interface EvidenciaCita {
   /** id de la fila de evidencia (`common.bigint`), el que viaja en `evidencia_ids`. */
   id: string;
+  /** Todas las referencias que produce esta fila; una cita puede ser cualquiera. */
+  referencias: string[];
+  /** Referencia principal, para listar y abrir el drawer. */
   referencia: string;
   tipo: string;
   pista_codigo: string;

@@ -16,7 +16,7 @@ import { construirIndice } from "@/lib/document/secciones";
 import type { Documento, Reporte } from "@/lib/document/tipos";
 import { cn } from "@/lib/utils";
 
-import { guardarBorradorRemoto, revertirVersion, uuid } from "./cliente";
+import { guardarBorradorRemoto, leerVersiones, revertirVersion, uuid } from "./cliente";
 import { CitaDrawer, type EvidenciaCita } from "./cita-drawer";
 import { DescargasExpediente } from "./descargas";
 import { EstilosHoja } from "./estilos-hoja";
@@ -65,14 +65,8 @@ type EstadoGuardado =
 
 const ZOOMS = [75, 100, 125, 150] as const;
 
-interface VersionHistorial {
-  version: number;
-  autor: string;
-  estado_revision: string;
-  creado: string;
-  content_hash: string;
-  markdown: string;
-}
+/** El historial son reportes completos (`editor.reporte`), con su documento. */
+type VersionHistorial = Reporte;
 
 export function DocumentWorkspace({
   casoId,
@@ -203,29 +197,54 @@ export function DocumentWorkspace({
 
   // --- Versión nueva aplicada ---------------------------------------------
   function adoptarVersion(reporte: Reporte, revisarCitas?: boolean) {
+    if (temporizador.current) clearTimeout(temporizador.current); // no guardar el documento viejo
     setVersion(reporte.version);
+    versionRef.current = reporte.version;
     setRevision(reporte.estado_revision);
     setDocumentoActual(reporte.contenido_json);
-    // `false` evita disparar onUpdate y, con él, un autoguardado espurio.
+    // `emitUpdate: false` evita disparar onUpdate y, con él, un autoguardado espurio.
     editor?.commands.setContent(reporte.contenido_json, { emitUpdate: false });
     setGuardado({ tipo: "limpio" });
     if (revisarCitas) toast.warning("La versión nueva tiene citas por revisar");
   }
 
-  async function cargarHistorial() {
-    try {
-      const res = await fetch(`/api/reportes/versiones?caso_id=${encodeURIComponent(casoId)}`, { credentials: "same-origin" });
-      if (!res.ok) {
-        toast.error("No se pudo leer el historial de versiones");
+  // Referencia estable: `cargarHistorial` se memoiza por caso y no debe
+  // quedarse con el `editor` nulo del primer render.
+  const adoptarVersionRef = useRef<((reporte: Reporte, revisarCitas?: boolean) => void) | null>(null);
+  adoptarVersionRef.current = adoptarVersion;
+
+  const cargarHistorial = useCallback(
+    async (opciones: { adoptarVigente?: boolean } = {}): Promise<void> => {
+      const resultado = await leerVersiones(casoId);
+      if (!resultado.ok) {
+        if (!opciones.adoptarVigente) toast.error("No se pudo leer el historial de versiones");
         return;
       }
-      const json = (await res.json()) as { versiones: VersionHistorial[] };
-      setHistorial(json.versiones);
-      setComparando(json.versiones.length > 1 ? json.versiones[json.versiones.length - 2].version : null);
-    } catch {
-      toast.error("No se pudo leer el historial de versiones");
-    }
-  }
+      // Respuesta sin lista (backend antiguo o cuerpo inesperado): no se rompe
+      // el editor por el historial.
+      const lista = Array.isArray(resultado.datos?.versiones) ? resultado.datos.versiones : [];
+      setHistorial(lista);
+      setComparando(lista.length > 1 ? lista[lista.length - 2].version : null);
+
+      const vigente = lista[lista.length - 1];
+      if (opciones.adoptarVigente && vigente && vigente.version > versionRef.current) {
+        // El expediente avanzó desde que se renderizó la página (Aplicar y
+        // recarga, u otra pestaña). Montar en la versión vieja dejaría toda
+        // escritura en conflicto permanente.
+        adoptarVersionRef.current?.(vigente);
+        toast.info(`El expediente ya estaba en la versión ${vigente.version}: se cargó esa.`);
+      }
+    },
+    [casoId],
+  );
+
+  // Sincronización al montar: una sola vez, cuando el editor ya existe.
+  const yaSincronizado = useRef(false);
+  useEffect(() => {
+    if (!editor || yaSincronizado.current) return;
+    yaSincronizado.current = true;
+    void cargarHistorial({ adoptarVigente: true });
+  }, [editor, cargarHistorial]);
 
   async function revertir(objetivo: number) {
     const resultado = await revertirVersion({
@@ -534,7 +553,9 @@ export function DocumentWorkspace({
 
       <CitaDrawer
         referencia={citaAbierta}
-        evidencia={evidencia.find((e) => e.referencia === citaAbierta) ?? null}
+        // Una fila de evidencia puede producir varias referencias: se busca en
+        // todas, no solo en la principal, o el drawer contradiría al chip verde.
+        evidencia={evidencia.find((e) => citaAbierta !== null && e.referencias.includes(citaAbierta)) ?? null}
         onOpenChange={(abierto) => !abierto && setCitaAbierta(null)}
       />
 

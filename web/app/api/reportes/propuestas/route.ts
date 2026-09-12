@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { validateContract } from "@/lib/contracts/validate";
-import { registrarPropuesta } from "@/lib/document/almacen-demo";
+import { borradorActual, registrarPropuesta } from "@/lib/document/almacen-demo";
 import { indexarBloques } from "@/lib/document/documento";
 import { construirPropuesta, salidaEditorDemostracion } from "@/lib/document/propuesta";
 import {
@@ -52,7 +52,14 @@ export async function POST(req: Request) {
       { status: 409 },
     );
   }
-  const documento = caso.versionActual.contenido_json;
+  // La propuesta se calcula sobre lo que el usuario está viendo: el borrador
+  // autoguardado de esta `version_base` si existe, y la versión almacenada si
+  // no. Sin esto, un bloque escrito en esta sesión (id `blk-n…`, ausente de la
+  // versión guardada) no podría seleccionarse —409 `seleccion_desplazada`— y
+  // Aplicar descartaría en silencio la edición manual del borrador.
+  const borrador = borradorActual(solicitud.caso_id);
+  const documento =
+    borrador && borrador.version_base === solicitud.version_base ? borrador.documento : caso.versionActual.contenido_json;
 
   // La selección se verifica contra la versión base: si los bloques ya no
   // existen, se pide reconfirmar la selección actual (07 §4 paso 3).

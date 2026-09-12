@@ -264,6 +264,52 @@ describe("BFF de reportes (editor)", () => {
     expect((await conflicto.json()).version_actual).toBe(1);
   });
 
+  it("la propuesta se calcula sobre el borrador: un bloque escrito en la sesión puede editarse y Aplicar no lo pierde", async () => {
+    // El usuario escribe un párrafo nuevo; el autoguardado lo conserva.
+    const conNota = {
+      ...documentoBase,
+      content: [
+        ...documentoBase.content,
+        { type: "paragraph", attrs: { id: "blk-nota-1" }, content: [{ type: "text", text: "Nota manual del auditor." }] },
+      ],
+    };
+    const guardado = await postBorrador(
+      await peticion("/api/reportes/borrador", { caso_id: CASO, version_base: 1, documento: conNota }),
+    );
+    expect(guardado.status).toBe(200);
+
+    // Ese bloque NO existe en la versión almacenada: si la propuesta se
+    // calculara sobre ella, esto sería 409 `seleccion_desplazada`.
+    const res = await postPropuestas(
+      await peticion("/api/reportes/propuestas", {
+        caso_id: CASO,
+        version_base: 1,
+        modo: "propuesta",
+        seleccion: { from: 0, to: 20, block_ids: ["blk-nota-1"], texto_hash: hashTexto("Nota manual del auditor.") },
+        mensaje: "Hazlo más claro.",
+        evidencia_ids: [],
+        idempotency_key: uuid("412"),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.modo).toBe("propuesta");
+
+    const aplicado = await (
+      await postAplicar(
+        await peticion(`/api/reportes/aplicar?caso_id=${CASO}`, {
+          propuesta_id: json.propuesta.propuesta_id,
+          version_base: 1,
+          idempotency_key: uuid("413"),
+        }),
+      )
+    ).json();
+    expect(aplicado.version).toBe(2);
+    // La edición manual sobrevive a Aplicar y la propuesta se aplicó sobre ella.
+    expect(aplicado.reporte.markdown).toContain("Nota manual del auditor");
+    expect(aplicado.reporte.markdown).toContain("Redacción revisada");
+  });
+
   it("exportar MD y JSON conserva exactamente las citas del documento", async () => {
     const md = await (await postExportar(await peticion("/api/reportes/exportar", { caso_id: CASO, formato: "md" }))).json();
     const json = await (await postExportar(await peticion("/api/reportes/exportar", { caso_id: CASO, formato: "json" }))).json();

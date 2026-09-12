@@ -27,17 +27,11 @@ export async function GET(req: Request) {
   const caso = await cargarCasoEditor(casoId);
   if (!caso) return NextResponse.json({ error: "caso_no_encontrado" }, { status: 404 });
 
-  return NextResponse.json({
-    origen: origenDe(modo),
-    versiones: versiones(casoId).map((v) => ({
-      version: v.version,
-      autor: v.autor,
-      estado_revision: v.estado_revision,
-      creado: v.creado,
-      content_hash: v.content_hash,
-      markdown: v.markdown,
-    })),
-  });
+  // Se devuelven los reportes completos (`editor.reporte`), con
+  // `contenido_json`: el editor los usa para adoptar la versión vigente al
+  // montar —una recarga tras Aplicar volvería a montar en v1 y toda escritura
+  // chocaría en 409— y para el diff del historial, sin una segunda petición.
+  return NextResponse.json({ origen: origenDe(modo), versiones: versiones(casoId) });
 }
 
 export async function POST() {

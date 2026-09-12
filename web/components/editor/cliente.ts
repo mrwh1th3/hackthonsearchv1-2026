@@ -146,6 +146,26 @@ export function guardarBorradorRemoto(cuerpo: {
   return postear<RespuestaBorrador>("/api/reportes/borrador", cuerpo);
 }
 
+/**
+ * Historial de versiones. El editor lo pide al montar: si el expediente ya
+ * avanzó (otra pestaña, o una recarga después de Aplicar), monta sobre la
+ * versión vigente en vez de chocar en 409 con cada escritura.
+ */
+export async function leerVersiones(casoId: string): Promise<Resultado<{ origen: string; versiones: Reporte[] }>> {
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`/api/reportes/versiones?caso_id=${encodeURIComponent(casoId)}`, {
+      credentials: "same-origin",
+    });
+  } catch {
+    return { ok: false, error: { error: "sin_conexion", status: 0 } };
+  }
+  if (!respuesta.ok) {
+    return { ok: false, error: { error: "no_disponible", status: respuesta.status } };
+  }
+  return { ok: true, datos: (await respuesta.json()) as { origen: string; versiones: Reporte[] } };
+}
+
 /** uuid v4 con la API del navegador; el contrato exige uuid en las claves. */
 export function uuid(): string {
   return globalThis.crypto.randomUUID();

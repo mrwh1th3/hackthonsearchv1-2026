@@ -30,6 +30,7 @@ const CITA_VALIDA = "CFDI:00000000-0000-4000-8000-000000000901";
 const evidencia = [
   {
     id: "701",
+    referencias: [CITA_VALIDA],
     referencia: CITA_VALIDA,
     tipo: "cfdi",
     pista_codigo: "D2",
@@ -148,14 +149,61 @@ describe("DocumentWorkspace", () => {
     hoja.focus();
     await usuario.keyboard("Nota del auditor. ");
 
-    await waitFor(() => expect(llamadas.length).toBeGreaterThan(0), { timeout: 4000 });
-    expect(llamadas[0].url).toBe("/api/reportes/borrador");
-    expect(llamadas[0].cuerpo.version_base).toBe(1);
-    expect(JSON.stringify(llamadas[0].cuerpo.documento)).toContain("Nota del auditor");
+    // (la primera llamada es la sincronización de versiones del montaje)
+    const borradores = () => llamadas.filter((l) => l.url === "/api/reportes/borrador");
+    await waitFor(() => expect(borradores().length).toBeGreaterThan(0), { timeout: 4000 });
+    expect(borradores()[0].cuerpo.version_base).toBe(1);
+    expect(JSON.stringify(borradores()[0].cuerpo.documento)).toContain("Nota del auditor");
     // El autoguardado no versiona: la cabecera sigue en v1.
     expect(screen.getByText(/v1 · validado/)).toBeInTheDocument();
     expect(await screen.findByText(/^Guardado /)).toBeInTheDocument();
   }, 15000);
+
+  it("al montar adopta la versión vigente si el expediente ya avanzó (recarga tras Aplicar)", async () => {
+    const documentoV2 = desdeMarkdown(`## 1. Resumen\n\nTexto ya editado en la versión 2 [${CITA_VALIDA}].`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.startsWith("/api/reportes/versiones")) {
+          return respuestaJson({
+            origen: "fixture",
+            versiones: [
+              {
+                caso_id: CASO,
+                version: 1,
+                estado_revision: "validado",
+                autor: "agente",
+                creado: "2026-09-11T22:00:00Z",
+                contenido_json: desdeMarkdown("## 1. Resumen\n\nTexto original."),
+                markdown: "## 1. Resumen\n\nTexto original.",
+                content_hash: "a".repeat(64),
+              },
+              {
+                caso_id: CASO,
+                version: 2,
+                estado_revision: "borrador",
+                autor: "agente",
+                creado: "2026-09-11T23:00:00Z",
+                contenido_json: documentoV2,
+                markdown: "## 1. Resumen\n\nTexto ya editado en la versión 2.",
+                content_hash: "b".repeat(64),
+              },
+            ],
+          });
+        }
+        return respuestaJson({ ok: true });
+      }),
+    );
+
+    // La página monta con la v1 del Redactor: sin sincronización, toda
+    // escritura chocaría en 409 contra un almacén que ya está en v2.
+    render(workspace(desdeMarkdown("## 1. Resumen\n\nTexto original.")));
+
+    expect(await screen.findByText(/v2 · borrador/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector(".hoja-prosa")?.textContent).toContain("Texto ya editado en la versión 2"),
+    );
+  });
 
   it("ofrece los tres modos y explica el modo sugerir", async () => {
     const usuario = userEvent.setup();
