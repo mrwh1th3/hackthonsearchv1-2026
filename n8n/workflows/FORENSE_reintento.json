@@ -327,7 +327,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.\nSELECT * FROM forense.estado_barrera($1::uuid, $2::text)",
+        "query": "-- Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.\nSELECT $1::uuid AS caso_id, b.paso, b.completa, b.faltantes, b.vencida\n  FROM jsonb_to_record(forense.estado_barrera($1::uuid, $2::text))\n    AS b(ok boolean, existe boolean, paso text, completa boolean,\n         faltantes jsonb, vencida boolean, estado jsonb)",
         "options": {
           "queryReplacement": "={{ $('Validar intento').first().json.caso_id }}, ={{ 'reintento' + $('Validar intento').first().json.intento }}"
         }

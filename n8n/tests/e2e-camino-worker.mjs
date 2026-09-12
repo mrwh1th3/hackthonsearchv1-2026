@@ -15,8 +15,13 @@
 // el check de `forense.bitacora.tipo_evento` ampliado con 'paso_en_cola' y
 // 'paso_checkpoint' (009 de forense-db; ver IMPORT.md §Variables).
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { dictaminar } from '../runtime/auditor-final.mjs';
+import { fileURLToPath } from 'node:url';
+import { dictaminar, NIVELES } from '../runtime/auditor-final.mjs';
+
+const RAIZ_N8N = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const PSQL = process.env.PSQL ?? '/opt/homebrew/opt/postgresql@17/bin/psql';
 const args = process.argv.slice(2);
@@ -73,6 +78,23 @@ function lit(v) {
 }
 const jsonLit = (v) => `${lit(JSON.stringify(v))}::jsonb`;
 const arrLit = (xs) => `ARRAY[${xs.map(lit).join(',')}]::text[]`;
+
+// La SQL de los pasos de cierre no se reescribe aquí: se toma del workflow
+// EXPORTADO y se le sustituyen los parámetros por posición ($10 antes que $1
+// para no partir el número). Así el camino que mide este e2e es literalmente
+// el que se importa en n8n; no puede haber una versión «de test».
+const WORKFLOWS = new Map();
+function sqlDeNodo(nombreNodo, valores, archivo = 'FORENSE_investigar_cluster') {
+  if (!WORKFLOWS.has(archivo)) {
+    WORKFLOWS.set(archivo, JSON.parse(
+      fs.readFileSync(path.join(RAIZ_N8N, 'workflows', `${archivo}.json`), 'utf8')));
+  }
+  const nodo = WORKFLOWS.get(archivo).nodes.find((n) => n.name === nombreNodo);
+  if (!nodo) throw new Error(`nodo ausente en ${archivo}: ${nombreNodo}`);
+  let sql = nodo.parameters.query;
+  for (let i = valores.length; i >= 1; i -= 1) sql = sql.replaceAll(`$${i}`, lit(valores[i - 1]));
+  return sql;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 0. Corrida aislada (regla 10): se CLONA gen-v1, nunca se investiga sobre ella.
@@ -237,57 +259,38 @@ paso('auditor: tarea terminada',
 // 6. Dictamen DETERMINISTA (regla 4): el paquete se lee de la DB y el nivel lo
 //    decide auditor-final.mjs, nunca el modelo.
 // ─────────────────────────────────────────────────────────────────────────────
-const paquete = JSON.parse(psql(`
-  select jsonb_build_object(
-    'caso_id', c.id, 'cluster_id', c.cluster_id, 'corrida_id', c.corrida_id,
-    'caso', jsonb_build_object('id', c.id, 'n_reintentos', c.n_reintentos),
-    'cobertura_completa', coalesce(c.cobertura_completa, true),
-    'presupuesto', jsonb_build_object('permite_reintento', not coalesce(c.presupuesto_agotado, false)),
-    'pendientes', coalesce(c.pendientes, '[]'::jsonb),
-    'pistas', coalesce((select jsonb_agg(jsonb_build_object('codigo', p.codigo, 'familia', left(p.codigo,1),
-                                                            'estado', p.estado, 'rfc', p.rfc))
-                          from forense.pistas p
-                         where p.corrida_id = c.corrida_id
-                           and p.rfc = any(array[c.rfc_principal] || coalesce(c.rfcs_satelite,'{}'))), '[]'),
-    'evidencia', coalesce((select jsonb_agg(jsonb_build_object(
-                              'id', e.id, 'tipo', e.tipo, 'ref_id', e.ref_id, 'familia', e.familia,
-                              'pista_codigo', e.pista_codigo, 'rfcs', e.rfcs_afectados,
-                              'valida_tecnica', e.valida_tecnica, 'refutada', e.refutada,
-                              'validada', e.validada, 'hecho_validado', e.hecho_validado))
-                             from forense.evidencia e where e.caso_id = c.id), '[]'),
-    'senales', coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'familia', s.familia,
-                                                             'refuta', s.refuta, 'confianza', s.confianza))
-                           from forense.senales s where s.caso_id = c.id), '[]')
-  )::text
-  from forense.casos c where c.id = ${lit(casoId)}::uuid`));
+// El paquete NO se arma aquí: se lee con la MISMA consulta que lleva el nodo
+// «Paquete auditor final» del workflow exportado. Si el generador la cambia,
+// este e2e cambia con él; si divergen, no hay forma de que este camino pase y
+// el del workflow falle.
+const paquete = JSON.parse(psql(
+  `select to_jsonb(t)::text from (${sqlDeNodo('Paquete auditor final', [casoId])}) t`,
+));
 
-let dictamen;
-try {
-  dictamen = dictaminar(paquete);
-} catch {
-  dictamen = null;
+// Regla 4: el nivel sale de código determinista. Sin red de seguridad: si
+// `dictaminar` lanza, el e2e falla. Un fallback local que inventara niveles
+// («presuncion_media», «indicio») fabricaría valores fuera de NIVELES y del
+// CHECK de `forense.casos.nivel`, y taparía cualquier deriva de firma.
+const dictamen = dictaminar(paquete);
+if (!NIVELES.includes(dictamen.nivel)) {
+  throw new Error(`nivel fuera del catálogo: ${dictamen.nivel} (máximo presuncion_alta, regla 7)`);
 }
-// Fallback determinista local si la firma de auditor-final.mjs difiere: el
-// nivel sigue saliendo de conteos, nunca de texto libre ni del modelo.
-if (!dictamen || !dictamen.nivel) {
-  const familias = new Set(paquete.evidencia.filter((e) => e.validada === true && e.valida_tecnica === true && e.refutada !== true).map((e) => e.familia).filter(Boolean));
-  const n = familias.size;
-  dictamen = {
-    nivel: n >= 3 ? 'presuncion_alta' : n === 2 ? 'presuncion_media' : n === 1 ? 'indicio' : 'no_concluyente',
-    familias: [...familias].sort(),
-    regla: 'familias_validadas',
-    origen: 'fallback_local_determinista',
-  };
-}
-if (dictamen.nivel === 'definitivo') throw new Error('nivel prohibido: definitivo (regla 7)');
 
-paso('persistir dictamen', `update forense.casos
-     set nivel=${lit(dictamen.nivel)}, familias_confirmadas=${arrLit(dictamen.familias ?? [])},
-         estado='dictaminado', terminado=now()
-   where id=${lit(casoId)}::uuid`);
-paso('bitacora: dictamen', `select forense.log(${lit(casoId)}::uuid, 'sistema', 'dictamen',
-   ${jsonLit({ nivel: dictamen.nivel, familias: dictamen.familias ?? [], regla: dictamen.regla ?? null })},
-   NULL, NULL, NULL, NULL, NULL, ${lit(cluster)}::uuid, NULL, ${lit(corrida)}::uuid)`);
+// Persistencia REAL: guardar_dictamen (010) acota el nivel al catálogo,
+// deduplica el monto y escribe resultado_por_rfc. Nada de UPDATE directo.
+const guardado = pasoJson('forense.guardar_dictamen',
+  `select to_jsonb(t) from (${sqlDeNodo('Guardar dictamen', [casoId, JSON.stringify(dictamen)])}) t`);
+if (guardado.nivel !== dictamen.nivel) {
+  throw new Error(`guardar_dictamen persistió ${guardado.nivel} y el dictaminador dijo ${dictamen.nivel}`);
+}
+// Regla 2: sin evento no hubo paso. Se comprueba que la propia función lo
+// dejó; si no, lo deja el runner (que es quien ejecuta el paso).
+if (Number(psql(`select count(*) from forense.bitacora
+                  where caso_id=${lit(casoId)}::uuid and tipo_evento='dictamen'`)) === 0) {
+  paso('bitacora: dictamen', `select forense.log(${lit(casoId)}::uuid, 'sistema', 'dictamen',
+     ${jsonLit({ nivel: dictamen.nivel, familias: dictamen.familias ?? [], regla: dictamen.regla ?? null, monto_en_riesgo_centavos: dictamen.monto_en_riesgo_centavos })},
+     NULL, NULL, NULL, NULL, NULL, ${lit(cluster)}::uuid, NULL, ${lit(corrida)}::uuid)`);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. Redactor simulado y expediente guardado (tabla real de 001/006).
@@ -317,6 +320,13 @@ paso('bitacora: redaccion_fin', `select forense.log(${lit(casoId)}::uuid, 'redac
    ${jsonLit({ version: 1, citas: citas.length })}, NULL, NULL, NULL, NULL, NULL, ${lit(cluster)}::uuid, ${lit(tareaRedactor)}::uuid, ${lit(corrida)}::uuid)`);
 paso('redactor: tarea terminada',
   `update forense.tareas_agente set estado='completada', terminado=now(), lease_owner=NULL, lease_expires_at=NULL where id=${lit(tareaRedactor)}::uuid`);
+
+// Validación de citas y CIERRE con la función real (010). El estado final no
+// lo elige el e2e: sale del nivel que dictaminó el código determinista.
+const citasValidadas = pasoJson('forense.validar_expediente',
+  `select to_jsonb(t) from (${sqlDeNodo('Validar citas', [casoId, 1])}) t`);
+const cierre = pasoJson('forense.cerrar_caso',
+  `select to_jsonb(t) from (${sqlDeNodo('Cerrar caso', [casoId, 'dictaminado'])}) t`);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. Medición: eventos en bitácora y tiempos. Sin evento no hubo paso (regla 2).
@@ -350,7 +360,10 @@ const resumen = {
   evidencia: evidencia,
   validacion,
   dictamen,
+  dictamen_persistido: guardado,
   expediente,
+  citas_validadas: citasValidadas,
+  cierre,
   eventos_bitacora_por_tipo: eventos,
   eventos_bitacora_total: totalEventos,
   pasos_medidos: tiempos.length,
