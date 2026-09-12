@@ -132,14 +132,42 @@ export const TECHO_CARACTERES = Object.freeze({
 export const AMBITOS_TECHO = Object.freeze(['total', 'paquete']);
 export const AMBITO_TECHO_POR_DEFECTO = 'paquete';
 
-// Techo propio del system (DECISIONES H3: "el system prompt tiene su propio techo medido
-// (≤10k)"). No es un throw: es el umbral que vigilan los tests para que los .md no crezcan
-// sin que nadie se entere. Dos variantes lo rebasan a propósito y por eso no se aborta:
-//  - los roles de cierre miden ~10.0k–10.1k (techo de paquete 24k, así que no aprietan);
-//  - la variante `fewshot` suma el ejemplo adversarial y llega a ~10.3k–11.2k.
-// `meta.caracteres_system` y `meta.system_sobre_techo` lo exponen en cada ensamblado para que
-// el runtime lo registre en bitácora en vez de descubrirlo en producción.
-export const TECHO_SYSTEM_CARACTERES = 10000;
+// Techo propio del system, POR ROL (DECISIONES H7: 10k especialistas, 12k cierre; antes era
+// un escalar de 10k, decisión H3). No es un throw: es el umbral que vigilan los tests para
+// que los .md no crezcan sin que nadie se entere. La distinción por rol es medida, no
+// estética:
+//  - un especialista comparte techo de paquete de 12k con las pistas, así que su system no
+//    puede pasar de 10k sin dejar al paquete sin datos (miden 8.6k–9.5k);
+//  - los roles de cierre tienen techo de paquete 24k y miden ~10.0k–10.1k: con el escalar de
+//    10k quedaban "sobre techo" por 100 caracteres sin que eso significara nada.
+//  - el mapper (19) no compite con pistas y mide ~8k; se le aplica el techo de cierre.
+// La variante `fewshot` suma el ejemplo adversarial y puede rebasar el techo del especialista
+// (~10.3k–11.2k): no se aborta, se reporta. `meta.caracteres_system`, `meta.techo_system` y
+// `meta.system_sobre_techo` lo exponen en cada ensamblado para que el runtime lo registre en
+// bitácora en vez de descubrirlo en producción.
+export const TECHO_SYSTEM_POR_ROL = Object.freeze({
+  documental: 10000, financiero: 10000, relacional: 10000, temporal: 10000, externo: 10000,
+  auditor: 12000, defensor: 12000, replica: 12000, redactor: 12000, editor: 12000,
+  mapper: 12000,
+});
+
+/**
+ * Techo del system para un rol. Un rol desconocido no existe: `ensamblar()` ya lo rechazó
+ * antes de llegar aquí, y devolver un número inventado escondería el error.
+ */
+export function techoSystem(rol) {
+  const techo = TECHO_SYSTEM_POR_ROL[rol];
+  if (techo === undefined) {
+    throw new ErrorEnsamblado('rol_sin_techo_system', `El rol ${rol} no tiene techo de system declarado.`, { rol });
+  }
+  return techo;
+}
+
+/**
+ * @deprecated Alias del techo de los especialistas, que es el que aprieta. Se conserva para
+ * consumidores viejos; lo vigente es `TECHO_SYSTEM_POR_ROL` / `techoSystem(rol)`.
+ */
+export const TECHO_SYSTEM_CARACTERES = TECHO_SYSTEM_POR_ROL.documental;
 
 // Reintentos (03 §bucle de reintento, 17 §8). El auditor de proceso rechaza un intento con
 // un motivo TIPIFICADO y el siguiente intento lleva instrucciones para ese motivo y sólo ese.
@@ -751,6 +779,7 @@ export function ensamblar(rol, paqueteContexto, opciones = {}) {
     throw new ErrorEnsamblado('ambito_techo_invalido', `ambito_techo debe ser uno de ${AMBITOS_TECHO.join('|')}`);
   }
   const techo = TECHO_CARACTERES[rol];
+  const techoSys = techoSystem(rol);
   const fijos = (ambito === 'total' ? system.length : 0)
     + cabeceraUsuario.length + (directriz ? directriz.length + 4 : 0) + 200;
   if (fijos > techo) {
@@ -840,8 +869,8 @@ export function ensamblar(rol, paqueteContexto, opciones = {}) {
       ambito_techo: ambito,
       caracteres: system.length + contenidoUsuario.length,
       caracteres_system: system.length,
-      techo_system: TECHO_SYSTEM_CARACTERES,
-      system_sobre_techo: system.length > TECHO_SYSTEM_CARACTERES,
+      techo_system: techoSys,
+      system_sobre_techo: system.length > techoSys,
       caracteres_paquete: contenidoUsuario.length,
       bloques_incluidos: incluidos.length,
       bloques_omitidos: omitidos.length,
@@ -890,6 +919,14 @@ export function ensamblarMapper(perfilIngesta, opciones = {}) {
     tools_permitidas: [],
     schema_salida: 'ingesta.mapper',
     truncado: false,
-    meta: Object.freeze({ rol: 'mapper', techo_caracteres: techo, caracteres: system.length + contenido.length, modelo_propuesto: MODELO_PROPUESTO_POR_ROL.mapper }),
+    meta: Object.freeze({
+      rol: 'mapper',
+      techo_caracteres: techo,
+      caracteres: system.length + contenido.length,
+      caracteres_system: system.length,
+      techo_system: techoSystem('mapper'),
+      system_sobre_techo: system.length > techoSystem('mapper'),
+      modelo_propuesto: MODELO_PROPUESTO_POR_ROL.mapper,
+    }),
   };
 }

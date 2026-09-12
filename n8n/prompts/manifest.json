@@ -3,7 +3,7 @@
   "contracts_version": "1.3.0",
   "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
   "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
-  "version_prompts": "61ed12e965dd",
+  "version_prompts": "b36be96f5c24",
   "archivos": [
     {
       "name": "README.md",
@@ -32,8 +32,8 @@
     },
     {
       "name": "ensamblar.mjs",
-      "sha256": "9c8cd6bd45b572fd313c32cbc414a8bdc2722b315d2e61369dd033b054dc8d9b",
-      "chars": 41318
+      "sha256": "3849fe0fe78776c8cf646d1ddb2a96eb9379c56533e34e04da0e824cd97cb077",
+      "chars": 42820
     },
     {
       "name": "esp-documental.md",
@@ -87,8 +87,8 @@
     },
     {
       "name": "manifest.mjs",
-      "sha256": "2d8aa697f15da10a988f8fc29cb7961b3aae99c75e36d43e5200862a557a695b",
-      "chars": 6183
+      "sha256": "cb3c8409dc7b7259069af2ace1d2b149e791d92c4cd34d64f5f1cbde645d494d",
+      "chars": 6423
     },
     {
       "name": "mapper.md",
@@ -319,7 +319,19 @@
   ],
   "sufijo_variante_reintento": "reintento:<motivo>",
   "ambito_techo_por_defecto": "paquete",
-  "techo_system_caracteres": 10000,
+  "techo_system_por_rol": {
+    "documental": 10000,
+    "financiero": 10000,
+    "relacional": 10000,
+    "temporal": 10000,
+    "externo": 10000,
+    "auditor": 12000,
+    "defensor": 12000,
+    "replica": 12000,
+    "redactor": 12000,
+    "editor": 12000,
+    "mapper": 12000
+  },
   "schema_salida_por_rol": {
     "documental": "agents.especialista",
     "financiero": "agents.especialista",

@@ -15,7 +15,7 @@ import { contractVersion } from '../../contracts/index.mjs';
 import {
   ROLES_LLM, SCHEMA_SALIDA_POR_ROL, MODELO_PROPUESTO_POR_ROL, TECHO_CARACTERES,
   TOOLS_DE_SISTEMA, FEWSHOT_POR_ROL, FEWSHOT_POR_DEFECTO, toolsPorRol,
-  MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, AMBITO_TECHO_POR_DEFECTO, TECHO_SYSTEM_CARACTERES,
+  MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, AMBITO_TECHO_POR_DEFECTO, TECHO_SYSTEM_POR_ROL,
 } from './ensamblar.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -74,7 +74,10 @@ export function construirManifest() {
     roles_con_reintento: [...ROLES_CON_REINTENTO],
     sufijo_variante_reintento: 'reintento:<motivo>',
     ambito_techo_por_defecto: AMBITO_TECHO_POR_DEFECTO,
-    techo_system_caracteres: TECHO_SYSTEM_CARACTERES,
+    // Techo del system por rol (H7: 10k especialistas, 12k cierre). Sustituye al escalar
+    // `techo_system_caracteres` de H3: un solo número dejaba a los roles de cierre "sobre
+    // techo" por cien caracteres sin que eso significara nada.
+    techo_system_por_rol: { ...TECHO_SYSTEM_POR_ROL },
     schema_salida_por_rol: { ...SCHEMA_SALIDA_POR_ROL },
     modelo_propuesto_por_rol: { ...MODELO_PROPUESTO_POR_ROL },
     techo_caracteres_por_rol: { ...TECHO_CARACTERES },
@@ -118,7 +121,7 @@ export function verificarManifest() {
     'tools_por_rol', 'schema_salida_por_rol', 'modelo_propuesto_por_rol', 'techo_caracteres_por_rol',
     'fewshot_por_rol', 'fewshot_por_defecto', 'variantes', 'motivos_reintento',
     'roles_con_reintento', 'sufijo_variante_reintento', 'ambito_techo_por_defecto',
-    'techo_system_caracteres',
+    'techo_system_por_rol',
   ]) {
     if (JSON.stringify(actual[clave]) !== JSON.stringify(esperado[clave])) {
       diferencias.push(`${clave} desactualizado`);
