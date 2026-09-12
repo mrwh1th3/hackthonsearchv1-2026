@@ -20,15 +20,123 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as esperar } from 'node:timers/promises';
 
 import { RAIZ } from '../integration/_ayudas.mjs';
 
 const WEB = path.join(RAIZ, 'web');
-const hayBuild = fs.existsSync(path.join(WEB, '.next', 'BUILD_ID'));
-const saltar = !hayBuild && 'falta web/.next: corre `npm run build --prefix web`';
+const BUILD_ID = path.join(WEB, '.next', 'BUILD_ID');
+
+// ---------------------------------------------------------------------
+// Build rancio: el fallo más caro de un e2e
+//
+// `next start` sirve lo que hay en web/.next. Si ese build es anterior al
+// último cambio de web/, la prueba pasa en verde sobre bits viejos y dice
+// «la webapp funciona» de un código que nadie ha ejecutado. Eso es peor que
+// no tener prueba: es una prueba que miente en el sentido tranquilizador.
+//
+// Dos señales, y se toma la MÁS NUEVA de las dos:
+//   1. el último commit de este HEAD que toca web/ (la que pide el encargo);
+//   2. el mtime más nuevo de los archivos de web/ rastreados por git —
+//      cambios editados y sin commitear, que el commit no ve. `.next` y
+//      `node_modules` están en .gitignore, así que `git ls-files` no los
+//      lista y no se cuentan a sí mismos.
+//
+// Por omisión el desajuste FALLA con el SHA y las dos fechas. Con
+// E2E_RECONSTRUIR=1 se reconstruye antes de registrar las pruebas (útil en
+// un banco desatendido); el resto del archivo se salta con motivo si el
+// build sigue rancio, para que ningún `ok` cuelgue de bits viejos.
+// ---------------------------------------------------------------------
+
+function git(args) {
+  const r = spawnSync('git', args, { cwd: RAIZ, encoding: 'utf8', timeout: 30000 });
+  if (r.status !== 0) return null;
+  return (r.stdout ?? '').trim();
+}
+
+/** Epoch (s) del último commit de HEAD que toca web/, y su SHA corto. */
+function ultimoCommitWeb() {
+  const salida = git(['log', '-1', '--format=%ct %h %s', 'HEAD', '--', 'web']);
+  if (!salida) return null;
+  const [ts, sha, ...resto] = salida.split(' ');
+  return { epoch: Number(ts), sha, asunto: resto.join(' ').slice(0, 60) };
+}
+
+/** Epoch (s) del archivo rastreado de web/ modificado más recientemente. */
+function ultimaFuenteWeb() {
+  const salida = git(['ls-files', '-z', '--', 'web']);
+  if (salida === null) return null;
+  let mejor = null;
+  for (const rel of salida.split('\0')) {
+    if (!rel) continue;
+    let st;
+    try { st = fs.statSync(path.join(RAIZ, rel)); } catch { continue; } // borrado sin commitear
+    const epoch = Math.floor(st.mtimeMs / 1000);
+    if (!mejor || epoch > mejor.epoch) mejor = { epoch, ruta: rel };
+  }
+  return mejor;
+}
+
+function fecha(epoch) {
+  return epoch ? new Date(epoch * 1000).toISOString().replace('T', ' ').slice(0, 19) : '—';
+}
+
+function estadoBuild() {
+  if (!fs.existsSync(BUILD_ID)) {
+    return { existe: false, rancio: false, motivo: 'falta web/.next: corre `npm run build --prefix web`' };
+  }
+  const build = Math.floor(fs.statSync(BUILD_ID).mtimeMs / 1000);
+  const commit = ultimoCommitWeb();
+  const fuente = ultimaFuenteWeb();
+  const candidatos = [
+    commit && { epoch: commit.epoch, que: `commit ${commit.sha} «${commit.asunto}»` },
+    fuente && { epoch: fuente.epoch, que: `archivo ${fuente.ruta} sin reconstruir` },
+  ].filter(Boolean);
+  if (!candidatos.length) {
+    // Sin git no hay referencia: no se inventa una. Se dice y se sigue.
+    return { existe: true, rancio: false, build, referencia: null,
+             motivo: 'sin git en este árbol: no se puede fechar el último cambio de web/' };
+  }
+  const ref = candidatos.reduce((a, b) => (b.epoch > a.epoch ? b : a));
+  const rancio = build < ref.epoch;
+  return {
+    existe: true, rancio, build, referencia: ref,
+    motivo: rancio
+      ? `web/.next/BUILD_ID es de ${fecha(build)} y ${ref.que} es de ${fecha(ref.epoch)} ` +
+        `(${ref.epoch - build} s más nuevo): el e2e estaría probando un build viejo. ` +
+        'Corre `npm run build --prefix web` (o E2E_RECONSTRUIR=1 para que lo haga la prueba).'
+      : `build de ${fecha(build)}, ${ref.que} de ${fecha(ref.epoch)}`,
+  };
+}
+
+function reconstruir() {
+  const r = spawnSync('npm', ['run', 'build', '--prefix', 'web'], {
+    cwd: RAIZ, encoding: 'utf8', timeout: 900000,
+  });
+  return { code: r.status ?? -1, salida: `${r.stdout ?? ''}\n${r.stderr ?? ''}`.trim() };
+}
+
+let BUILD = estadoBuild();
+let RECONSTRUIDO = null;
+if (BUILD.existe && BUILD.rancio && process.env.E2E_RECONSTRUIR === '1') {
+  RECONSTRUIDO = reconstruir();
+  BUILD = estadoBuild();
+}
+
+const saltar = (!BUILD.existe && BUILD.motivo) ||
+  (BUILD.rancio && `build rancio: ${BUILD.motivo}`);
+
+test('el build de web/.next no está rancio', { skip: !BUILD.existe && BUILD.motivo }, () => {
+  if (RECONSTRUIDO) {
+    assert.equal(RECONSTRUIDO.code, 0,
+      `E2E_RECONSTRUIR=1 pero \`npm run build --prefix web\` salió ${RECONSTRUIDO.code}:\n` +
+      RECONSTRUIDO.salida.slice(-2000));
+  }
+  assert.equal(BUILD.rancio, false, BUILD.motivo);
+  console.log(`[build] ${BUILD.motivo}`);
+});
 
 const PASSWORD = '1234';
 // Caso del fixture con expediente del Redactor (db/seeds/seed_fake.sql y
