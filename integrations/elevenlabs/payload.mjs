@@ -26,13 +26,28 @@ const PATRON_TELEFONO_E164 = /^\+[1-9][0-9]{7,14}$/;
 const PATRON_RFC = /\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b/i;
 const PATRON_MONTO = /\d[\d.,]*\s*(mxn|usd|pesos|d[oó]lares)|[$]\s?\d/i;
 
+// Un UUID (p. ej. el event_id que viaja como completion_event_id) es hex con
+// guiones: por coincidencia de formato, un segmento como "abc010101def" tiene
+// la forma exacta de un RFC (3-4 letras + 6 dígitos + 3 alfanuméricos) sin
+// serlo. PATRON_RFC no debe correr sobre un identificador opaco de sistema,
+// nunca sobre datos que el contribuyente podría haber escrito (hallazgo QA #4).
+const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function truncar(texto, limite) {
   return texto.length > limite ? texto.slice(0, limite) : texto;
 }
 
+/** Quita substrings con forma de UUID antes de correr PATRON_RFC (guarda final defensiva incluida). */
+function quitarUUIDs(texto) {
+  return texto.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '');
+}
+
 function validarVariable(clave, valor) {
   const texto = String(valor ?? '');
-  if (PATRON_RFC.test(texto)) throw new ErrorVoz('fuga_rfc', `${clave} contiene algo con forma de RFC`);
+  const esIdentificadorOpaco = clave === 'completion_event_id' || PATRON_UUID.test(texto);
+  if (!esIdentificadorOpaco && PATRON_RFC.test(texto)) {
+    throw new ErrorVoz('fuga_rfc', `${clave} contiene algo con forma de RFC`);
+  }
   if (PATRON_MONTO.test(texto)) throw new ErrorVoz('fuga_monto', `${clave} contiene un monto`);
   return texto;
 }
@@ -110,8 +125,11 @@ export function construirPayload(evento, perfil, config = {}) {
   };
 
   // Guarda final defensiva: el cuerpo entero, no solo las variables, nunca
-  // debe contener forma de RFC o de monto.
-  if (PATRON_RFC.test(JSON.stringify(cuerpo)) || PATRON_MONTO.test(JSON.stringify(cuerpo))) {
+  // debe contener forma de RFC o de monto. Se excluyen los UUID (p. ej.
+  // completion_event_id) antes de correr PATRON_RFC por la misma razón que
+  // en validarVariable: un identificador opaco no es un dato del contribuyente.
+  const cuerpoSinUUIDs = quitarUUIDs(JSON.stringify(cuerpo));
+  if (PATRON_RFC.test(cuerpoSinUUIDs) || PATRON_MONTO.test(JSON.stringify(cuerpo))) {
     throw new ErrorVoz('fuga_fiscal', 'el cuerpo de la llamada contiene datos con forma fiscal');
   }
 

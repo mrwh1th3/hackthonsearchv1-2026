@@ -124,6 +124,19 @@ test('construirPayload: una variable con forma de RFC lanza ErrorVoz en vez de e
   assert.throws(() => construirPayload(eventoCompleta, perfil, CONFIG_VALIDA), ErrorVoz);
 });
 
+test('construirPayload: un event_id con forma de UUID que por coincidencia contiene un segmento con forma de RFC NO lanza (hallazgo QA #4)', () => {
+  // "abc010101def" (3 letras + 6 dígitos + 3 alfanuméricos) es, por sí solo,
+  // indistinguible de un RFC — pero aquí vive dentro de un UUID válido, que
+  // es completion_event_id (identificador opaco de sistema, no dato fiscal).
+  const eventoConUuidRfcLike = { ...eventoCompleta, event_id: '00000000-0000-4000-8000-abc010101def' };
+  const resultado = construirPayload(eventoConUuidRfcLike, perfilValido(), CONFIG_VALIDA);
+  assert.equal(resultado.omitida, false);
+  assert.equal(
+    resultado.cuerpo.conversation_initiation_client_data.dynamic_variables.completion_event_id,
+    '00000000-0000-4000-8000-abc010101def',
+  );
+});
+
 test('reservarSolicitud + construirPayload: cinco entregas del mismo evento producen un único cuerpo enviable (16 línea 124)', () => {
   const almacen = crearAlmacenDedupe();
   const cuerposEnviados = [];
