@@ -187,7 +187,11 @@ class Mundo:
         })
         if rfc:
             self._ctas_por_rfc.setdefault(rfc, []).append(clabe)
-            self.atributo(rfc, "clabe", clabe, "banco")
+            # El atributo sólo existe para titulares del padrón: una cuenta de
+            # persona física receptora de dispersión no es un contribuyente y
+            # no puede colgar un atributo de una FK que no existe.
+            if rfc in self._rfcs:
+                self.atributo(rfc, "clabe", clabe, "banco")
         return clabe
 
     def clabe_de(self, rfc: str) -> str:

@@ -42,7 +42,7 @@ CONTRIBUYENTES = 17
 def _fisica(m, nombre: str, saldo: float = 0.0) -> str:
     """Cuenta de persona física receptora de dispersión. No es contribuyente
     del padrón: es el destino del dinero, no un emisor de CFDI."""
-    rfc = "PF%s760101H%02d" % (nombre[:2].upper(), len(m.cuentas) % 100)
+    rfc = "PFIS%06dHDF" % len(m.cuentas)
     return m.cuenta(rfc, tipo="fisica", saldo_inicial=saldo)
 
 

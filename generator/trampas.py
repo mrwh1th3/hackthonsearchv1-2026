@@ -43,6 +43,24 @@ def _nomina(m, rfc: str, mes_idx: int, monto: float) -> None:
     m.factura(rfc, "NOM" + rfc[:9], m.dia_de(mes_idx, 25), monto, CLAVE_NOMINA, "PUE", tipo="N")
 
 
+def _perfil_mensual(m, rfc: str, mes_idx: int, fact_mensual: float, prov: str,
+                    pos_nomina: float = 0.5, pos_compras: float = 0.5) -> None:
+    """Nómina y compras del mes en el punto medio del rango de su giro.
+
+    Una entidad legítima que declara menos nómina o menos compras que el p10 de
+    sus pares dispara D2 aunque no tenga nada que esconder: el umbral es
+    relativo al giro, así que una trampa mal calibrada deja de medir el
+    detector y pasa a medir el generador. Por eso el perfil se deriva del
+    catálogo del giro, no de un número escrito a mano."""
+    g = GIROS[m._rfcs[rfc]["giro"]]
+    nmin, nmax = g.ratio_nomina
+    cmin, cmax = g.ratio_compras
+    _nomina(m, rfc, mes_idx, fact_mensual * (nmin + (nmax - nmin) * pos_nomina))
+    row = m.factura(prov, rfc, m.dia_de(mes_idx, 4), fact_mensual * (cmin + (cmax - cmin) * pos_compras),
+                    g.claves[0], "PUE")
+    m.pagar(row, 2)
+
+
 def sembrar(m, fondo, cfg) -> Dict:
     rng = m.rng
     vecinos = fondo.por_zona["trampa"] or fondo.por_zona["libre"]
@@ -163,9 +181,7 @@ def sembrar(m, fondo, cfg) -> Dict:
     cons = m.alta("consultoria", date(2015, 2, 9), 18, razon="Consultoría Estratégica Meridiano",
                   saldo_inicial=450_000.0)
     for i in range(m.meses):
-        _nomina(m, cons, i, 260_000)
-        row = m.factura(prov, cons, m.dia_de(i, 4), 70_000, GIROS["consultoria"].claves[0], "PUE")
-        m.pagar(row, 2)
+        _perfil_mensual(m, cons, i, 5 * 150_000, prov)
         for j in range(5):
             row = m.factura(cons, cliente(i * 5 + j), m.dia_de(i, 7 + j * 4), 150_000.0,
                             GIROS["consultoria"].claves[1], "PUE",
@@ -197,9 +213,7 @@ def sembrar(m, fondo, cfg) -> Dict:
     for i in range(m.meses):
         for idx, rfc in enumerate(domiciliados):
             g = GIROS[m._rfcs[rfc]["giro"]]
-            _nomina(m, rfc, i, 90_000 + 15_000 * idx)
-            row = m.factura(prov, rfc, m.dia_de(i, 4), 40_000 + 8_000 * idx, g.claves[0], "PUE")
-            m.pagar(row, 2)
+            _perfil_mensual(m, rfc, i, 3 * (150_000 + 30_000 * idx), prov)
             for j in range(3):
                 # cada uno factura HACIA FUERA del grupo: ni el despacho factura
                 # a sus domiciliados ni los domiciliados entre sí
@@ -222,9 +236,7 @@ def sembrar(m, fondo, cfg) -> Dict:
     desv = m.alta("transporte", date(2014, 9, 22), 38, razon="Autotransportes Valle Sereno",
                   saldo_inicial=520_000.0)
     for i in range(m.meses):
-        _nomina(m, desv, i, 310_000)
-        row = m.factura(prov, desv, m.dia_de(i, 4), 220_000, GIROS["transporte"].claves[0], "PUE")
-        m.pagar(row, 2)
+        _perfil_mensual(m, desv, i, 4 * 420_000, prov)
         for j in range(4):
             row = m.factura(desv, cliente(i * 3 + j), m.dia_de(i, 8 + j * 4), 420_000,
                             GIROS["transporte"].claves[1], "PUE",
@@ -290,10 +302,7 @@ def sembrar(m, fondo, cfg) -> Dict:
     for i in range(-m.meses, m.meses):
         mes = m.mes_ventana(i)[0].month
         factor_mes = 3.4 if mes == 12 else (1.5 if mes == 11 else 1.0)
-        _nomina(m, dic, i, 150_000 * (1.6 if mes == 12 else 1.0))
-        row = m.factura(prov, dic, m.dia_de(i, 4), 90_000 * factor_mes,
-                        GIROS["restaurante"].claves[0], "PUE")
-        m.pagar(row, 2)
+        _perfil_mensual(m, dic, i, 3 * 210_000 * factor_mes, prov)
         for j in range(3):
             row = m.factura(dic, cliente(i * 2 + j), m.dia_de(i, 9 + j * 5), 210_000 * factor_mes,
                             GIROS["restaurante"].claves[1], "PUE",

@@ -159,3 +159,47 @@ begin
      and payload->>'evento_real' = 'correr_pistas';
   perform pruebas.assert('correr_pistas deja rastro en bitácora (regla 2)', n >= 1, 'n=' || n);
 end $$;
+
+-- 10. R2: en una CADENA todos los eslabones reciben la pista.
+--     En un ciclo la ruta repite el origen al final y ese duplicado se
+--     descarta; en una cadena el último nodo es un miembro distinto y si se
+--     descarta, el final de la cadena (justo el que recibe el dinero) queda
+--     sin pista. Se prueba con una cadena propia, sin tocar el fixture.
+do $$
+declare v uuid; n_miembros int; n_ultimo int;
+begin
+  v := forense.clonar_corrida('00000000-0000-4000-8000-000000000001'::uuid,
+                              'pistas: cadena de 4 saltos');
+  insert into forense.contribuyentes (corrida_id, rfc, razon_social, giro, fecha_alta)
+  select v, 'DEMO:CAD-' || i, 'Eslabón ' || i, 'construccion', date '2019-01-15'
+    from generate_series(1, 5) as g(i)
+  on conflict do nothing;
+
+  insert into forense.cfdi (corrida_id, uuid, tipo, emisor_rfc, receptor_rfc, fecha,
+                            subtotal, iva, total, moneda, metodo_pago, cancelado)
+  select v,
+         ('00000000-0000-4000-b000-00000000000' || i)::uuid, 'I',
+         'DEMO:CAD-' || i, 'DEMO:CAD-' || (i + 1),
+         (date '2025-09-02' + ((i - 1) * 5))::timestamptz,
+         round((1000000 * power(0.94, i - 1)) / 1.16, 2),
+         round((1000000 * power(0.94, i - 1)) - (1000000 * power(0.94, i - 1)) / 1.16, 2),
+         round((1000000 * power(0.94, i - 1))::numeric, 2),
+         'MXN', 'PUE', false
+    from generate_series(1, 4) as g(i);
+
+  perform forense.pista_r2(v);
+
+  select count(distinct rfc) into n_miembros from forense.pistas
+   where corrida_id = v and codigo = 'R2' and detalle->>'tipo' = 'cadena'
+     and rfc like 'DEMO:CAD-%';
+  select count(*) into n_ultimo from forense.pistas
+   where corrida_id = v and codigo = 'R2' and detalle->>'tipo' = 'cadena'
+     and rfc = 'DEMO:CAD-5';
+
+  perform pruebas.assert('R2 marca a los cinco eslabones de una cadena de 4 saltos',
+    n_miembros = 5, 'miembros=' || n_miembros);
+  perform pruebas.assert('R2 no deja fuera al último eslabón de la cadena',
+    n_ultimo >= 1, 'el nodo que recibe el dinero también es miembro del hallazgo');
+
+  delete from forense.corridas where id = v;
+end $$;

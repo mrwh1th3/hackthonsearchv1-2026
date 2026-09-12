@@ -421,7 +421,13 @@ begin
              'profundidad_max', 5)),
          forense.huella_pista('R2', r.rfc, v_corte, d.tipo || '|' || d.clave)
     from dedup d
-    cross join lateral unnest(d.ruta_canonica[1:array_length(d.ruta_canonica,1)-1]) as r(rfc)
+    -- Una fila por miembro del hallazgo. En un ciclo la ruta repite el origen
+    -- al final y ese duplicado se descarta; en una cadena el último nodo es un
+    -- miembro distinto y también recibe su pista.
+    cross join lateral unnest(
+      case when d.tipo = 'ciclo'
+           then d.ruta_canonica[1:array_length(d.ruta_canonica, 1) - 1]
+           else d.ruta_canonica end) as r(rfc)
   on conflict (corrida_id, codigo, rfc, huella) do nothing;
 
   get diagnostics n = row_count;
