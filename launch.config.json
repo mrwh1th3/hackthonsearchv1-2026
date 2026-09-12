@@ -64,7 +64,22 @@
         "output_tokens": 45
       },
       "latencia_ms": 1089,
-      "opus": "pendiente de segundo smoke"
+      "opus": {
+        "fecha": "2026-09-12T03:30:26Z",
+        "ejecucion": "283975",
+        "modelo": "claude-opus-5",
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 577,
+          "output_tokens": 45
+        },
+        "latencia_ms": 1723
+      }
+    },
+    "api_models": {
+      "sonnet": "claude-sonnet-5",
+      "opus": "claude-opus-5",
+      "verificados": "2026-09-12 smoke con tool_use; saldo total desconocido"
     }
   },
   "authorizations": {

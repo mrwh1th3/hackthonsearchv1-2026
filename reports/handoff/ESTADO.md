@@ -18,7 +18,7 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 
 ## Bloqueos externos abiertos (decisión del usuario)
 1. **Supabase**: pausar/eliminar un proyecto propio de la org o upgrade; luego el coordinador crea `forense` y aplica migraciones.
-2. ~~Anthropic~~ resuelto para `claude-sonnet-5` (smoke 2026-09-12 03:29Z); `claude-opus-5` en verificación. Saldo total desconocido: medir consumo por caso en H8–10.
+2. ~~Anthropic~~ resuelto para `claude-sonnet-5` (smoke 2026-09-12 03:29Z); `claude-opus-5` también OK (ejecución 283975, 577/45 tokens, 1.7 s). Saldo total desconocido: medir consumo por caso en H8–10.
 3. **ElevenLabs/Twilio**: sin número saliente no hay llamada real.
 4. **Repo público**: decidir si se hace privado.
 
