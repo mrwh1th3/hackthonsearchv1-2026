@@ -96,8 +96,8 @@ begin
 
   -- Se despachan y cierran los dos que faltaban.
   insert into forense.casos (corrida_id, cluster_id, rfc_principal, origen, estado, nivel)
-  select v_c, ids[i], 'RFC012' || i, 'selector', 'dictaminado', 'sin_hallazgos'
-    from generate_series(5, 6) i;
+  select v_c, ids[g.n], 'RFC012' || g.n, 'selector', 'dictaminado', 'sin_hallazgos'
+    from generate_series(5, 6) as g(n);
   select * into q from forense.cola_corrida(v_c);
   select * into e from forense.estado_corrida(v_c);
   perform pruebas.assert('con la cola de clusters drenada la corrida sí queda terminada',

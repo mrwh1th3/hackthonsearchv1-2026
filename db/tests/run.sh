@@ -127,6 +127,7 @@ else
   if bash "$HERE/cargar_gen.sh" "$DB"; then
     aplicar "$HERE/assertions_gen.sql" "tests/assertions_gen.sql"
     aplicar "$HERE/assertions_012_gen.sql" "tests/assertions_012_gen.sql"
+    aplicar "$HERE/assertions_013_gen.sql" "tests/assertions_013_gen.sql"
   else
     rc=$?
     if [ "$rc" = "3" ] && [ "$GEN" != "1" ]; then
