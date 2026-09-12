@@ -893,9 +893,38 @@ export function investigarCluster() {
   ));
   add(sql(
     'Paquete auditor final',
-    'SELECT * FROM forense.paquete_auditor_final($1::uuid)',
+    // `paquete_auditor_final` (010) NO devuelve la forma exacta que consume
+    // `dictaminar()`: tres adaptaciones deterministas, todas en SQL, ninguna
+    // en el Code node y ninguna a partir de texto libre.
+    //   1. `caso.n_reintentos` — 010 lo emite dentro de `presupuesto`.
+    //   2. `presupuesto.permite_reintento` — 010 emite `agotado`; el techo de
+    //      2 reintentos vive en `Claim de reintento` y se replica aquí.
+    //   3. `evidencia[].hecho_validado.monto_centavos` — 010 lo emite en la
+    //      raíz del ítem (entero, redondeado desde el NUMERIC de la columna).
+    //      `dictaminar` lo lee dentro de `hecho_validado` y LANZA si falta.
+    // Ver `solicitudes_coordinador` de la entrega: si 010 cambia, se borra
+    // esta capa, no se duplica.
+    [
+      'SELECT p.caso_id, p.cluster_id, p.corrida_id, p.investigacion_id,',
+      "       p.caso || jsonb_build_object('n_reintentos',",
+      "         coalesce(p.presupuesto->'n_reintentos', '0'::jsonb)) AS caso,",
+      '       p.pistas,',
+      '       (SELECT coalesce(jsonb_agg(e || jsonb_build_object(',
+      "                 'hecho_validado',",
+      "                 case when e->>'monto_centavos' is null then '{}'::jsonb",
+      "                      else jsonb_build_object('monto_centavos',",
+      "                             (e->>'monto_centavos')::bigint) end",
+      "                 || coalesce(e->'hecho_validado', '{}'::jsonb))",
+      "               ORDER BY e->>'evidencia_id'), '[]'::jsonb)",
+      '          FROM jsonb_array_elements(p.evidencia) e) AS evidencia,',
+      '       p.pendientes, p.cobertura_completa,',
+      "       p.presupuesto || jsonb_build_object('permite_reintento',",
+      "         coalesce((p.presupuesto->>'agotado')::boolean, false) = false",
+      "         AND coalesce((p.presupuesto->>'n_reintentos')::int, 0) < 2) AS presupuesto",
+      '  FROM forense.paquete_auditor_final($1::uuid) p',
+    ].join('\n'),
     '={{ $json.caso_id }}',
-    'Entrada preparada por backend, nunca JSON de agente sin validar (07 §Code node).',
+    'Entrada preparada por backend, nunca JSON de agente sin validar (07 §Code node). Adapta la forma de 010 a la que consume dictaminar(): n_reintentos, permite_reintento y monto_centavos dentro de hecho_validado.',
   ));
   add(code('Auditor Final', 'auditor-final'));
   add(si('¿Rechazo reparable?', '={{ $json.rechazo !== null }}'));
@@ -2226,8 +2255,12 @@ export const CONTRATOS_NODOS = Object.freeze({
 export const FORMA_PENDIENTE = Object.freeze({
   FORENSE_ejecutar_agente: Object.freeze([]),
   FORENSE_errores: Object.freeze([]),
+  // 'Paquete auditor final' salió de la lista en H8: ya no es `SELECT *`. Su
+  // consulta nombra las diez columnas y adapta la forma de 010 a la que
+  // consume `dictaminar()`, así que el texto ES comprobable. Además
+  // `n8n/tests/verificar-forma-nodos.mjs` la ejecuta contra Postgres.
   FORENSE_investigar_cluster: Object.freeze([
-    'Aplicar resolución', 'Cerrar caso', 'Guardar dictamen', 'Paquete auditor final',
+    'Aplicar resolución', 'Cerrar caso', 'Guardar dictamen',
     'Ronda fin R1', 'Validar citas',
   ]),
   FORENSE_reintento: Object.freeze([
