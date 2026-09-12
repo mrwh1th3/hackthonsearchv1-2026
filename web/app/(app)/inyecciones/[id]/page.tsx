@@ -5,6 +5,7 @@ import { NivelBadge } from "@/components/shared/badges";
 import { getDataSource } from "@/lib/data";
 
 export const metadata = { title: "Forense · Inyección" };
+export const dynamic = "force-dynamic";
 
 const PASOS_ORDEN = [
   "recibida",

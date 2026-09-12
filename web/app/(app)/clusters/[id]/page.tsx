@@ -6,6 +6,7 @@ import { getDataSource } from "@/lib/data";
 import { ClusterView } from "./cluster-view";
 
 export const metadata = { title: "Forense · Cluster" };
+export const dynamic = "force-dynamic";
 
 export default async function ClusterPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

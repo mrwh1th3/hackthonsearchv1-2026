@@ -5,6 +5,7 @@ import { NivelBadge } from "@/components/shared/badges";
 import { getDataSource } from "@/lib/data";
 
 export const metadata = { title: "Forense · Mapa de clusters" };
+export const dynamic = "force-dynamic";
 
 /**
  * 09 §5: grid de bloques por cluster, ordenado por score. Es la vista que
