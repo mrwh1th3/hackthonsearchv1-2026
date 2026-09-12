@@ -116,6 +116,16 @@ for f in "$RAIZ"/db/009_*.sql; do
   [ "$base" = "009_editor.sql" ] && continue
   aplicar "db/$base" condicional
 done
+# 010/011 (oleada 3, forense-db): las funciones que llaman los workflows y las
+# vistas de métricas. Condicionales por la misma razón que 009: el banco tiene
+# que correr contra el HEAD de hoy y contra el de mañana. Se aplican en orden
+# numérico: 011 lee objetos que crea 010.
+for n in 010 011 012; do
+  for f in "$RAIZ"/db/${n}_*.sql; do
+    [ -e "$f" ] || continue
+    aplicar "db/$(basename "$f")" condicional
+  done
+done
 
 # ---------------------------------------------------------------------
 # Datos. Dos modos:
