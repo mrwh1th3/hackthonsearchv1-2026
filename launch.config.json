@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "hackathon_started": false,
+  "event_duration_hours": 36,
+  "supervisors": 3,
+  "development": {
+    "surface": "claude-code-terminal",
+    "coordinator_model": "opus",
+    "max_parallel_builders": 3,
+    "allow_local_implementation": true
+  },
+  "targets": {
+    "account_hint": "victorinbm2006",
+    "account_service": "n8n",
+    "n8n_url": null,
+    "n8n_version": null,
+    "supabase_project_ref": null,
+    "vercel_project": null,
+    "github_repo": null,
+    "github_repo_hint": "hackthonmty2026",
+    "existing_actions_repo": null
+  },
+  "reported_connections": {
+    "n8n_mcp": true,
+    "supabase_mcp": true,
+    "vercel": true,
+    "elevenlabs": true,
+    "verified": false
+  },
+  "runtime": {
+    "provider": "pending",
+    "api_model_id": null,
+    "api_budget_usd": null,
+    "github_auth_method": null,
+    "preferred_families": {
+      "D": "sonnet",
+      "F": "opus",
+      "R": "opus",
+      "T": "sonnet",
+      "E": "sonnet",
+      "auditor": "opus",
+      "defensor": "opus",
+      "replica": "opus",
+      "redactor": "sonnet",
+      "editor": "sonnet",
+      "mapper": "sonnet"
+    }
+  },
+  "authorizations": {
+    "remote_writes": false,
+    "outbound_phone_calls": false
+  },
+  "ui_h1_target": "Todas las rutas navegables con fixtures identificados; no backend completo"
+}

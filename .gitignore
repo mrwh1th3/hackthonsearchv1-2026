@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+data/raw/
+data/gen/
+.claude/worktrees/
+.claude/settings.local.json
+coverage/
+*.log
+.DS_Store
