@@ -17,6 +17,7 @@ debe terminar descartándola:
 | desvirtuado_69b           | (ninguna)    | —        | último estatus publicado: desvirtuado   |
 | factoraje_real            | F1           | F        | contrato y pago de un tercero financiero|
 | estacionalidad_diciembre  | (T2, futura) | —        | el pico existe también el año anterior  |
+| cadena_suministro_proyecto| T1 + T2(a)   | **T**    | nómina, compras, depósito y margen que SUBE |
 
 Con `--horario plano` (gen-v1) ninguna llega a dos familias distintas, así que
 el selector automático de `score_entidad` no las convierte en caso. La del
@@ -24,12 +25,23 @@ despacho, que es la que más se parece a un cluster, se investiga a propósito
 por `/investigar` manual para enseñar la defensa; entrar así es ingreso
 manual, no selección automática.
 
-Con `--horario intradia` (gen-v2) el grupo corporativo gana T2(a) —su cierre
-intercompañía se timbra en una sola corrida del ERP— y con ella una segunda
-familia. Es un cambio buscado, no un descuido: T2 necesita un falso positivo
-que la capa de descarte tenga que refutar, y la refutación está en los datos
-(nómina de plantilla, compras al giro, depósito por factura). Queda declarado
-en `ground_truth.csv` y en las notas del manifiesto.
+Con `--horario intradia` (gen-v2) cambian dos cosas, las dos buscadas y las
+dos declaradas en `ground_truth.csv` y en las notas del manifiesto:
+
+1.  el **grupo corporativo** gana T2(a) —su cierre intercompañía se timbra en
+    una sola corrida del ERP— y con ella una segunda familia. T2 necesita un
+    falso positivo que la capa de descarte tenga que refutar, y la refutación
+    está en los datos (nómina de plantilla, compras al giro, depósito por
+    factura). Un grupo real comparte domicilio **y** timbra en lote: borrar
+    esa co-ocurrencia para recuperar una métrica sería medir un dataset más
+    fácil;
+2.  aparece la trampa 9, **cadena de suministro de proyecto único** (4 RFC de
+    comercializadora), que dispara T1 + T2(a): **dos pistas de UNA sola familia**.
+    Ésa es la que restituye el diferencial entre el baseline de dos pistas
+    (la marca) y el selector de dos familias (no la marca), y lo hace
+    añadiendo un comportamiento que ocurre de verdad, no quitando uno.
+    gen-v2 tiene por eso 4 contribuyentes más en el padrón que gen-v1: se
+    añade, no se sustituye.
 
 Las trampas operan exclusivamente con la zona 'trampa' y 'libre' del universo:
 nunca con las contrapartes de un EFOS. Así ninguna queda a ≤2 saltos de un RFC
@@ -44,7 +56,13 @@ from typing import Dict, List
 from giros import CLAVE_NOMINA, GIROS
 
 # Contribuyentes del padrón que crea este módulo (para dimensionar el fondo).
+# NO se toca: cualquier cambio aquí mueve el tamaño del universo de fondo y
+# con él cada RFC de gen-v1, que está cargado en la base compartida. La
+# trampa 9 (`--horario intradia`) añade 4 contribuyentes SOBRE este número,
+# así que gen-v2 tiene 104 en el padrón donde gen-v1 tiene 100: es una suma
+# deliberada, y por eso las métricas de gen-v2 publican sus denominadores.
 CONTRIBUYENTES = 15
+CONTRIBUYENTES_INTRADIA = 19
 
 
 def _nomina(m, rfc: str, mes_idx: int, monto: float) -> None:
@@ -341,8 +359,117 @@ def sembrar(m, fondo, cfg) -> Dict:
 
     m.notas.append("La trampa de diciembre tiene 24 meses de historial; la ventana evaluable "
                    "sigue siendo de %d meses cerrada en fecha_corte." % m.meses)
+    # -----------------------------------------------------------------
+    # 9. Cadena de suministro de proyecto único  →  T1 + T2(a), familia T
+    #    SÓLO con --horario intradia (gen-v2): la pierna (a) de T2 exige hora
+    #    de timbrado.
+    #
+    #    Cuatro empresas constituidas para UNA obra: proveedor de materia
+    #    prima → maquilador → distribuidor → integrador. Cada estimación de
+    #    fase se timbra en una sola corrida del administrador del proyecto,
+    #    así que las tres facturas intra-consorcio salen en 6 minutos: son 3
+    #    saltos encadenados y T2(a) dispara. Y como se constituyeron hace
+    #    menos de 12 meses, facturan todo en un trimestre y después se
+    #    quedan en silencio, T1 dispara también.
+    #
+    #    ESTO ES EL DIFERENCIAL baseline-vs-selector: dos pistas de UNA sola
+    #    familia. El baseline de dos pistas las marca; el selector de dos
+    #    familias las excluye. No se recupera quitando una co-ocurrencia
+    #    legítima, se recupera añadiendo un comportamiento que ocurre.
+    #
+    #    Lo que la hace legítima Y refutable, en datos, no en intuición:
+    #      * nómina de plantilla en cada eslabón (T1 publica nomina_12m);
+    #      * compras al giro por `_perfil_mensual` (D2 no dispara);
+    #      * cada factura con su depósito del receptor a ±2% (F1 y F3 no);
+    #      * margen que SUBE en cada salto, como en una cadena real: no hay
+    #        decremento del 3-10% (la pierna de cadena de R2 pide eso Y ≥4
+    #        saltos; aquí son 3) ni ciclo que regrese al origen (R2/F4);
+    #      * NO comparten domicilio, representante ni email (R1 pide ≥3 RFC
+    #        con un atributo común);
+    #      * el integrador cierra con 3 dueños de obra distintos, y R3 exige
+    #        ≥4 contrapartes justo porque con menos la concentración es
+    #        trivialmente del 100% y no dice nada.
+    #
+    #    Si el selector de dos familias llegara a marcarla, la trampa está
+    #    mal sembrada y hay que decirlo, no mover el umbral.
+    # -----------------------------------------------------------------
+    if m.intradia:
+        # GIRO: comercializadora, NO el de la tipología `capas` (construcción).
+        # Medido: con el consorcio en construcción ese giro llegaba a 9 de 17
+        # RFC en ráfaga (0.53) y la guarda relativa al giro de db/019 —que
+        # existe justamente para eso— suprimía la pierna (a) en TODO el giro,
+        # incluida la tipología `capas`. Es decir: la trampa tapaba al fraude.
+        # Comercializadora tiene 16 pares y ninguno en ráfaga, así que el
+        # consorcio queda en 4/20 = 0.20 y ni se suprime ni suprime a nadie.
+        # Se movió el giro, NO el umbral de la pista.
+        alta_p = m.mes_ventana(4)[0]          # constituidas dentro de los 12 meses
+        consorcio = []
+        perfil = (
+            ("Abastos Industriales del Valle de Toluca", 26, 1_840_000.0),
+            ("Ensamble y Habilitado Estructural Toluca", 34, 2_310_000.0),
+            ("Distribución Logística de Obra Toluca", 18, 2_690_000.0),
+            ("Integradora de Suministro Toluca", 41, 3_180_000.0),
+        )
+        claves_c = GIROS["comercializadora"].claves
+        for k, (razon, empleados, _) in enumerate(perfil):
+            # Sin domicilio/representante/email compartidos: R1 necesita ≥3
+            # RFC con un atributo común y aquí cada uno lleva el suyo.
+            rfc = m.alta("comercializadora", alta_p + timedelta(days=9 * k), empleados,
+                         razon=razon, saldo_inicial=260_000.0 + 40_000.0 * k)
+            consorcio.append(rfc)
+        adjudicatarios = [cliente(i) for i in (2, 17, 29)]   # 3 < 4: R3 no aplica
+        for fase, i in enumerate((5, 6, 7)):
+            # Las tres facturas intra-consorcio, en una sola corrida del
+            # administrador del proyecto: 3 saltos en 6 minutos, crecientes.
+            for k in range(3):
+                hora, minuto = m.rafaga(k, 3, hora_inicio=18, minuto_inicio=5,
+                                        minutos_totales=6)
+                row = m.factura(
+                    consorcio[k], consorcio[k + 1], m.dia_de(i, 14), perfil[k][2] * (1 + 0.03 * fase),
+                    claves_c[k % len(claves_c)], "PUE",
+                    descripcion="Suministro %d de la fase %d del proyecto" % (k + 1, fase + 1),
+                    hora=hora, minuto=minuto)
+                m.pagar(row, 2)               # depósito del receptor: F1 concilia
+            # El integrador cierra con el adjudicatario otro día: así la
+            # cadena de la ventana son 3 saltos y no arrastra a un tercero.
+            row = m.factura(consorcio[3], adjudicatarios[fase], m.dia_de(i, 22),
+                            perfil[3][2] * (1 + 0.03 * fase),
+                            claves_c[1], "PUE",
+                            descripcion="Entrega de la fase %d del suministro" % (fase + 1))
+            m.pagar(row, 5)
+            for k in range(4):
+                _perfil_mensual(m, consorcio[k], i, perfil[k][2], prov)
+        # La obra termina: la plantilla se liquida en los dos meses siguientes
+        # y ya no se emite ningún CFDI de ingreso. Eso es el silencio que ve
+        # T1, y la nómina es lo que permite refutarla.
+        for i in (8, 9):
+            for k in range(4):
+                _nomina(m, consorcio[k], i, perfil[k][2] * 0.18)
+        notas_consorcio = (
+            "cadena de suministro de proyecto único: cuatro comercializadoras constituidas para un solo proyecto "
+            "que timbran cada estimación de fase en una sola corrida del administrador (3 saltos "
+            "en 6 minutos → T2) y concentran toda su facturación en un trimestre antes de "
+            "liquidar la plantilla (→ T1). Dos pistas de UNA familia: el baseline de dos pistas "
+            "la marca, el selector de dos familias no. Se refuta con nómina de plantilla, "
+            "compras al giro, depósito del receptor por factura y margen creciente por salto "
+            "(no hay decremento ni ciclo)")
+        for k, rfc in enumerate(consorcio):
+            papel = ("proveedor de materia prima", "maquilador", "distribuidor",
+                     "integrador")[k]
+            m.gt(rfc, False, None, True, "%s — %s" % (papel, notas_consorcio))
+        rfcs.extend(consorcio)
+        trampas.append("cadena_suministro_proyecto")
+
     m.notas.append("El despacho contable dispara sólo R1: no entra por el selector de dos "
                    "familias y se investiga con /investigar explícito (ingreso manual).")
+    if m.intradia:
+        m.notas.append(
+            "TRAMPA 9 declarada, sólo con --horario intradia: cadena de suministro de proyecto "
+            "único (4 RFC de comercializadora). Dispara T1 + T2(a), o sea DOS PISTAS DE UNA SOLA "
+            "FAMILIA. Es el diferencial que separa el baseline de dos pistas del selector de dos "
+            "familias, y por eso gen-v2 tiene 4 contribuyentes más que gen-v1 en el padrón: se "
+            "añade, no se sustituye. Si el selector de dos familias la marcase, la trampa está "
+            "mal sembrada.")
     if m.intradia:
         m.notas.append("TRAMPA DE T2(a) declarada (--horario intradia): el grupo corporativo "
                        "timbra su cierre intercompañía en una sola corrida del ERP, 4 facturas "
