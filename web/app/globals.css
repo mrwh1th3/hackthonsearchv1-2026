@@ -21,6 +21,44 @@
   --fam-r: #7c3aed;
   --fam-t: #b45309;
   --fam-e: #be185d;
+  --radius-input: 8px;
+  --radius-card: 12px;
+}
+
+/* Tailwind v4 CSS-first theme: expone las variables de :root como utilidades
+   (bg-surface, text-fam-d, border-border, etc.) sin duplicar los valores. */
+@theme inline {
+  --color-app-bg: var(--app-bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-focus: var(--focus);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-error: var(--error);
+  --color-info: var(--info);
+  --color-fam-d: var(--fam-d);
+  --color-fam-f: var(--fam-f);
+  --color-fam-r: var(--fam-r);
+  --color-fam-t: var(--fam-t);
+  --color-fam-e: var(--fam-e);
+  --radius-input: var(--radius-input);
+  --radius-card: var(--radius-card);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 body {

@@ -1,0 +1,30 @@
+{
+  "00000000-0000-4000-8000-000000000200": {
+    "nodos": [
+      { "id": "DEMO:ENTIDAD-0", "tipo": "contribuyente", "rfc": "DEMO:ENTIDAD-0", "nivel": "presuncion", "es_semilla": true, "en_lista_sat": false, "frontera": false },
+      { "id": "DEMO:ENTIDAD-0B", "tipo": "contribuyente", "rfc": "DEMO:ENTIDAD-0B", "nivel": "presuncion", "es_semilla": false, "en_lista_sat": true, "frontera": false },
+      { "id": "DEMO:ENTIDAD-0C", "tipo": "contribuyente", "rfc": "DEMO:ENTIDAD-0C", "nivel": null, "es_semilla": false, "en_lista_sat": false, "frontera": true },
+      { "id": "CTA:0001", "tipo": "cuenta", "rfc": null, "nivel": null, "es_semilla": false, "en_lista_sat": false, "frontera": false }
+    ],
+    "aristas": [
+      { "id": "CFDI:00000000-0000-4000-8000-000000000901", "origen": "DEMO:ENTIDAD-0", "destino": "DEMO:ENTIDAD-0B", "tipo": "factura", "monto": "1000.00", "fecha": "2026-01-05T00:00:00Z", "ref_id": "00000000-0000-4000-8000-000000000901" },
+      { "id": "MOV:00000000-0000-4000-8000-000000000902", "origen": "DEMO:ENTIDAD-0B", "destino": "CTA:0001", "tipo": "movimiento", "monto": "950.00", "fecha": "2026-01-06T00:00:00Z", "ref_id": "00000000-0000-4000-8000-000000000902" },
+      { "id": "MOV:00000000-0000-4000-8000-000000000903", "origen": "CTA:0001", "destino": "DEMO:ENTIDAD-0", "tipo": "movimiento", "monto": "900.00", "fecha": "2026-01-10T00:00:00Z", "ref_id": "00000000-0000-4000-8000-000000000903" }
+    ]
+  },
+  "00000000-0000-4000-8000-000000000201": {
+    "nodos": [
+      { "id": "DEMO:ENTIDAD-1", "tipo": "contribuyente", "rfc": "DEMO:ENTIDAD-1", "nivel": "anomalia_explicada", "es_semilla": true, "en_lista_sat": false, "frontera": false },
+      { "id": "DEMO:ENTIDAD-1B", "tipo": "contribuyente", "rfc": "DEMO:ENTIDAD-1B", "nivel": "anomalia_explicada", "es_semilla": false, "en_lista_sat": false, "frontera": false }
+    ],
+    "aristas": [
+      { "id": "CFDI:00000000-0000-4000-8000-000000000911", "origen": "DEMO:ENTIDAD-1", "destino": "DEMO:ENTIDAD-1B", "tipo": "factura", "monto": "500.00", "fecha": "2026-01-08T00:00:00Z", "ref_id": "00000000-0000-4000-8000-000000000911" }
+    ]
+  },
+  "00000000-0000-4000-8000-000000000202": {
+    "nodos": [
+      { "id": "DEMO:ENTIDAD-2", "tipo": "contribuyente", "rfc": "DEMO:ENTIDAD-2", "nivel": "no_concluyente", "es_semilla": true, "en_lista_sat": false, "frontera": false }
+    ],
+    "aristas": []
+  }
+}
