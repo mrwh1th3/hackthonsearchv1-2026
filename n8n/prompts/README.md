@@ -90,7 +90,7 @@ mismo prompt cuando no fue así.
 ```bash
 node n8n/prompts/manifest.mjs --check   # falla (exit 1) si algo cambió sin regenerar
 node n8n/prompts/manifest.mjs --write   # regenera manifest.json
-node --test "tests/prompts/*.test.mjs"  # 105 pruebas; incluye el check anterior
+node --test "tests/prompts/*.test.mjs"  # 106 pruebas; incluye el check anterior
 ```
 
 **Después de editar cualquier prompt hay que regenerar el manifest**, o el test falla y la
@@ -187,14 +187,15 @@ obtiene sin calcularlo a mano:
 
 ```bash
 node -e "console.log(require('./n8n/prompts/manifest.json').version_prompts)"
-# p. ej. e2a05579a8bf   (cambia con cualquier edición de la carpeta, este README incluido)
+# cambia con cualquier edición de la carpeta, este README incluido
 ```
 
-Ejemplo completo, con esa `version_prompts` de ejemplo:
+Ejemplo completo, con una `version_prompts` **inventada** (`0123456789ab`) para que nadie la
+confunda con la vigente:
 
 ```
-prompt_hash = "e2a05579a8bf" + ":" + "documental+fewshot"
-            = e2a05579a8bf:documental+fewshot
+prompt_hash = "0123456789ab" + ":" + "documental+fewshot"
+            = 0123456789ab:documental+fewshot
 ```
 
 Aquí no se escribe ninguna `version_prompts` literal como valor vigente: este README entra en

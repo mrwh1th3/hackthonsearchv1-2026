@@ -951,6 +951,10 @@ export function ensamblarMapper(perfilIngesta, opciones = {}) {
     truncado: false,
     meta: Object.freeze({
       rol: 'mapper',
+      // El mapper no tiene ejes de variante (no hay fewshot ni reintento para él), pero
+      // nombra la suya igual que los demás: la gramática del README lo incluye como <rol> y
+      // publicar una producción que el código no emite sería documentar una mentira.
+      variante_prompt: 'mapper',
       techo_caracteres: techo,
       caracteres: system.length + contenido.length,
       caracteres_system: system.length,

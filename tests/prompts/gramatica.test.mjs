@@ -6,8 +6,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ensamblar, ROLES_LLM, ROLES_ESPECIALISTA, MOTIVOS_REINTENTO, ROLES_CON_REINTENTO,
-  FEWSHOT_POR_ROL, VARIANTE_REINTENTO_SIN_MOTIVO,
+  ensamblar, ensamblarMapper, ROLES_LLM, ROLES_ESPECIALISTA, MOTIVOS_REINTENTO,
+  ROLES_CON_REINTENTO, FEWSHOT_POR_ROL, VARIANTE_REINTENTO_SIN_MOTIVO,
 } from '../../n8n/prompts/ensamblar.mjs';
 import { leerManifest } from '../../n8n/prompts/manifest.mjs';
 import {
@@ -64,6 +64,15 @@ test('el orden de las partes es fijo: rol, fewshot, reintento', () => {
   assert.equal(ensamblar('redactor', paqueteDe('redactor')).meta.variante_prompt, 'redactor');
 });
 
+test('el mapper también nombra su variante: la gramática lo incluye como rol', () => {
+  const m = ensamblarMapper({ profile_hash: 'ph', columnas: [{ nombre: 'rfc', tipo: 'texto' }] });
+  assert.equal(m.meta.variante_prompt, 'mapper');
+  assert.match(m.meta.variante_prompt, GRAMATICA);
+  // No tiene ejes: ni fewshot ni reintento existen para él.
+  assert.ok(!FEWSHOT_POR_ROL.mapper);
+  assert.ok(!ROLES_CON_REINTENTO.includes('mapper'));
+});
+
 test('los dos sufijos de reintento son excluyentes', () => {
   for (const rol of ROLES_CON_REINTENTO) {
     const conMotivo = ensamblar(rol, paqueteDe(rol, 1), { motivo_reintento: 'cadena_incompleta' });
@@ -78,7 +87,10 @@ test('el README publica la gramática y la composición de prompt_hash', () => {
 
   assert.ok(readme.includes('variante_prompt := <rol>'), 'falta la producción de la gramática');
   assert.ok(readme.includes('prompt_hash := <version_prompts> ":" <variante_prompt>'), 'falta la regla de prompt_hash');
-  assert.ok(readme.includes('e2a05579a8bf:documental+fewshot'), 'falta el ejemplo de prompt_hash');
+  // El ejemplo usa una version_prompts inventada a propósito: si alguien la "actualiza" a la
+  // vigente, este test lo para, porque el README entra en el hash y la haría obsoleta al
+  // instante.
+  assert.ok(readme.includes('0123456789ab:documental+fewshot'), 'falta el ejemplo de prompt_hash');
   // El ejemplo se declara como ejemplo: este README entra en el hash, así que ninguna
   // version_prompts literal puede ser la vigente. El valor vigente sale del manifest.
   assert.ok(readme.includes("require('./n8n/prompts/manifest.json').version_prompts"), 'falta cómo obtener la version_prompts vigente');

@@ -3,12 +3,12 @@
   "contracts_version": "1.3.0",
   "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
   "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
-  "version_prompts": "685d53ff2a26",
+  "version_prompts": "33a95afbc976",
   "archivos": [
     {
       "name": "README.md",
-      "sha256": "54c028daa0042890e7021f0f3a6671120a746e8e777f8e4bd5e63d91cd15e1ec",
-      "chars": 12942
+      "sha256": "084b5404e58729a0c7f58e48d68c1fd90bf90059ea5d655dd13ff67def379bdc",
+      "chars": 12980
     },
     {
       "name": "auditor.md",
@@ -32,8 +32,8 @@
     },
     {
       "name": "ensamblar.mjs",
-      "sha256": "ef30172eeced7c9eb9ee23b348e8277c1e259f299b844ca60ffd9a91a4ed8ca6",
-      "chars": 45187
+      "sha256": "0fbffb9f9f554294686afdb23c266ac192f9ad8b2034e8c90337930bdf400ada",
+      "chars": 45488
     },
     {
       "name": "esp-documental.md",

@@ -6,7 +6,7 @@ sobre `n8n/prompts`.
 
 ```bash
 npm ci --prefix contracts --ignore-scripts     # los fixtures válidos salen de contracts
-node --test "tests/prompts/*.test.mjs"         # 105 pruebas (incluye el check del manifest)
+node --test "tests/prompts/*.test.mjs"         # 106 pruebas (incluye el check del manifest)
 node n8n/prompts/manifest.mjs --check          # falla si un prompt cambió sin regenerar
 ```
 
