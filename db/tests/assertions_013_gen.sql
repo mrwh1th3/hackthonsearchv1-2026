@@ -90,11 +90,14 @@ begin
 
   -- Con GEN=0 no hay corrida calculada (el fixture queda excluido): la
   -- comprobación se declara omitida, no aprobada por vacío.
-  perform pruebas.assert(
-    'F1 reescrita da EXACTAMENTE las mismas pistas que la formulación original de 003',
-    v_malas = '',
-    case when v_corridas = 0
-         then 'omitida: sin corrida calculada (GEN=0)'
-         else v_malas end);
+  if v_corridas = 0 then
+    perform pruebas.omitir(
+      'F1 reescrita da EXACTAMENTE las mismas pistas que la formulación original de 003',
+      'sin corrida calculada (GEN=0): el fixture no participa');
+  else
+    perform pruebas.assert(
+      'F1 reescrita da EXACTAMENTE las mismas pistas que la formulación original de 003',
+      v_malas = '', v_malas);
+  end if;
 end $$;
 
