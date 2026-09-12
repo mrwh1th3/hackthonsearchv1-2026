@@ -6,7 +6,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensamblar, ErrorEnsamblado, ROLES_LLM, ROLES_ESPECIALISTA, TECHO_CARACTERES,
-  AMBITOS_TECHO, AMBITO_TECHO_POR_DEFECTO, TECHO_SYSTEM_CARACTERES, FENCE_INICIO, FENCE_FIN,
+  AMBITOS_TECHO, AMBITO_TECHO_POR_DEFECTO, TECHO_SYSTEM_CARACTERES, TECHO_SYSTEM_POR_ROL,
+  techoSystem, ensamblarMapper, FENCE_INICIO, FENCE_FIN,
 } from '../../n8n/prompts/ensamblar.mjs';
 import { CASOS_ROL, fixtureContrato, fixtureLocal, contar, contextoEspecialista } from './ayuda.mjs';
 
@@ -68,32 +69,66 @@ test('con el ámbito por defecto el system de un especialista (>9k) no vacía el
   }
 });
 
-test('el system tiene su propio techo medido de 10k y se reporta en meta', () => {
+test('el techo del system es por rol: 10k especialistas, 12k cierre (H7)', () => {
+  // Decisión H7 de reports/handoff/DECISIONES.md. El escalar viejo sobrevive como alias
+  // deprecado y vale lo que aprieta (el techo del especialista).
+  for (const rol of ROLES_LLM) {
+    const esperado = ROLES_ESPECIALISTA.includes(rol) ? 10000 : 12000;
+    assert.equal(TECHO_SYSTEM_POR_ROL[rol], esperado, rol);
+    assert.equal(techoSystem(rol), esperado, rol);
+  }
+  assert.equal(TECHO_SYSTEM_POR_ROL.mapper, 12000);
   assert.equal(TECHO_SYSTEM_CARACTERES, 10000);
+  assert.equal(TECHO_SYSTEM_CARACTERES, TECHO_SYSTEM_POR_ROL.documental);
 
-  // Los cinco especialistas, en su variante base, caben bajo el techo del system: es lo que
-  // deja sitio al paquete y lo que se vigila para que los .md no crezcan en silencio.
+  // Un rol sin techo declarado no se inventa: falla con código tipificado.
+  assert.throws(
+    () => techoSystem('inexistente'),
+    e => e instanceof ErrorEnsamblado && e.codigo === 'rol_sin_techo_system',
+  );
+});
+
+test('cada rol cabe bajo SU techo de system y meta lo reporta', () => {
+  // Los cinco especialistas, en su variante base: es lo que deja sitio al paquete de 12k y
+  // lo que se vigila para que los .md no crezcan en silencio.
   for (const rol of ROLES_ESPECIALISTA) {
     const r = ensamblar(rol, contextoEspecialista(rol));
+    assert.equal(r.meta.techo_system, 10000, rol);
     assert.ok(
-      r.meta.caracteres_system <= TECHO_SYSTEM_CARACTERES,
-      `${rol}: system de ${r.meta.caracteres_system} > ${TECHO_SYSTEM_CARACTERES}`,
+      r.meta.caracteres_system <= r.meta.techo_system,
+      `${rol}: system de ${r.meta.caracteres_system} > ${r.meta.techo_system}`,
     );
-    assert.equal(r.meta.techo_system, TECHO_SYSTEM_CARACTERES);
     assert.equal(r.meta.system_sobre_techo, false, rol);
   }
 
-  // Las dos excepciones conocidas se miden en vez de dejarse crecer: los roles de cierre
-  // (techo de paquete 24k) y la variante fewshot. Si suben de aquí, es una decisión, no un
-  // descuido.
+  // Los roles de cierre miden ~10.0k–10.1k: con el escalar viejo quedaban "sobre techo" por
+  // cien caracteres. Con el techo de 12k caben, y se comprueba que el margen es real.
   for (const { rol, fixture } of CASOS_ROL) {
     const r = ensamblar(rol, fixtureContrato(fixture));
-    assert.ok(r.meta.caracteres_system <= 11000, `${rol}: system de ${r.meta.caracteres_system}`);
+    const esperado = ROLES_ESPECIALISTA.includes(rol) ? 10000 : 12000;
+    assert.equal(r.meta.techo_system, esperado, rol);
+    assert.ok(
+      r.meta.caracteres_system <= r.meta.techo_system,
+      `${rol}: system de ${r.meta.caracteres_system} > ${r.meta.techo_system}`,
+    );
+    assert.equal(r.meta.system_sobre_techo, false, rol);
   }
+
+  // El mapper (19) también declara techo y lo reporta: publicar un techo para un rol cuya
+  // meta no mide nada sería decorativo.
+  const m = ensamblarMapper({ profile_hash: 'ph', columnas: [{ nombre: 'rfc', tipo: 'texto' }] });
+  assert.equal(m.meta.techo_system, 12000);
+  assert.ok(m.meta.caracteres_system <= m.meta.techo_system, `mapper: ${m.meta.caracteres_system}`);
+  assert.equal(m.meta.system_sobre_techo, false);
+});
+
+test('la variante fewshot puede rebasar el techo del especialista y se reporta, no se aborta', () => {
   for (const rol of ROLES_ESPECIALISTA) {
     const r = ensamblar(rol, contextoEspecialista(rol), { fewshot: true });
+    assert.equal(r.meta.techo_system, 10000, rol);
     assert.ok(r.meta.caracteres_system <= 11500, `${rol}+fewshot: ${r.meta.caracteres_system}`);
-    assert.equal(r.meta.system_sobre_techo, r.meta.caracteres_system > TECHO_SYSTEM_CARACTERES);
+    // La bandera es un hecho medido, no una opinión: siempre coincide con la comparación.
+    assert.equal(r.meta.system_sobre_techo, r.meta.caracteres_system > r.meta.techo_system);
   }
 });
 

@@ -56,13 +56,25 @@ que en ámbito `'total'` quedan ~2.2k para los datos —una o dos pistas a tama�
 peor caso del contrato dejaba al especialista sin una sola pista que investigar. Es una
 decisión de configuración del runtime, no del prompt.
 
-El `system` tiene además su propio techo **medido**, `TECHO_SYSTEM_CARACTERES` = 10.000. No
-aborta el ensamblado: lo vigilan los tests y cada ensamblado lo reporta en
+El `system` tiene además su propio techo **medido y por rol** (`TECHO_SYSTEM_POR_ROL`,
+`techoSystem(rol)`; decisión H7 de `reports/handoff/DECISIONES.md`):
+
+| Rol | Techo del system | Por qué |
+|---|---|---|
+| Los cinco especialistas | **10.000** | comparten un techo de paquete de 12k con las pistas: pasar de 10k deja al especialista sin datos que investigar |
+| Auditor, Defensor, Réplica, Redactor, Editor | **12.000** | techo de paquete de 24k; su system no compite con pistas y mide ~10.0k–10.1k |
+| Mapper (19) | **12.000** | no compite con pistas; mide ~8k |
+
+Sustituye al escalar único de 10.000 de H3, con el que los cinco roles de cierre quedaban
+"sobre techo" por unos cien caracteres sin que eso significara nada. `TECHO_SYSTEM_CARACTERES`
+sobrevive como **alias deprecado** del techo que sí aprieta (el del especialista).
+
+No aborta el ensamblado: lo vigilan los tests y cada ensamblado lo reporta en
 `meta.caracteres_system`, `meta.techo_system` y `meta.system_sobre_techo`, para que el
-runtime lo registre. Dos casos lo rebasan a propósito y están medidos: los roles de cierre
-(~10.0k–10.1k, con techo de paquete de 24k) y la variante `fewshot` (~10.5k–11.4k; en ámbito
-`'total'` el financiero ya no cabe y el ensamblador lo dice con `bloque_obligatorio_no_cabe`
-en vez de recortar el system: esa variante se usa con el ámbito por defecto).
+runtime lo registre. Un caso lo rebasa a propósito y está medido: la variante `fewshot`
+(~10.5k–11.4k contra el techo de 10k del especialista; en ámbito `'total'` el financiero ya
+no cabe y el ensamblador lo dice con `bloque_obligatorio_no_cabe` en vez de recortar el
+system: esa variante se usa con el ámbito por defecto).
 
 Cuando no cabe, se omiten **bloques completos** (nunca medio JSON ni medio bloque de dato no
 confiable), se devuelve `truncado: true`, y el mensaje incluye un aviso con los IDs
@@ -78,7 +90,7 @@ mismo prompt cuando no fue así.
 ```bash
 node n8n/prompts/manifest.mjs --check   # falla (exit 1) si algo cambió sin regenerar
 node n8n/prompts/manifest.mjs --write   # regenera manifest.json
-node --test "tests/prompts/*.test.mjs"  # 96 pruebas; incluye el check anterior
+node --test "tests/prompts/*.test.mjs"  # 106 pruebas; incluye el check anterior
 ```
 
 **Después de editar cualquier prompt hay que regenerar el manifest**, o el test falla y la
@@ -101,14 +113,101 @@ instrucción propia de ese motivo— y no cambian el system, la allowlist, el co
 ni el techo; el bloque compite por el mismo presupuesto que los datos. Reintentar no sube el
 nivel (lo calcula código) ni convierte la falta de pruebas en explicación inocente.
 
-El ensamblador rechaza con código tipificado el reintento mal declarado:
-`motivo_reintento_invalido`, `reintento_no_disponible`, `reintento_sin_intento` (motivo con
-`intento=0`) y `motivo_reintento_ausente` (`intento≥1` sin motivo: no se reintenta a ciegas).
+El ensamblador rechaza con código tipificado el reintento **mal** declarado:
+`motivo_reintento_invalido` (motivo fuera de la lista), `reintento_no_disponible` (rol que no
+reintenta) y `reintento_sin_intento` (motivo con `intento=0`: mentiría al modelo).
 
-La variante se nombra con sufijo, `<rol>+reintento:<motivo>`, y se combina con la anterior
-(`documental+fewshot+reintento:evidencia_invalida`). Las 35 combinaciones no se listan en
-`variantes`: el manifest publica sus dos ejes (`motivos_reintento`, `roles_con_reintento`) y
-la regla de nombre (`sufijo_variante_reintento`).
+El reintento **incompleto** ya no se rechaza (decisión H7). Si el paquete declara `intento≥1`
+y el ensamblado no recibe motivo, `ensamblar()` no lanza: degrada. Añade un bloque de
+reintento genérico que le dice al modelo exactamente lo que no sabe —«el motivo tipificado no
+llegó a este ensamblado, no lo supongas ni lo inventes»—, marca la variante como
+`<rol>+reintento:sin_motivo` y deja el hueco en `meta.aviso_reintento` para que el runtime lo
+registre en bitácora. El motivo del cambio: el runtime no siempre puede recuperar el motivo
+del intento anterior (un checkpoint reanudado tras un fallo lo pierde) y abortar el ensamblado
+convertía un dato faltante en un caso sin investigar. `sin_motivo` **no es un motivo**: no
+está en `MOTIVOS_REINTENTO` y `meta.motivo_reintento` sigue siendo `null`.
+
+### Gramática exacta de `meta.variante_prompt`
+
+Es el nombre canónico de la variante y lo construye `ensamblar()` en un orden **fijo**. No es
+prosa: hay un test que lo fija (`tests/prompts/reintento.test.mjs`), porque el runtime lo usa
+para calcular `prompt_hash` y 10 compara corridas por ese nombre.
+
+```
+variante_prompt := <rol> [ "+fewshot" ] [ "+reintento:" <motivo> | "+reintento:sin_motivo" ]
+
+<rol>     := documental | financiero | relacional | temporal | externo
+           | auditor | defensor | replica | redactor | editor | mapper
+<motivo>  := evidencia_insuficiente | cadena_incompleta | defensa_no_considerada
+           | evidencia_invalida | contradiccion
+```
+
+Reglas de la gramática, todas verificadas por los tests:
+
+- **Separador** `+`, **sin espacios**. El separador del motivo es `:`, no `+`.
+- **Orden fijo**: rol, luego `fewshot`, luego `reintento:…`. Nunca al revés; no hay otra
+  permutación válida, aunque el conjunto de partes sea el mismo.
+- **Sin variante no hay sufijo**: el nombre de un ensamblado base es el rol a secas
+  (`documental`), no `documental+base` ni `documental+`.
+- `fewshot` sólo existe para los cinco especialistas (`FEWSHOT_POR_ROL`).
+- `reintento:<motivo>` sólo existe para los siete roles que investigan
+  (`ROLES_CON_REINTENTO`) y con `intento≥1`.
+- `reintento:sin_motivo` es el caso degradado de H7 (`intento≥1` sin motivo). **`sin_motivo`
+  no es un motivo**: no está en `MOTIVOS_REINTENTO`, `meta.motivo_reintento` sigue siendo
+  `null` y el hueco viaja en `meta.aviso_reintento`.
+- Los dos sufijos de reintento son **excluyentes**: o hay motivo tipificado, o no lo hay.
+
+Ejemplos válidos:
+
+```
+redactor
+documental
+documental+fewshot
+auditor+reintento:contradiccion
+financiero+fewshot+reintento:evidencia_invalida
+temporal+reintento:sin_motivo
+```
+
+Las 42 combinaciones de reintento no se listan en `variantes`: el manifest publica los ejes
+(`motivos_reintento`, `roles_con_reintento`), la regla de nombre
+(`sufijo_variante_reintento`) y la variante degradada (`variante_reintento_sin_motivo`).
+
+### Cómo se compone `prompt_hash`
+
+`prompt_hash` identifica **qué prompt exacto** se le mandó al modelo, y se persiste en
+`ejecuciones_agente` y en `corridas` junto a `version_prompts`. La regla es:
+
+```
+prompt_hash := <version_prompts> ":" <variante_prompt>
+```
+
+`version_prompts` son los 12 primeros hex del sha256 de los sha256 de **todos** los archivos
+de esta carpeta salvo `manifest.json`, ordenados por nombre (`regla_hash` del manifest). Se
+obtiene sin calcularlo a mano:
+
+```bash
+node -e "console.log(require('./n8n/prompts/manifest.json').version_prompts)"
+# cambia con cualquier edición de la carpeta, este README incluido
+```
+
+Ejemplo completo, con una `version_prompts` **inventada** (`0123456789ab`) para que nadie la
+confunda con la vigente:
+
+```
+prompt_hash = "0123456789ab" + ":" + "documental+fewshot"
+            = 0123456789ab:documental+fewshot
+```
+
+Aquí no se escribe ninguna `version_prompts` literal como valor vigente: este README entra en
+el hash, así que cualquier literal que se escribiera quedaría obsoleto en el mismo commit que
+lo escribe. El valor vigente es siempre el del `manifest.json`.
+
+> **Hueco conocido (no es de esta carpeta).** El runtime, cuando arma el cuerpo con el
+> catálogo embebido y no le llega un `prompt_hash`, usa el **rol** en vez de la variante
+> (`n8n/runtime/nodos/construir-cuerpo.mjs`: `` `${catalogo.version_prompts}:${rol}` ``). Con
+> ese fallback, `documental` y `documental+fewshot` comparten `prompt_hash` y el loop de 10 no
+> puede distinguir las dos corridas. Ese archivo es de forense-runtime: la gramática de arriba
+> es la que debe producir, y el cambio está pedido al coordinador.
 
 Procedimiento de comparación (10 §Loop de iteración), **una cosa por corrida**:
 

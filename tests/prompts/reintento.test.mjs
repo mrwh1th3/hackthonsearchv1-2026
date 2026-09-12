@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensamblar, ErrorEnsamblado, MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, ROLES_ESPECIALISTA,
-  ROLES_LLM, TECHO_CARACTERES,
+  ROLES_LLM, TECHO_CARACTERES, VARIANTE_REINTENTO_SIN_MOTIVO,
 } from '../../n8n/prompts/ensamblar.mjs';
 import { leerManifest } from '../../n8n/prompts/manifest.mjs';
 import { fixtureContrato, contextoEspecialista, fixtureLocal, plano } from './ayuda.mjs';
@@ -118,14 +118,51 @@ test('el reintento mal declarado se rechaza con código tipificado, no se ignora
     () => ensamblar('auditor', paqueteDe('auditor', 0), { motivo_reintento: 'contradiccion' }),
     e => e instanceof ErrorEnsamblado && e.codigo === 'reintento_sin_intento',
   );
-  // Intento sin motivo: reintentar a ciegas no está permitido.
+  // Intento sin motivo YA NO lanza (H7): se degrada. Ver el test siguiente.
   for (const rol of ROLES_CON_REINTENTO) {
-    assert.throws(
-      () => ensamblar(rol, paqueteDe(rol, 1)),
-      e => e instanceof ErrorEnsamblado && e.codigo === 'motivo_reintento_ausente',
-      rol,
-    );
+    assert.doesNotThrow(() => ensamblar(rol, paqueteDe(rol, 1)), rol);
   }
+});
+
+test('intento>=1 sin motivo se degrada a la variante reintento:sin_motivo, no lanza (H7)', () => {
+  // El runtime no siempre recupera el motivo del intento anterior (un checkpoint reanudado
+  // tras un fallo lo pierde). Abortar el ensamblado convertía un dato faltante en un caso sin
+  // investigar; degradarlo deja el caso vivo y el hueco visible en bitácora.
+  for (const rol of ROLES_CON_REINTENTO) {
+    for (const intento of [1, 2]) {
+      const r = ensamblar(rol, paqueteDe(rol, intento));
+      assert.equal(r.meta.intento, intento, rol);
+      assert.equal(r.meta.variante_prompt, `${rol}+${VARIANTE_REINTENTO_SIN_MOTIVO}`, rol);
+      // `sin_motivo` no es un motivo: no entra en la lista tipificada ni en meta.
+      assert.equal(r.meta.motivo_reintento, null, rol);
+      assert.ok(!MOTIVOS_REINTENTO.includes('sin_motivo'));
+      // El aviso va en meta para que el runtime lo registre, no en un console.
+      assert.match(r.meta.aviso_reintento, /^motivo_reintento_ausente: /, rol);
+      assert.ok(r.meta.aviso_reintento.includes(`intento=${intento}`), rol);
+
+      const texto = r.messages_iniciales[0].content;
+      assert.ok(texto.includes(`## Reintento: intento ${intento}`), rol);
+      // El bloque genérico dice lo que no se sabe en vez de fingir un motivo.
+      assert.ok(texto.includes('el motivo tipificado no llegó a este ensamblado'), rol);
+      assert.ok(texto.includes('No lo supongas ni lo inventes'), rol);
+      for (const m of MOTIVOS_REINTENTO) {
+        assert.ok(!texto.includes(`\`${m}\``), `${rol}: el bloque genérico no cita ${m} como si fuera el motivo`);
+      }
+      // Reintentar no sube el nivel, tampoco a ciegas (reglas 4 y 10).
+      assert.ok(texto.includes('no sube el nivel'), rol);
+    }
+  }
+});
+
+test('sin reintento no hay aviso ni sufijo; con motivo tipificado el aviso sigue vacío', () => {
+  const base = ensamblar('documental', paqueteDe('documental', 0));
+  assert.equal(base.meta.aviso_reintento, null);
+  assert.equal(base.meta.variante_prompt, 'documental');
+
+  const conMotivo = ensamblar('documental', paqueteDe('documental', 1), { motivo_reintento: 'contradiccion' });
+  assert.equal(conMotivo.meta.aviso_reintento, null);
+  assert.equal(conMotivo.meta.variante_prompt, 'documental+reintento:contradiccion');
+  assert.equal(conMotivo.meta.motivo_reintento, 'contradiccion');
 });
 
 test('los roles sin reintento ensamblan igual aunque el paquete declare intento', () => {
@@ -135,6 +172,7 @@ test('los roles sin reintento ensamblan igual aunque el paquete declare intento'
     const r = ensamblar(rol, fx);
     assert.equal(r.meta.motivo_reintento, null, rol);
     assert.equal(r.meta.variante_prompt, rol, rol);
+    assert.equal(r.meta.aviso_reintento, null, rol);
     assert.ok(!r.messages_iniciales[0].content.includes('## Reintento'), rol);
   }
 });
@@ -166,4 +204,7 @@ test('el manifest publica los ejes del reintento para que el runtime nombre la v
   assert.deepEqual(manifest.motivos_reintento, [...MOTIVOS_REINTENTO]);
   assert.deepEqual(manifest.roles_con_reintento, [...ROLES_CON_REINTENTO]);
   assert.equal(manifest.sufijo_variante_reintento, 'reintento:<motivo>');
+  // La variante degradada se publica aparte y no contamina la lista de motivos.
+  assert.equal(manifest.variante_reintento_sin_motivo, VARIANTE_REINTENTO_SIN_MOTIVO);
+  assert.ok(!manifest.motivos_reintento.includes('sin_motivo'));
 });
