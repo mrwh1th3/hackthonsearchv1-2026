@@ -250,12 +250,12 @@ test('reenviar el mismo paquete con el mismo idempotency_key no crea otra inyecc
 });
 
 // ---------------------------------------------------------------------
-// 4. QA-003 (abierto, dueño forense-db): el mismo payload sin
-//    idempotency_key revienta en vez de devolver un rechazo con motivo.
+// 4. QA-003 (CERRADO en la oleada 3 por 010): el mismo payload sin
+//    idempotency_key devuelve un envelope con motivo, no unique_violation.
 // ---------------------------------------------------------------------
 
 test('reenviar el mismo payload SIN idempotency_key devuelve un rechazo, no una excepción',
-  { skip: saltar, timeout: 120000, todo: 'QA-003: ux_ingestas_idempotency sale como error SQL crudo (forense-db)' },
+  { skip: saltar, timeout: 120000 },
   () => {
     const payload = payloadBase('qa-003');
     const a = registrar(payload);
@@ -270,4 +270,23 @@ test('reenviar el mismo payload SIN idempotency_key devuelve un rechazo, no una 
          $PAY$${JSON.stringify(payload)}$PAY$::jsonb, 'ensayo', null, null);`, { detener: true });
     assert.equal(segunda.code, 0,
       `registrar_inyeccion lanzó excepción en vez de devolver un envelope: ${segunda.error}`);
+
+    // Exit 0 no basta: lo que rompía era que n8n recibiera un 500 sin
+    // diagnóstico. El reenvío tiene que llegar como DATO — ok:false con
+    // motivo, o la misma ingesta reconocida como repetida.
+    const envelope = JSON.parse(segunda.salida);
+    assert.equal(typeof envelope.ok, 'boolean',
+      `la respuesta al reenvío no es un envelope: ${segunda.salida.slice(0, 300)}`);
+    if (envelope.ok === false) {
+      assert.ok(envelope.motivo || envelope.error,
+        `rechazo sin motivo legible: ${JSON.stringify(envelope)}`);
+    } else {
+      assert.equal(envelope.inyeccion_id, a.inyeccion_id,
+        'el reenvío devolvió ok:true con OTRA inyección: sería un duplicado silencioso');
+    }
+    assert.equal(Number(escalar(DB_QA, `
+      select count(*) from forense.ingestas
+       where hash_payload = (select hash_payload from forense.ingestas
+                              where id = ${lit(a.ingesta_id)}::uuid)`)), 1,
+      'el reenvío creó una segunda ingesta con el mismo hash de payload');
   });

@@ -138,10 +138,12 @@ test('ninguna función del schema forense queda ejecutable por PUBLIC', { skip: 
   // Guarda de regresión: 002-006 terminan con `revoke execute ... from public`.
   // Si una migración nueva añade funciones sin repetir el revoke, esta prueba las nombra.
   //
-  // Las funciones que devuelven `trigger` se excluyen del veredicto porque Postgres las
-  // rechaza en cualquier invocación directa («trigger functions can only be called as
-  // triggers»), y se comprueba abajo que sigue siendo así. 007 dejó
-  // forense.trg_investigacion_completa sin revoke: QA-002, cosmético, dueño forense-db.
+  // Las funciones que devuelven `trigger` se miden aparte: Postgres las rechaza en
+  // cualquier invocación directa («trigger functions can only be called as triggers»),
+  // así que una sin revoke era un hueco cosmético, no explotable. QA-002 (007 dejó
+  // forense.trg_investigacion_completa sin revoke) quedó CERRADO en la oleada 3: hoy
+  // la lista está vacía y se exige que siga vacía, con la comprobación de invocación
+  // como segunda barrera si una migración futura vuelve a abrir una.
   const expuestas = filas(DB_QA, `
     select p.proname
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -165,4 +167,7 @@ test('ninguna función del schema forense queda ejecutable por PUBLIC', { skip: 
     assert.match(r.error, /trigger functions can only be called as triggers/,
       `forense.${t}() falló por otro motivo: ${r.error}`);
   }
+  assert.deepEqual(triggers, [],
+    'QA-002 se reabrió: funciones de trigger ejecutables por PUBLIC (falta el revoke al ' +
+    `final de la migración que las creó): ${triggers.join(', ')}`);
 });
