@@ -10,7 +10,7 @@ export interface DataTableColumn<T> {
   csv?: (row: T) => string;
 }
 
-export interface DataTableProps<T extends Record<string, unknown>> {
+export interface DataTableProps<T extends object> {
   columns: Array<DataTableColumn<T>>;
   rows: T[];
   getRowKey: (row: T, index: number) => string;
@@ -25,7 +25,7 @@ export interface DataTableProps<T extends Record<string, unknown>> {
  * historial, entidades, bitácora, estadísticas). Estados vacío/skeleton se
  * resuelven arriba (el llamador decide cuándo pasar `rows: []`).
  */
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends object>({
   columns,
   rows,
   getRowKey,
@@ -81,7 +81,7 @@ export function DataTable<T extends Record<string, unknown>>({
                     key={col.key}
                     className={cn("px-3 py-2 text-text", col.align === "right" && "text-right tabular-nums", col.align === "center" && "text-center")}
                   >
-                    {col.render ? col.render(row) : String(row[col.key] ?? "—")}
+                    {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? "—")}
                   </td>
                 ))}
               </tr>
@@ -94,14 +94,14 @@ export function DataTable<T extends Record<string, unknown>>({
 }
 
 /** Serializa filas+columnas a CSV (RFC 4180 básico) para `DownloadMenu`. */
-export function dataTableToCsv<T extends Record<string, unknown>>(columns: Array<DataTableColumn<T>>, rows: T[]): string {
+export function dataTableToCsv<T extends object>(columns: Array<DataTableColumn<T>>, rows: T[]): string {
   const escape = (value: string) => {
     if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
     return value;
   };
   const header = columns.map((c) => escape(c.header)).join(",");
   const body = rows
-    .map((row) => columns.map((c) => escape(c.csv ? c.csv(row) : String(row[c.key] ?? ""))).join(","))
+    .map((row) => columns.map((c) => escape(c.csv ? c.csv(row) : String((row as Record<string, unknown>)[c.key] ?? ""))).join(","))
     .join("\n");
   return `${header}\n${body}`;
 }

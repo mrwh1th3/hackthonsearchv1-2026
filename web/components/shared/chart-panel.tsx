@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { DataTable, dataTableToCsv, type DataTableColumn } from "./data-table";
 import { DownloadMenu } from "./download-menu";
 
-export interface ChartPanelProps<T extends Record<string, unknown>> {
+export interface ChartPanelProps<T extends object> {
   title: string;
   unidad?: string;
   /** Texto ya formado de alcance/periodo, p.ej. "Corrida demo-1 · 2026-01" (15 §8). */
@@ -28,7 +28,7 @@ export interface ChartPanelProps<T extends Record<string, unknown>> {
  * usa `DataTable`; la vista "gráfica" renderiza `children` (el llamador trae
  * Recharts/grafo/lo que aplique a esa métrica).
  */
-export function ChartPanel<T extends Record<string, unknown>>({
+export function ChartPanel<T extends object>({
   title,
   unidad,
   alcance,
