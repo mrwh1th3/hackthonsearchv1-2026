@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DB_QA, RAIZ, contratos, correr, escalar, filas, hayBase, leerJson } from './_ayudas.mjs';
+import { CORRIDA_GEN_V1, DB_QA, RAIZ, contratos, correr, escalar, filas, hayBase, json, leerJson } from './_ayudas.mjs';
 
 const disponible = hayBase(DB_QA);
 const saltar = disponible ? false : `falta la base ${DB_QA}: corre bash tests/integration/preparar-db.sh`;
@@ -169,6 +169,11 @@ test('ninguna función expuesta al agente referencia ground_truth (pg_proc.prosr
   for (const f of permitidas) assert.ok(!f.startsWith('public.forense_'), f);
   // ...ni es invocable por los roles con los que la UI llega a la base. Sin esto, la
   // lista de excepciones sería una puerta trasera documentada.
+  //
+  // v_metricas_corrida SÍ está concedida a anon/authenticated a propósito (003:803 y
+  // 005:2260): es el panel de métricas del demo. Se le exige lo que de verdad importa
+  // —que agregue y no filtre etiquetas por RFC— en la aserción de abajo.
+  const expuestasAdrede = new Set(['forense.v_metricas_corrida']);
   const alcanzables = filas(DB_QA, `
     select n.nspname || '.' || p.proname || ' → ' || r.rolname
       from pg_proc p
@@ -177,9 +182,22 @@ test('ninguna función expuesta al agente referencia ground_truth (pg_proc.prosr
      where n.nspname || '.' || p.proname in (${[...permitidas].map((f) => `'${f}'`).join(',')})
        and exists (select 1 from pg_roles where rolname = r.rolname)
        and has_function_privilege(r.rolname, p.oid, 'execute')
-     order by 1;`).map((x) => x[0]).filter(Boolean);
+     order by 1;`).map((x) => x[0]).filter(Boolean)
+    .filter((f) => !expuestasAdrede.has(f.split(' ')[0]));
   assert.deepEqual(alcanzables, [],
     `funciones que leen ground_truth y son ejecutables desde la UI: ${alcanzables.join(', ')}`);
+
+  // Lo que la UI puede pedir sobre gen-v1 son agregados, nunca la etiqueta de un RFC:
+  // si aquí apareciera un RFC, el demo estaría enseñando la respuesta.
+  const metricas = json(DB_QA,
+    `forense.v_metricas_corrida('${CORRIDA_GEN_V1}'::uuid)`);
+  const texto = JSON.stringify(metricas);
+  assert.doesNotMatch(texto, /[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}/,
+    'v_metricas_corrida devolvió un RFC: filtra ground truth fila a fila');
+  for (const prohibida of ['es_fraude', 'tipologia', 'es_trampa_legitima']) {
+    assert.equal(texto.includes(`"${prohibida}"`), false,
+      `v_metricas_corrida expone la columna ${prohibida} de ground_truth`);
+  }
 });
 
 test('las 11 herramientas public.forense_* aún no existen: la aserción anterior es parcial', { skip: saltar }, () => {
@@ -211,7 +229,7 @@ test('las 11 herramientas public.forense_* aún no existen: la aserción anterio
 // alternativa que esa misma decisión descartó. Marcada `todo` para no dejar el banco en
 // rojo: pasa sola en cuanto la migración aditiva añada el valor.
 test('bitacora.tipo_evento acepta todos los valores del contrato product.evento_forense',
-  { skip: saltar, todo: 'QA-001: falta corrida_cargada en ck_bitacora_tipo_evento (forense-db)' }, () => {
+  { skip: saltar, todo: 'QA-001: ck_bitacora_tipo_evento rechaza paso_en_cola y paso_checkpoint (forense-db)' }, () => {
   const producto = leerJson('contracts/schemas/product.schema.json');
   const defs = producto.$defs ?? producto.definitions;
   const tipos = defs.evento_forense.properties.tipo_evento.enum;
