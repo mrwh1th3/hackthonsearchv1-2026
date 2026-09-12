@@ -19,7 +19,8 @@ do $$
 declare
   esperado jsonb := jsonb_build_object(
     'asegurar_clusters_inyectados', 'cluster_id,rfc,creado',
-    'estado_corrida', 'corrida_id,terminada,estado_final,completados,en_cola,errores,cola_restante',
+    'cola_corrida', 'corrida_id,clusters_total,cola_restante,casos_activos',
+    'estado_corrida', 'corrida_id,terminada,estado_final,completados,en_cola,errores',
     'clusters_por_prioridad_inyeccion',
       'cluster_id,corrida_id,inyeccion_id,investigacion_id,afectado,score');
   k text; v text; v_cols text; v_falt text := '';
@@ -49,7 +50,7 @@ end $$;
 -- ---------------------------------------------------------------------
 do $$
 declare
-  v_c uuid; i int; v_cl uuid; ids uuid[] := '{}'; e record;
+  v_c uuid; i int; v_cl uuid; ids uuid[] := '{}'; e record; q record;
 begin
   insert into forense.corridas (nombre, dataset, dataset_hash, fecha_corte, estado, modo)
   values ('012: cola de clusters', 'fixture-012',
@@ -71,9 +72,12 @@ begin
     values (v_c, ids[i], 'RFC012' || i, 'selector', 'en_cola');
   end loop;
 
+  select * into q from forense.cola_corrida(v_c);
   select * into e from forense.estado_corrida(v_c);
-  perform pruebas.assert('estado_corrida: 6 clusters y 4 despachados dejan cola_restante = 2',
-    e.cola_restante = 2, 'cola_restante=' || coalesce(e.cola_restante::text, 'null'));
+  perform pruebas.assert('cola_corrida: 6 clusters y 4 despachados dejan cola_restante = 2',
+    q.cola_restante = 2 and q.clusters_total = 6 and q.casos_activos = 4,
+    'cola_restante=' || coalesce(q.cola_restante::text, 'null') ||
+    ' total=' || q.clusters_total || ' activos=' || q.casos_activos);
   perform pruebas.assert('una corrida con clusters sin despachar no está terminada',
     e.terminada = false and e.estado_final = 'en_curso',
     'terminada=' || e.terminada || ' estado_final=' || e.estado_final);
@@ -82,26 +86,28 @@ begin
   -- terminar de despachar no cierra la corrida (regla 9/10).
   update forense.casos set estado = 'dictaminado', nivel = 'presuncion'
    where corrida_id = v_c;
+  select * into q from forense.cola_corrida(v_c);
   select * into e from forense.estado_corrida(v_c);
   perform pruebas.assert('cerrar los casos no cierra la corrida si quedan clusters pendientes',
     e.terminada = false and e.estado_final = 'en_curso'
-    and e.completados = 4 and e.en_cola = 0 and e.cola_restante = 2,
+    and e.completados = 4 and e.en_cola = 0 and q.cola_restante = 2,
     'completados=' || e.completados || ' en_cola=' || e.en_cola ||
-    ' cola_restante=' || e.cola_restante || ' final=' || e.estado_final);
+    ' cola_restante=' || q.cola_restante || ' final=' || e.estado_final);
 
   -- Se despachan y cierran los dos que faltaban.
   insert into forense.casos (corrida_id, cluster_id, rfc_principal, origen, estado, nivel)
   select v_c, ids[i], 'RFC012' || i, 'selector', 'dictaminado', 'sin_hallazgos'
     from generate_series(5, 6) i;
+  select * into q from forense.cola_corrida(v_c);
   select * into e from forense.estado_corrida(v_c);
   perform pruebas.assert('con la cola de clusters drenada la corrida sí queda terminada',
-    e.terminada and e.estado_final = 'completada' and e.cola_restante = 0
+    e.terminada and e.estado_final = 'completada' and q.cola_restante = 0
     and e.completados = 6,
-    'completados=' || e.completados || ' cola_restante=' || e.cola_restante ||
+    'completados=' || e.completados || ' cola_restante=' || q.cola_restante ||
     ' final=' || e.estado_final);
 
   -- Lectura pura: estado_corrida no puede dejar rastro (no es un paso).
-  perform pruebas.assert('estado_corrida sigue sin escribir en la bitácora',
+  perform pruebas.assert('estado_corrida y cola_corrida siguen sin escribir en la bitácora',
     not exists (select 1 from forense.bitacora b where b.corrida_id = v_c), '');
 end $$;
 

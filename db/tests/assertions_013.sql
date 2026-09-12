@@ -17,7 +17,8 @@ declare
 begin
   for k in select c.id, c.nombre, c.fecha_corte
              from forense.corridas c
-            where exists (select 1 from forense.pistas p
+            where c.modo <> 'fixture'   -- el fixture trae F1 sembrada a mano
+              and exists (select 1 from forense.pistas p
                            where p.corrida_id = c.id and p.codigo = 'F1')
             order by c.inicio loop
     v_corridas := v_corridas + 1;

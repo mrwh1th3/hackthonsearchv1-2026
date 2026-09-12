@@ -18,8 +18,8 @@
 -- dictamen NO se relaja: el cluster existe, el selector sigue sin
 -- marcarlo y el nivel lo decide igual el código determinista de 005/010.
 --
--- Aditiva sobre 001–011: no altera tablas ni firmas salvo
--- `estado_corrida`, que gana una columna al final (§3).
+-- Aditiva sobre 001–011: no altera tablas ni firmas. `estado_corrida`
+-- conserva sus seis columnas y sólo cambia el criterio de cierre (§3).
 -- =====================================================================
 
 set search_path = '';
@@ -162,30 +162,50 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- 3. estado_corrida — la cola de CLUSTERS también cuenta
+-- 3. La cola de CLUSTERS también cuenta para cerrar una corrida
 --
--- Hallazgo alto: `estado_corrida` sólo miraba `forense.casos`. Un cluster
--- que nunca se despachó (el garantizado de §1 es justo ese caso: nace
--- después de que la corrida empezó a despachar) no tiene caso, así que la
--- corrida se declaraba `completada` con trabajo sin empezar. Ahora:
---   * `cola_restante` = clusters `pendiente` que todavía no tienen caso;
---   * `terminada` exige cola de casos Y cola de clusters en cero.
+-- Hallazgo alto: `estado_corrida` (010) sólo miraba `forense.casos`. Un
+-- cluster que nunca se despachó -el garantizado de §1 es justo ese caso:
+-- nace después de que la corrida empezó a despachar- no tiene caso, así
+-- que la corrida se declaraba `completada` con trabajo sin empezar.
+--
+-- `estado_corrida` conserva sus SEIS columnas a propósito: cambiar el tipo
+-- de retorno haría que reaplicar 010 (que la declara con `create or
+-- replace`) fallara con «cannot change return type», y el orden de
+-- migraciones dejaría de ser reaplicable. Lo que cambia es el criterio:
+-- `terminada` y `estado_final` ya cuentan la cola de clusters. El número
+-- se expone aparte, en `forense.cola_corrida`, que es aditiva.
+--
 -- Se cuenta "pendiente sin caso" y no sólo `estado='pendiente'` porque el
 -- estado del cluster no pasa a `ronda1` hasta que el caso arranca la ronda
 -- 1 (005 §preparar contexto): contar el estado a secas dejaría la cola sin
 -- drenar entre el despacho y la primera ronda.
---
--- Añade una columna AL FINAL: `SELECT *` del nodo FORENSE_corrida y el
--- `to_jsonb(t)` de QA siguen funcionando. `create or replace` no puede
--- cambiar el tipo de retorno, por eso el drop explícito (y el grant, que
--- el bloque de 010 ya no vuelve a ejecutar).
 -- ---------------------------------------------------------------------
 
-drop function if exists forense.estado_corrida(uuid);
+create or replace function forense.cola_corrida(p_corrida uuid)
+returns table(corrida_id uuid, clusters_total int, cola_restante int, casos_activos int)
+language plpgsql stable security definer set search_path = '' as $$
+#variable_conflict use_column
+declare v_tot int; v_cola int; v_act int;
+begin
+  select count(*)::int,
+         count(*) filter (where cl.estado = 'pendiente'
+                            and not exists (select 1 from forense.casos k
+                                             where k.cluster_id = cl.id))::int
+    into v_tot, v_cola
+    from forense.clusters cl where cl.corrida_id = p_corrida;
 
+  select count(*)::int into v_act from forense.casos k
+   where k.corrida_id = p_corrida
+     and k.estado not in ('dictaminado','parcial','cerrado','error');
+
+  return query select p_corrida, v_tot, v_cola, v_act;
+end $$;
+
+-- Misma firma y mismas seis columnas que 010; cambia el criterio de cierre.
 create or replace function forense.estado_corrida(p_corrida uuid)
 returns table(corrida_id uuid, terminada boolean, estado_final text,
-              completados int, en_cola int, errores int, cola_restante int)
+              completados int, en_cola int, errores int)
 language plpgsql stable security definer set search_path = '' as $$
 #variable_conflict use_column
 declare c record; v_comp int; v_cola int; v_err int; v_total int; v_clu int;
@@ -202,11 +222,7 @@ begin
     into v_comp, v_cola, v_err, v_total
     from forense.casos k where k.corrida_id = p_corrida;
 
-  select count(*)::int into v_clu
-    from forense.clusters cl
-   where cl.corrida_id = p_corrida
-     and cl.estado = 'pendiente'
-     and not exists (select 1 from forense.casos k where k.cluster_id = cl.id);
+  select q.cola_restante into v_clu from forense.cola_corrida(p_corrida) q;
 
   return query select p_corrida,
     ((v_total > 0 and v_cola = 0 and v_clu = 0) or c.estado in ('completada','error')),
@@ -215,7 +231,7 @@ begin
          when v_cola > 0 or v_clu > 0 then 'en_curso'
          when v_err > 0 and v_comp = 0 then 'error'
          else 'completada' end,
-    v_comp, v_cola, v_err, v_clu;
+    v_comp, v_cola, v_err;
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -225,6 +241,7 @@ end $$;
 revoke execute on function
   forense.asegurar_clusters_inyectados(uuid, uuid),
   forense.clusters_por_prioridad_inyeccion(uuid, uuid),
+  forense.cola_corrida(uuid),
   forense.estado_corrida(uuid)
 from public;
 
@@ -233,6 +250,7 @@ begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     execute 'grant execute on function forense.asegurar_clusters_inyectados(uuid, uuid) to service_role';
     execute 'grant execute on function forense.clusters_por_prioridad_inyeccion(uuid, uuid) to service_role';
+    execute 'grant execute on function forense.cola_corrida(uuid) to service_role';
     execute 'grant execute on function forense.estado_corrida(uuid) to service_role';
   end if;
 end $$;

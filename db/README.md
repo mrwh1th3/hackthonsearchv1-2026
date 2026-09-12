@@ -97,9 +97,13 @@ cluster (004) o por `/investigar`, no por el selector.
 * El selector de dos familias **no se toca**: sobre el paquete (c) el RFC tiene
   cluster y sigue fuera de `score_entidad`. Esa es la diferencia entre garantizar
   investigación y bajar el umbral (la alternativa que se rechazó en H9 07:32).
-* `estado_corrida` gana `cola_restante` (al final, para no romper lectores
-  posicionales): clusters `pendiente` que todavía no tienen caso. `terminada`
-  exige ahora las dos colas en cero. Se cuenta "pendiente sin caso" porque el
+* `estado_corrida` conserva sus SEIS columnas —cambiarle el tipo de retorno haría
+  que reaplicar 010 fallara con «cannot change return type» y el orden de
+  migraciones dejaría de ser reaplicable— pero cambia el criterio: `terminada` y
+  `estado_final` ya cuentan la cola de clusters, así que terminar de despachar no
+  cierra una corrida con clusters sin empezar. El número se expone aparte en
+  `forense.cola_corrida(corrida)` → `(clusters_total, cola_restante,
+  casos_activos)`, que es aditiva. Se cuenta "pendiente sin caso" porque el
   cluster no pasa a `ronda1` hasta que el caso arranca la ronda 1.
 
 ### Rendimiento del barrido (013, medido)
