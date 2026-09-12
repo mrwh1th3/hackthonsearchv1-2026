@@ -74,6 +74,7 @@ aplicar "$DBDIR/006_producto_ui.sql" "006_producto_ui.sql"
 aplicar "$DBDIR/007_notificaciones_voz.sql" "007_notificaciones_voz.sql"
 aplicar "$DBDIR/008_ingesta.sql" "008_ingesta.sql"
 aplicar "$DBDIR/009_runtime_eventos.sql" "009_runtime_eventos.sql"
+aplicar "$DBDIR/010_runtime_funciones.sql" "010_runtime_funciones.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$DBDIR/seeds/seed_producto.sql" "seeds/seed_producto.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
@@ -85,7 +86,7 @@ reaplicar_ok=true
 for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" \
          "$DBDIR/004_clusters.sql" "$DBDIR/005_rpc.sql" "$DBDIR/006_producto_ui.sql" \
          "$DBDIR/007_notificaciones_voz.sql" "$DBDIR/008_ingesta.sql" \
-         "$DBDIR/009_runtime_eventos.sql" \
+         "$DBDIR/009_runtime_eventos.sql" "$DBDIR/010_runtime_funciones.sql" \
          "$DBDIR/seeds/seed_fake.sql" "$DBDIR/seeds/seed_producto.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
@@ -106,6 +107,7 @@ aplicar "$HERE/assertions_005.sql" "tests/assertions_005.sql"
 aplicar "$HERE/assertions_006_007.sql" "tests/assertions_006_007.sql"
 aplicar "$HERE/assertions_008.sql" "tests/assertions_008.sql"
 aplicar "$HERE/assertions_009.sql" "tests/assertions_009.sql"
+aplicar "$HERE/assertions_010.sql" "tests/assertions_010.sql"
 
 echo "== paquetes de inyección (eval/inyecciones) =="
 bash "$HERE/cargar_paquetes.sh" "$DB" || fallos=$((fallos + 1))

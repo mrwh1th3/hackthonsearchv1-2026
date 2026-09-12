@@ -30,12 +30,31 @@ alter table forense.corridas add column if not exists idempotency_key text;
 create unique index if not exists ux_corridas_idempotency
   on forense.corridas (idempotency_key);
 
+-- `casos.estado` necesita dos valores terminales que 001 no previó y que el
+-- pipeline sí produce: `parcial` (presupuesto agotado o expediente que no
+-- valida — regla 10: agotar reintentos nunca sube el nivel) y `cerrado`
+-- (caso terminado sin dictamen). Postgres no amplía un CHECK in situ: se
+-- vuelve a declarar COMPLETO conservando el catálogo de 001, igual que 009
+-- hizo con bitacora.tipo_evento. Solo AÑADE valores.
+alter table forense.casos drop constraint if exists casos_estado_check;
+alter table forense.casos add constraint casos_estado_check check (
+  estado in ('en_cola','ronda1','ronda2','auditando','defendiendo','replicando',
+             'validando','dictaminando','redactando','dictaminado','reintento',
+             'parcial','cerrado','error'));
+
+-- Un expediente cuyas citas no resuelven deja rastro de que se revisó y
+-- falló; sin `rechazado` ese hecho no se podría persistir (regla 2).
+alter table forense.expedientes drop constraint if exists ck_expedientes_revision;
+alter table forense.expedientes add constraint ck_expedientes_revision check (
+  estado_revision in ('borrador','validado','rechazado'));
+
 -- Rastro de corrida sin caso: `forense.log` exige corrida_id (NOT NULL en
 -- bitacora) y acepta caso nulo. Este helper centraliza el patrón y evita
 -- repetir doce argumentos posicionales.
 create or replace function forense.log_corrida(
   p_corrida uuid, p_agente text, p_tipo text, p_payload jsonb)
 returns void language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 begin
   if p_corrida is null then return; end if;
   perform forense.log(null, p_agente, p_tipo, p_payload,
@@ -56,7 +75,13 @@ returns table(corrida_id uuid, estado text, idempotency_key text,
               corrida_origen_id uuid, investigacion_id uuid, dataset text,
               reutilizada boolean)
 language plpgsql security definer set search_path = '' as $$
-declare v record; v_id uuid; v_inv uuid; v_origen record; v_nombre text;
+#variable_conflict use_column
+declare
+  v record; v_id uuid; v_inv uuid; v_nombre text;
+  -- Escalares, no `record`: con p_corrida_origen nulo un record sin asignar
+  -- hace que cualquier v_origen.x lance «not assigned yet».
+  o_dataset text; o_hash text; o_corte timestamptz; o_prompts text;
+  o_reglas text; o_modo text; o_fam text[];
 begin
   if p_idempotency is null or length(p_idempotency) = 0 then
     raise exception 'abrir_corrida exige idempotency_key' using errcode = '22023';
@@ -79,13 +104,16 @@ begin
   end if;
 
   if p_corrida_origen is not null then
-    select * into v_origen from forense.corridas c where c.id = p_corrida_origen;
+    select c.dataset, c.dataset_hash, c.fecha_corte, c.version_prompts,
+           c.version_reglas, c.modo, c.familias_evaluables
+      into o_dataset, o_hash, o_corte, o_prompts, o_reglas, o_modo, o_fam
+      from forense.corridas c where c.id = p_corrida_origen;
     if not found then
       raise exception 'corrida origen % no existe', p_corrida_origen using errcode = '22023';
     end if;
   end if;
 
-  v_nombre := coalesce(p_dataset, v_origen.dataset, 'corrida') || ':' || left(p_idempotency, 24);
+  v_nombre := coalesce(p_dataset, o_dataset, 'corrida') || ':' || left(p_idempotency, 24);
 
   insert into forense.corridas (
     nombre, dataset, dataset_hash, fecha_corte, corrida_origen_id, estado,
@@ -93,12 +121,17 @@ begin
     idempotency_key, notas)
   values (
     v_nombre,
-    coalesce(p_dataset, v_origen.dataset),
-    v_origen.dataset_hash, v_origen.fecha_corte, p_corrida_origen, 'preparando',
-    coalesce(v_origen.version_prompts, 'prompts-1'),
-    coalesce(v_origen.version_reglas, 'pistas-1'),
-    coalesce(v_origen.modo, 'completo'),
-    coalesce(v_origen.familias_evaluables, '{D,F,R,T,E}'::text[]),
+    coalesce(p_dataset, o_dataset),
+    -- dataset_hash y fecha_corte son NOT NULL: aquí van PROVISIONALES y
+    -- `verificar_integridad_corrida` los sustituye por los reales del
+    -- snapshot. Una corrida `preparando` no se investiga.
+    coalesce(o_hash, 'provisional:' || encode(sha256(convert_to(
+      coalesce(p_dataset, '') || '|' || p_idempotency, 'utf8')), 'hex')),
+    coalesce(o_corte, now()), p_corrida_origen, 'preparando',
+    coalesce(o_prompts, 'prompts-1'),
+    coalesce(o_reglas, 'pistas-1'),
+    coalesce(o_modo, 'fiscal'),
+    coalesce(o_fam, '{D,F,R,T,E}'::text[]),
     p_idempotency,
     case when p_corrida_origen is null then 'origen ' || p_dataset
          else 'clon de ' || p_corrida_origen::text end)
@@ -113,7 +146,7 @@ begin
    where i.idempotency_key = p_idempotency limit 1;
 
   return query select v_id, 'preparando'::text, p_idempotency, p_corrida_origen,
-                      v_inv, coalesce(p_dataset, v_origen.dataset), false;
+                      v_inv, coalesce(p_dataset, o_dataset), false;
 end $$;
 
 -- 'Cargar o clonar snapshot'. Con origen copia el dominio COMPLETO de la
@@ -125,6 +158,7 @@ create or replace function forense.cargar_o_clonar_snapshot(
 returns table(corrida_id uuid, estado text, filas_por_tabla jsonb,
               corrida_origen_id uuid)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare c record; v_filas jsonb := '{}'::jsonb; n int; v_origen uuid;
 begin
   select * into c from forense.corridas k where k.id = p_corrida for update;
@@ -221,6 +255,7 @@ create or replace function forense.verificar_integridad_corrida(p_corrida uuid)
 returns table(corrida_id uuid, estado text, dataset_hash text,
               fecha_corte timestamptz, familias_evaluables text[], causa text)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   c record; n_cfdi bigint; n_mov bigint; n_contrib bigint; n_cuentas bigint;
   n_listas bigint; n_atr bigint; n_cat bigint; n_hora bigint;
@@ -243,11 +278,11 @@ begin
    where corrida_id = p_corrida and extract(hour from fecha) <> 0;
 
   -- Familias evaluables por datos presentes (02 §familias, 003 §no_evaluable).
-  if n_cfdi > 0 and n_contrib > 0 and n_cat > 0 then v_fam := v_fam || 'D'; end if;
-  if n_mov > 0 and n_cuentas > 0 then v_fam := v_fam || 'F'; end if;
-  if n_cfdi > 0 and n_contrib > 0 then v_fam := v_fam || 'R'; end if;
-  if n_cfdi > 0 and n_hora > 0 then v_fam := v_fam || 'T'; end if;
-  if n_listas > 0 or n_atr > 0 then v_fam := v_fam || 'E'; end if;
+  if n_cfdi > 0 and n_contrib > 0 and n_cat > 0 then v_fam := v_fam || 'D'::text; end if;
+  if n_mov > 0 and n_cuentas > 0 then v_fam := v_fam || 'F'::text; end if;
+  if n_cfdi > 0 and n_contrib > 0 then v_fam := v_fam || 'R'::text; end if;
+  if n_cfdi > 0 and n_hora > 0 then v_fam := v_fam || 'T'::text; end if;
+  if n_listas > 0 or n_atr > 0 then v_fam := v_fam || 'E'::text; end if;
 
   select max(f.fecha) into v_corte from (
     select fecha from forense.cfdi where corrida_id = p_corrida
@@ -267,7 +302,8 @@ begin
   v_estado := case when v_causa is null then 'lista' else 'error' end;
 
   update forense.corridas
-     set estado = v_estado, dataset_hash = v_hash, fecha_corte = v_corte,
+     set estado = v_estado, dataset_hash = v_hash,
+         fecha_corte = coalesce(v_corte, fecha_corte),
          familias_evaluables = v_fam,
          inicio = coalesce(inicio, now()),
          notas = case when v_causa is null then notas else v_causa end
@@ -281,6 +317,7 @@ begin
                          'contribuyentes', n_contrib, 'cuentas', n_cuentas,
                          'listas_sat', n_listas, 'atributos', n_atr)));
 
+  select k.fecha_corte into v_corte from forense.corridas k where k.id = p_corrida;
   return query select p_corrida, v_estado, v_hash, v_corte, v_fam, v_causa;
 end $$;
 
@@ -290,6 +327,7 @@ create or replace function forense.estado_corrida(p_corrida uuid)
 returns table(corrida_id uuid, terminada boolean, estado_final text,
               completados int, en_cola int, errores int)
 language plpgsql stable security definer set search_path = '' as $$
+#variable_conflict use_column
 declare c record; v_comp int; v_cola int; v_err int; v_total int;
 begin
   select * into c from forense.corridas k where k.id = p_corrida;
@@ -297,8 +335,8 @@ begin
     raise exception 'corrida % no existe', p_corrida using errcode = '22023';
   end if;
 
-  select count(*) filter (where k.estado in ('dictaminado','cerrado','parcial')),
-         count(*) filter (where k.estado not in ('dictaminado','cerrado','parcial','error')),
+  select count(*) filter (where k.estado in ('dictaminado','parcial','cerrado')),
+         count(*) filter (where k.estado not in ('dictaminado','parcial','cerrado','error')),
          count(*) filter (where k.estado = 'error'),
          count(*)
     into v_comp, v_cola, v_err, v_total
@@ -329,6 +367,7 @@ returns table(caso_id uuid, cluster_id uuid, corrida_id uuid, investigacion_id u
               roles_por_expansion jsonb, rfcs_frontera text[], ruta_material jsonb,
               expansiones_usadas int, tipo_evento text, registrado boolean)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   k record; cl record; v_fam text[]; v_inv uuid; v_sen jsonb; v_roles jsonb;
   v_ruta jsonb; v_exp int; v_frontera text[];
@@ -395,6 +434,7 @@ create or replace function forense.aplicar_resolucion_replica(
 returns table(caso_id uuid, cluster_id uuid, corrida_id uuid,
               investigacion_id uuid, resoluciones jsonb)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   k record; t record; v_inv uuid; r jsonb; v_out jsonb := '[]'::jsonb;
   d record; v_eval jsonb; v_acepta boolean; v_ids bigint[];
@@ -470,6 +510,7 @@ returns table(caso_id uuid, cluster_id uuid, corrida_id uuid, investigacion_id u
               caso jsonb, pistas jsonb, evidencia jsonb, pendientes jsonb,
               cobertura_completa boolean, presupuesto jsonb)
 language plpgsql stable security definer set search_path = '' as $$
+#variable_conflict use_column
 declare k record; cl record; v_inv uuid; v_pistas jsonb; v_ev jsonb; v_pres jsonb;
 begin
   select * into k from forense.casos c where c.id = p_caso;
@@ -540,6 +581,7 @@ create or replace function forense.guardar_dictamen(p_caso uuid, p_dictamen json
 returns table(caso_id uuid, cluster_id uuid, corrida_id uuid,
               investigacion_id uuid, nivel text, version int)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   k record; v_inv uuid; v_nivel text; v_monto numeric; v_ver int;
   v_fam text[]; v_rxr jsonb;
@@ -611,6 +653,7 @@ create or replace function forense.validar_expediente(p_caso uuid, p_version int
 returns table(caso_id uuid, cluster_id uuid, corrida_id uuid, investigacion_id uuid,
               version int, ok boolean, estado_final text)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   k record; v_inv uuid; x record; v_txt text; v_malas text[] := '{}';
   v_ok boolean; v_final text; v_cita text;
@@ -636,15 +679,19 @@ begin
       '((?:CFDI|MOV|ATR|LISTA|CICLO|CADENA|PAR):[A-Za-z0-9._:-]+)', 'g') m
   loop
     if v_cita like 'CFDI:%' then
-      if not exists (select 1 from forense.cfdi f
-                      where f.corrida_id = k.corrida_id
-                        and f.uuid = substring(v_cita from 6)) then
+      -- cfdi.uuid es uuid: una cita con forma inválida ya no resuelve.
+      if substring(v_cita from 6) !~*
+           '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+         or not exists (select 1 from forense.cfdi f
+                         where f.corrida_id = k.corrida_id
+                           and f.uuid = substring(v_cita from 6)::uuid) then
         v_malas := v_malas || v_cita;
       end if;
     elsif v_cita like 'MOV:%' then
-      if not exists (select 1 from forense.movimientos mv
-                      where mv.corrida_id = k.corrida_id
-                        and mv.id = substring(v_cita from 5)) then
+      if substring(v_cita from 5) !~ '^[0-9]+$'
+         or not exists (select 1 from forense.movimientos mv
+                         where mv.corrida_id = k.corrida_id
+                           and mv.id = substring(v_cita from 5)::bigint) then
         v_malas := v_malas || v_cita;
       end if;
     end if;
@@ -674,6 +721,7 @@ create or replace function forense.cerrar_caso(p_caso uuid, p_estado_final text)
 returns table(caso_id uuid, cluster_id uuid, corrida_id uuid,
               investigacion_id uuid, estado_final text, duracion_ms int)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare k record; v_inv uuid; v_final text; v_dur int;
 begin
   select * into k from forense.casos c where c.id = p_caso for update;
@@ -701,7 +749,7 @@ begin
 
   if k.cluster_id is not null then
     update forense.clusters
-       set estado = case when v_final = 'error' then 'error' else 'investigado' end,
+       set estado = case when v_final = 'error' then 'error' else 'cerrado' end,
            lease_owner = null, lease_expires_at = null
      where id = k.cluster_id;
   end if;
@@ -728,6 +776,7 @@ create or replace function forense.autores_reintento(
 returns table(caso_id uuid, autores text[], puede_expandir boolean,
               motivo text, objetivo jsonb)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   k record; v_aut text[] := '{}'; v_fam text[]; v_max int; v_exp boolean;
 begin
@@ -793,6 +842,7 @@ create or replace function forense.expandir_cluster_reintento(
 returns table(caso_id uuid, autores text[], expandido boolean,
               version_contexto int, rfcs_nuevos text[])
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   k record; cl record; v_rfcs text[]; v_nuevos text[]; v_n int := 0;
   v_max int; v_usadas int; v_aut text[];
@@ -847,6 +897,7 @@ create or replace function forense.crear_tareas_revision(
 returns table(caso_id uuid, tarea_id uuid, tarea_ids uuid[],
               version_contexto int, deadline timestamptz)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   k record; cl record; v_res jsonb; v_ids uuid[]; v_dead timestamptz; v_seg int;
 begin
@@ -888,6 +939,7 @@ end $$;
 create or replace function forense.revalidar_caso(p_caso uuid)
 returns table(caso_id uuid, limitaciones jsonb, evidencia_revalidada int)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare k record; v_res jsonb; v_n int; v_lim jsonb;
 begin
   select * into k from forense.casos c where c.id = p_caso;
@@ -929,6 +981,7 @@ create or replace function forense.cargar_version_expediente(
 returns table(caso_id uuid, version_actual int, nivel text, citas_permitidas jsonb,
               context_hash text, prompt_hash text, modelo text, documento jsonb)
 language plpgsql stable security definer set search_path = '' as $$
+#variable_conflict use_column
 declare k record; x record; v_ver int; v_citas jsonb; e record;
 begin
   select * into k from forense.casos c where c.id = p_caso;
@@ -980,6 +1033,7 @@ create or replace function forense.guardar_propuesta_edicion(
   p_directriz uuid default null)
 returns table(propuesta_id uuid, caso_id uuid, version_base int, creado timestamptz)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare k record; v_id uuid; v_creado timestamptz; v_modo text; v_existente record;
 begin
   select * into k from forense.casos c where c.id = p_caso;
@@ -1024,6 +1078,7 @@ create or replace function forense.revertir_expediente(
   p_caso uuid, p_version_objetivo int, p_version_base int,
   p_idempotency text, p_perfil uuid default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare k record; obj record; v_max int; v_nueva int; v_id bigint; v_ya record;
 begin
   select * into k from forense.casos c where c.id = p_caso for update;
@@ -1095,6 +1150,7 @@ create or replace function forense.registrar_inyeccion(
 returns table(inyeccion_id uuid, estado text, corrida_base_id uuid, ingesta_id uuid,
               idempotency_key text, prioridad text)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare g record; v_id uuid; v_prio text; v_key uuid; v_ya record;
 begin
   select * into g from forense.ingestas i where i.id = p_ingesta;
@@ -1147,6 +1203,7 @@ create or replace function forense.clusters_por_prioridad_inyeccion(
 returns table(cluster_id uuid, corrida_id uuid, inyeccion_id uuid,
               investigacion_id uuid, afectado boolean, score numeric)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare v_inv uuid; v_afect int; v_total int;
 begin
   select i.id into v_inv from forense.investigaciones i where i.corrida_id = p_corrida
@@ -1185,6 +1242,7 @@ create or replace function forense.leer_evento_salida(p_evento uuid)
 returns table(evento_id uuid, investigacion_id uuid, tipo_evento text, estado text,
               completada_at timestamptz, reporte_hash text)
 language plpgsql stable security definer set search_path = '' as $$
+#variable_conflict use_column
 begin
   return query
     select e.id, e.investigacion_id, e.tipo, e.estado, i.completada_at,
@@ -1200,6 +1258,7 @@ end $$;
 create or replace function forense.reclamar_evento_salida(p_evento uuid, p_owner text)
 returns table(evento_id uuid, reclamado boolean, lease_owner text, motivo text)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare e record; v_seg int;
 begin
   v_seg := forense.config_int('lease_evento_salida_segundos', 120);
@@ -1237,6 +1296,7 @@ create or replace function forense.destinatario_aviso(p_investigacion uuid)
 returns table(investigacion_id uuid, puede_llamar boolean, motivo_omision text,
               perfil_id uuid, referencia_corta text)
 language plpgsql stable security definer set search_path = '' as $$
+#variable_conflict use_column
 declare inv record; p record; v_motivo text;
 begin
   select * into inv from forense.investigaciones i where i.id = p_investigacion;
@@ -1263,6 +1323,7 @@ end $$;
 create or replace function forense.omitir_llamada(p_investigacion uuid, p_motivo text)
 returns table(investigacion_id uuid, estado text, motivo_omision text)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare e record; v_id uuid; v_intento int;
 begin
   select * into e from forense.eventos_salida x
@@ -1298,6 +1359,7 @@ create or replace function forense.crear_intento_llamada(
   p_investigacion uuid, p_evento uuid)
 returns table(llamada_id uuid, investigacion_id uuid, estado text, cuerpo_elevenlabs jsonb)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare v_res jsonb; v_id uuid; l record; p record; inv record; v_ref text;
 begin
   v_res := forense.solicitar_llamada(p_evento, 'n8n', null);
@@ -1334,6 +1396,7 @@ create or replace function forense.guardar_aceptacion_llamada(
   p_llamada uuid, p_status int, p_body jsonb default '{}'::jsonb)
 returns table(llamada_id uuid, estado text, conversation_id text, call_sid text)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare v_estado text; v_conv text; v_sid text; v_res jsonb;
 begin
   v_conv := nullif(p_body->>'conversation_id', '');
@@ -1363,6 +1426,7 @@ create or replace function forense.registrar_callback_llamada(
 returns table(llamada_id uuid, duplicado boolean, estado_llamada text,
               aviso_entregado boolean)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare l record; v_huella text; v_dup boolean := false;
 begin
   v_huella := encode(sha256(convert_to(
@@ -1407,6 +1471,7 @@ create or replace function forense.actualizar_llamada(
   p_llamada uuid, p_estado text, p_aviso boolean default null)
 returns table(llamada_id uuid, estado text, aviso_entregado boolean)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare v_res jsonb; v_estado text;
 begin
   v_estado := case when p_estado in ('aceptada','en_curso','finalizada','fallida',
@@ -1429,6 +1494,7 @@ end $$;
 create or replace function forense.cerrar_barreras_vencidas(p_now timestamptz default now())
 returns table(caso_id uuid, paso text, cerradas int, limitaciones jsonb)
 language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare b record; v_falt uuid[]; v_lim jsonb; v_n int := 0;
 begin
   create temporary table if not exists tmp_barreras_vencidas (
@@ -1444,7 +1510,7 @@ begin
     select coalesce(array_agg(t), '{}') into v_falt
       from unnest(coalesce(b.tareas_esperadas, '{}'::uuid[])) t
      where not exists (select 1 from forense.tareas_agente a
-                        where a.id = t and a.estado in ('completada','error','descartada'));
+                        where a.id = t and a.estado in ('completada','error','timeout','omitida'));
 
     v_lim := jsonb_build_object(
       'codigo', 'barrera_vencida', 'paso', b.paso,
@@ -1481,6 +1547,7 @@ end $$;
 create or replace function forense.eventos_salida_pendientes(p_limite int default 20)
 returns table(evento_id uuid, investigacion_id uuid, intentos int)
 language plpgsql stable security definer set search_path = '' as $$
+#variable_conflict use_column
 begin
   return query
     select e.id, e.investigacion_id, e.intentos
@@ -1506,6 +1573,7 @@ create or replace function forense.registrar_inyeccion(
   p_base uuid, p_payload jsonb, p_origen text default 'ui',
   p_idempotency uuid default null, p_perfil uuid default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
 declare
   v_ingesta uuid; v_iny uuid; v_hash text; v_tabla text; v_fila jsonb; i int;
   v_filas jsonb := '{}'::jsonb; v_n int; v_existente record;
