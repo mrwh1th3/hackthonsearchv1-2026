@@ -18,6 +18,7 @@ Orden de aplicación (docs/05 §Orden de migraciones + docs/17 §4):
 | `013_rendimiento.sql` | Índices de apoyo y `pista_f1` sin subconsulta correlacionada (equivalencia comprobada con `EXCEPT`). | hecho |
 | `014_estadisticas.sql` | `analizar_snapshot()` + llamada al final de `clonar_corrida`, `clonar_corrida_con_inyeccion` y `cargar_o_clonar_snapshot`, y como primer paso de `correr_pistas`. El clon nace ANALIZADO. | hecho |
 | `015_cobertura.sql` | `cobertura_caso` / `recalcular_cobertura`: la regla determinista de cobertura del caso, calculada en `cerrar_ronda` y `revalidar_caso` y expuesta en `paquete_auditor_final`. | hecho |
+| `016_permisos_cobertura.sql` | Cierra los tres hallazgos del hotfix H11 sobre 014/015: revoca el `execute` a PUBLIC que faltaba en `analizar_snapshot`, `cobertura_caso` y `recalcular_cobertura`; corrige la condición (c) de `cobertura_caso` para medir la frontera que PIDIERON LAS SEÑALES y no `clusters.rfcs_frontera` (la lista de candidatos de 004, que nadie pidió y que dejaba la cobertura en false para todo cluster real); siembra `max_expansiones_caso=1` (03 §127); y deja UN escritor de `casos.cobertura_completa` quitando de `guardar_dictamen` la lectura del payload. | hecho |
 
 Fuera de migraciones: `seeds/seed_fake.sql` (fixture de UI, se aplica a mano tras
 001+002; no participa en métricas) y `seeds/seed_producto.sql` (requiere 006+007).

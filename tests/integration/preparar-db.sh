@@ -130,7 +130,12 @@ done
 # 015 (oleada 5, forense-db): la regla determinista de `cobertura_completa`.
 # Sin ella ningún caso puede salir de `no_concluyente` y la prueba de dictamen
 # mediría una columna que nadie escribe.
-for n in 010 011 012 013 014 015; do
+# 016 (hotfix H11, coordinador): revoca el `execute` a PUBLIC que 014/015 no
+# revocaron, corrige la frontera que mide `cobertura_caso` (la de las señales,
+# no la lista de candidatos del cluster) y siembra `max_expansiones_caso=1`.
+# Sin ella `rls-scope` ve tres funciones SECURITY DEFINER abiertas a PUBLIC y
+# la cobertura vuelve a quedar en false para todo cluster real.
+for n in 010 011 012 013 014 015 016; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional

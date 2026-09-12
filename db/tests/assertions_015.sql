@@ -114,11 +114,44 @@ begin
   perform pruebas.assert('una tarea omitida por familia no evaluable es terminal',
     forense.cobertura_caso(v_caso), 'tarea listas omitida');
 
-  -- E. Frontera pendiente con presupuesto de expansión: false.
+  -- E. Frontera (semántica corregida en 016). La que cuenta es la que
+  --    PIDIERON LAS SEÑALES, no la lista de candidatos del cluster.
+  --
+  -- E1. Regresión del hallazgo alto: `clusters.rfcs_frontera` es la lista
+  --     de vecinos a un salto que 004 dejó anotada. Casi nunca está
+  --     vacía en datos reales (el verificador midió 61 RFC residuales), y
+  --     nadie pidió mirarlos. No puede bloquear la cobertura.
   update forense.clusters set rfcs_frontera = array['CCC030303CCC'] where id = v_cluster;
-  perform pruebas.assert('un RFC de frontera sin expandir deja cobertura_completa = false',
-    not forense.cobertura_caso(v_caso), 'frontera CCC030303CCC fuera del cluster');
+  perform pruebas.assert(
+    'la lista de candidatos del cluster NO bloquea la cobertura si ninguna señal la pidió',
+    forense.cobertura_caso(v_caso),
+    'cl.rfcs_frontera={CCC030303CCC} y cero señales con frontera');
 
+  -- E2. Una señal que sí pide salir del cluster, con cuota disponible:
+  --     el caso debe la expansión, así que no está cubierto.
+  insert into forense.senales (cluster_id, caso_id, ronda, intento, version_contexto,
+                               idempotency_key, familia, agente, titular, detalle,
+                               rfcs, ids, frontera, confianza, refuta)
+  values (v_cluster, v_caso, 1, 0, 1, 'test-015-senal-' || sufijo, 'R', 'red',
+          'la cadena sigue fuera del cluster', '{}'::jsonb,
+          array['AAA010101AAA'], '{}', array['CCC030303CCC'], 'media', false);
+  perform pruebas.assert(
+    'una frontera pedida por una señal, con cuota de expansión, deja cobertura_completa = false',
+    not forense.cobertura_caso(v_caso), 'señal con frontera CCC030303CCC sin expandir');
+
+  -- E3. Gastada la única expansión (03 §127), la frontera residual es una
+  --     limitación declarada en el expediente, no un hueco de cobertura.
+  perform forense.log(v_caso, 'sistema', 'cluster_expandido',
+    jsonb_build_object('evento_real', 'prueba_cuota_agotada',
+                       'agregados', to_jsonb(array['DDD040404DDD']), 'n_agregados', 1),
+    null, null, null, null, null, v_cluster, null, v_corrida);
+  perform pruebas.assert(
+    'agotada la cuota de expansión, la frontera residual no impide la cobertura (03 §127)',
+    forense.cobertura_caso(v_caso),
+    'una expansión usada, max_expansiones_caso=' || forense.config_int('max_expansiones_caso', 1));
+
+  delete from forense.senales where caso_id = v_caso;
+  delete from forense.bitacora where caso_id = v_caso and tipo_evento = 'cluster_expandido';
   update forense.clusters set rfcs_frontera = '{}' where id = v_cluster;
 
   -- F. Limitación abierta: false. Mismo criterio que el dictaminador
