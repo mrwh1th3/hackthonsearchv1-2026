@@ -27,7 +27,7 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
     ds.getContraste(id),
   ]);
 
-  const timeline = <CasoTimeline eventos={bitacora} />;
+  const timeline = <CasoTimeline eventos={bitacora} casoId={id} />;
   const grafoEl = <ClusterForceGraph nodos={grafo?.nodos ?? []} aristas={grafo?.aristas ?? []} height={320} />;
   const panels = <CasoPanels detalle={detalle} />;
 

@@ -1,12 +1,14 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FamiliaChip } from "@/components/shared/badges";
 import { ClusterForceGraph } from "@/components/shared/force-graph";
 import { cn } from "@/lib/utils";
 import { familiaDeAgente, FAMILIAS_ORDEN } from "@/lib/agents/familia";
 import type { Familia, GrafoCluster, Senal, Tarea } from "@/lib/data";
+import { mapSenal } from "@/lib/data/supabase";
+import { useCanalForense } from "@/lib/realtime/usar-canal";
 
 // Tailwind escanea literales estáticos: una clase construida con template
 // string (`bg-fam-${x}`) nunca se genera. Este mapa evita ese error.
@@ -24,9 +26,36 @@ const BORDE_CLASE: Record<Familia, string> = {
  * grafo. Los puntos de carril son tareas/señales realmente persistidas en
  * el fixture, nunca inventadas: un cluster sin tareas (201/202 en este
  * fixture) muestra sus cinco carriles vacíos, no puntos fabricados.
+ *
+ * El pizarrón se suscribe a `forense.senales` filtrado por `cluster_id`
+ * (solo con fuente supabase): una señal nueva escrita por un especialista
+ * aparece sin recargar (CLAUDE.md regla 2, 09 §Realtime).
  */
-export function ClusterView({ tareas, senales, grafo }: { tareas: Tarea[]; senales: Senal[]; grafo: GrafoCluster | null }) {
+export function ClusterView({
+  tareas,
+  senales,
+  grafo,
+  clusterId,
+}: {
+  tareas: Tarea[];
+  senales: Senal[];
+  grafo: GrafoCluster | null;
+  clusterId: string;
+}) {
   const [senalAbierta, setSenalAbierta] = useState<Senal | null>(null);
+  const [senalesEnVivo, setSenalesEnVivo] = useState<Senal[]>(senales);
+
+  useEffect(() => setSenalesEnVivo(senales), [senales]);
+
+  useCanalForense({
+    tabla: "senales",
+    filtro: `cluster_id=eq.${clusterId}`,
+    onCambio: (payload) => {
+      if (payload.eventType !== "INSERT" && payload.eventType !== "UPDATE") return;
+      const senal = mapSenal(payload.new as Record<string, unknown>);
+      setSenalesEnVivo((actual) => [...actual.filter((s) => s.id !== senal.id), senal]);
+    },
+  });
 
   const tiempos = tareas.map((t) => new Date(t.iniciado).getTime());
   const min = tiempos.length ? Math.min(...tiempos) : 0;
@@ -89,11 +118,11 @@ export function ClusterView({ tareas, senales, grafo }: { tareas: Tarea[]; senal
       {/* Pizarrón */}
       <section className="rounded-[var(--radius-card)] border border-border bg-surface p-4">
         <h2 className="mb-3 text-sm font-medium text-text">Pizarrón</h2>
-        {senales.length === 0 ? (
+        {senalesEnVivo.length === 0 ? (
           <p className="text-sm text-text-subtle">Sin señales escritas todavía en este cluster.</p>
         ) : (
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {senales.map((s) => (
+            {senalesEnVivo.map((s) => (
               <li key={s.id}>
                 <button
                   type="button"

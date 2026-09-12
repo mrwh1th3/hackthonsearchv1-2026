@@ -1,19 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DownloadMenu } from "@/components/shared/download-menu";
 import { COLUMNAS_POR_TABLA, generarPlantillaCsv, TABLAS_CANONICAS, type TablaCanonica } from "@/lib/ingesta/plantillas";
+import { construirInyectar, parsearFilasPegadas } from "@/lib/ingesta/construir-inyectar";
 import type { Corrida } from "@/lib/data";
 
 /**
- * 21 §3.1: modo "Inyectar datos en vivo" — pegar filas por tabla canónica,
- * plantilla CSV descargable por tabla. El POST real va a `/api/inyecciones`
- * (ya construido, valida sesión y forma; sin N8N_WEBHOOK_BASE/
- * INTERNAL_WEBHOOK_SECRET responde 503 backend_no_configurado, nunca
- * finge aceptación). `ingesta_id` aquí es un placeholder generado en el
- * cliente: no existe todavía un endpoint que registre la ingesta antes de
- * inyectar (ver solicitudes_coordinador).
+ * 21 §3.1: modo "Inyectar datos en vivo" — pegar filas (CSV o JSON) por
+ * tabla canónica, plantilla CSV descargable por tabla. El POST va a
+ * `/api/inyecciones` con el JSON exacto de `product.inyectar` (contratos
+ * 1.2.0): `{corrida_base_id, origen, tablas: {<tabla>: fila[]},
+ * idempotency_key}` — construido con la misma función
+ * (`lib/ingesta/construir-inyectar.ts`) que valida el uploader de CSV, y
+ * validado ahí mismo antes de enviarlo para no gastar la solicitud si el
+ * texto pegado no produjo filas válidas.
  */
 export function InyeccionEnVivo({ corridas }: { corridas: Corrida[] }) {
   const [corridaBaseId, setCorridaBaseId] = useState(corridas[0]?.id ?? "");
@@ -22,29 +24,38 @@ export function InyeccionEnVivo({ corridas }: { corridas: Corrida[] }) {
   );
   const [enviando, setEnviando] = useState(false);
 
-  const tablasConDatos = TABLAS_CANONICAS.filter((t) => filasPorTabla[t].trim().length > 0);
+  const filasParseadasPorTabla = useMemo(
+    () => Object.fromEntries(TABLAS_CANONICAS.map((t) => [t, parsearFilasPegadas(filasPorTabla[t])])) as Record<TablaCanonica, ReturnType<typeof parsearFilasPegadas>>,
+    [filasPorTabla],
+  );
+  const tablasConDatos = TABLAS_CANONICAS.filter((t) => filasParseadasPorTabla[t].length > 0);
 
   async function enviar() {
     if (!corridaBaseId) {
       toast.error("Selecciona una corrida base.", { duration: Infinity });
       return;
     }
+    if (tablasConDatos.length === 0) {
+      toast.error("Pega al menos una fila válida en alguna tabla.", { duration: Infinity });
+      return;
+    }
     setEnviando(true);
     try {
+      const payload = construirInyectar({
+        corridaBaseId,
+        origen: "ui",
+        tablas: filasParseadasPorTabla,
+        idempotencyKey: crypto.randomUUID(),
+      });
       const res = await fetch("/api/inyecciones", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          corrida_base_id: corridaBaseId,
-          ingesta_id: crypto.randomUUID(),
-          idempotency_key: crypto.randomUUID(),
-          prioridad: "inyectados",
-        }),
+        body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
       if (res.status === 503 && body.error === "backend_no_configurado") {
         toast.error("Backend de inyección no configurado en este entorno todavía.", { duration: Infinity });
-      } else if (res.ok) {
+      } else if (res.status === 202) {
         toast.success("Inyección recibida.");
       } else {
         toast.error(`No se pudo inyectar (${body.error ?? res.status}).`, { duration: Infinity });
@@ -80,7 +91,12 @@ export function InyeccionEnVivo({ corridas }: { corridas: Corrida[] }) {
         {TABLAS_CANONICAS.map((tabla) => (
           <li key={tabla} className="rounded-[var(--radius-input)] border border-border p-3">
             <div className="mb-1 flex items-center justify-between">
-              <p className="text-sm font-medium text-text">{tabla}</p>
+              <p className="text-sm font-medium text-text">
+                {tabla}
+                {filasParseadasPorTabla[tabla].length > 0 && (
+                  <span className="ml-2 rounded-full bg-ok/10 px-1.5 text-[10px] font-normal text-ok">{filasParseadasPorTabla[tabla].length} fila(s)</span>
+                )}
+              </p>
               <DownloadMenu
                 options={[
                   {
@@ -95,7 +111,7 @@ export function InyeccionEnVivo({ corridas }: { corridas: Corrida[] }) {
               rows={2}
               value={filasPorTabla[tabla]}
               onChange={(e) => setFilasPorTabla((prev) => ({ ...prev, [tabla]: e.target.value }))}
-              placeholder="Pega filas CSV o JSON aquí…"
+              placeholder="Pega filas CSV (con encabezado) o un arreglo JSON aquí…"
               className="w-full resize-y rounded-[var(--radius-input)] border border-border bg-surface-muted p-2 font-mono text-xs"
             />
           </li>
@@ -103,7 +119,7 @@ export function InyeccionEnVivo({ corridas }: { corridas: Corrida[] }) {
       </ul>
 
       <div className="mt-3 flex items-center justify-between">
-        <p className="text-xs text-text-subtle">{tablasConDatos.length} de {TABLAS_CANONICAS.length} tabla(s) con filas pegadas.</p>
+        <p className="text-xs text-text-subtle">{tablasConDatos.length} de {TABLAS_CANONICAS.length} tabla(s) con filas válidas.</p>
         <button
           type="button"
           onClick={enviar}

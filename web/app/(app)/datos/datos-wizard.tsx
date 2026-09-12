@@ -5,7 +5,9 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { validateContract } from "@/lib/contracts/validate";
-import type { MapperPropuesta } from "@/lib/data";
+import { construirInyectar, type FilaInyectar } from "@/lib/ingesta/construir-inyectar";
+import { TABLAS_CANONICAS, type TablaCanonica } from "@/lib/ingesta/plantillas";
+import type { Corrida, MapperPropuesta } from "@/lib/data";
 import { cn } from "@/lib/utils";
 
 const PASOS = ["uploader", "perfil", "mapping", "cobertura", "confirmacion"] as const;
@@ -20,35 +22,83 @@ const PASO_LABEL: Record<Paso, string> = {
 
 /**
  * 15 §13: uploader → perfil → mapping → cobertura → confirmación. Sin
- * archivo real, el asistente usa el ejemplo fixture del mapper (rotulado);
- * con un CSV real, detecta encabezados con papaparse — el mapeo sigue
- * siendo el mismo fixture de columnas destino (no hay backend de mapper IA
- * conectado en este corte). "Confirmar e importar" no dispara nada real:
- * no existe todavía un endpoint de ingesta en el BFF (fuera de
- * api/session, api/investigaciones, api/inyecciones), y la importación
- * nunca debe disparar la llamada de investigación completa aunque exista.
+ * archivo real, el asistente usa el ejemplo fixture del mapper (rotulado)
+ * solo para poder navegar los pasos; con un CSV real, detecta encabezados
+ * y filas con papaparse — el mapeo de columnas mostrado sigue siendo el
+ * fixture (no hay backend de mapper IA conectado en este corte), pero
+ * "Confirmar e importar" SÍ envía las filas reales del CSV al BFF como
+ * `product.inyectar` (contratos 1.2.0), a la tabla canónica elegida. La
+ * importación nunca dispara por sí sola una investigación completa — eso
+ * lo decide n8n/el usuario después, nunca este wizard.
  */
-export function DatosWizard({ mapperEjemplo }: { mapperEjemplo: MapperPropuesta }) {
+export function DatosWizard({ mapperEjemplo, corridas }: { mapperEjemplo: MapperPropuesta; corridas: Corrida[] }) {
   const [paso, setPaso] = useState<Paso>("uploader");
   const [archivoNombre, setArchivoNombre] = useState<string | null>(null);
   const [columnasDetectadas, setColumnasDetectadas] = useState<string[] | null>(null);
-  const [nFilas, setNFilas] = useState<number | null>(null);
+  const [filasCsv, setFilasCsv] = useState<FilaInyectar[]>([]);
   const [resultadoValidacion, setResultadoValidacion] = useState<{ ok: boolean; errores: number } | null>(null);
+  const [tablaDestino, setTablaDestino] = useState<TablaCanonica>("contribuyentes");
+  const [corridaBaseId, setCorridaBaseId] = useState(corridas[0]?.id ?? "");
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  const nFilas = filasCsv.length;
 
   function onArchivo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setArchivoNombre(file.name);
-    Papa.parse(file, {
+    setEnviado(false);
+    Papa.parse<FilaInyectar>(file, {
       header: true,
-      preview: 200,
+      skipEmptyLines: true,
+      preview: 5000, // tope razonable de UI; el contrato ya limita a 5000 filas por tabla
       complete: (res) => {
         setColumnasDetectadas(res.meta.fields ?? []);
-        setNFilas(res.data.length);
-        toast.success(`${file.name}: ${res.meta.fields?.length ?? 0} columna(s) detectada(s).`);
+        setFilasCsv(res.data.filter((fila) => Object.keys(fila).length > 0));
+        toast.success(`${file.name}: ${res.meta.fields?.length ?? 0} columna(s), ${res.data.length} fila(s) detectada(s).`);
       },
       error: () => toast.error("No se pudo leer el archivo como CSV.", { duration: Infinity }),
     });
+  }
+
+  async function confirmarEImportar() {
+    if (!corridaBaseId) {
+      toast.error("Selecciona una corrida base.", { duration: Infinity });
+      return;
+    }
+    if (filasCsv.length === 0) {
+      toast.error("Sube un CSV con al menos una fila antes de importar.", { duration: Infinity });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const payload = construirInyectar({
+        corridaBaseId,
+        origen: "ui",
+        tablas: { [tablaDestino]: filasCsv },
+        nota: archivoNombre ? `Uploader /datos: ${archivoNombre}` : undefined,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      const res = await fetch("/api/inyecciones", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 503 && body.error === "backend_no_configurado") {
+        toast.error("Backend de inyección no configurado en este entorno todavía.", { duration: Infinity });
+      } else if (res.status === 202) {
+        toast.success("Importación recibida.");
+        setEnviado(true);
+      } else {
+        toast.error(`No se pudo importar (${body.error ?? res.status}).`, { duration: Infinity });
+      }
+    } catch {
+      toast.error("No se pudo conectar con el servidor.", { duration: Infinity });
+    } finally {
+      setEnviando(false);
+    }
   }
 
   function validarMapeo() {
@@ -88,7 +138,7 @@ export function DatosWizard({ mapperEjemplo }: { mapperEjemplo: MapperPropuesta 
         <div className="space-y-3">
           <label className="flex h-32 cursor-pointer flex-col items-center justify-center rounded-[var(--radius-input)] border-2 border-dashed border-border text-sm text-text-subtle hover:bg-surface-hover">
             <input type="file" accept=".csv" className="hidden" onChange={onArchivo} />
-            {archivoNombre ? `${archivoNombre}${nFilas !== null ? ` · ${nFilas} fila(s)` : ""}` : "Arrastra o selecciona un CSV"}
+            {archivoNombre ? `${archivoNombre}${nFilas > 0 ? ` · ${nFilas} fila(s)` : ""}` : "Arrastra o selecciona un CSV"}
           </label>
           <p className="text-xs text-text-subtle">
             Sin archivo, el asistente continúa con el ejemplo fixture (<code>contracts/fixtures/valid/mapper.json</code>) para poder
@@ -112,6 +162,36 @@ export function DatosWizard({ mapperEjemplo }: { mapperEjemplo: MapperPropuesta 
             Columnas {columnasDetectadas ? "detectadas en tu CSV" : "de ejemplo (fixture)"}:{" "}
             {(columnasDetectadas ?? mapperEjemplo.field_mappings.map((m) => m.source)).join(", ")}
           </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-text-muted">Tabla canónica destino</span>
+              <select
+                value={tablaDestino}
+                onChange={(e) => setTablaDestino(e.target.value as TablaCanonica)}
+                className="h-9 w-full rounded-[var(--radius-input)] border border-border bg-surface px-2 text-sm"
+              >
+                {TABLAS_CANONICAS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-text-muted">Corrida base (nunca se muta; se clona)</span>
+              <select
+                value={corridaBaseId}
+                onChange={(e) => setCorridaBaseId(e.target.value)}
+                className="h-9 w-full rounded-[var(--radius-input)] border border-border bg-surface px-2 text-sm"
+              >
+                {corridas.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <NavButtons onBack={() => setPaso("uploader")} onNext={() => setPaso("mapping")} />
         </div>
       )}
@@ -203,15 +283,21 @@ export function DatosWizard({ mapperEjemplo }: { mapperEjemplo: MapperPropuesta 
             <p>Resumen: {mapperEjemplo.field_mappings.length} columna(s) mapeada(s), {mapperEjemplo.missing_required_fields.length} campo(s) faltante(s).</p>
             <p className="mt-1 text-text-subtle">La importación nunca dispara por sí sola una investigación completa.</p>
           </div>
-          <button
-            type="button"
-            disabled
-            title="requiere el backend de ingesta (19), no implementado en este corte"
-            className="h-9 rounded-[var(--radius-input)] border border-border px-4 text-sm text-text-subtle opacity-60"
-          >
-            Confirmar e importar
-          </button>
-          <p className="text-xs text-text-subtle">Deshabilitado: sin endpoint de ingesta en el BFF de este corte (ver solicitudes_coordinador).</p>
+          {enviado ? (
+            <p className="text-xs font-medium text-ok">Importación recibida por el BFF (product.inyectar).</p>
+          ) : (
+            <button
+              type="button"
+              onClick={confirmarEImportar}
+              disabled={enviando || filasCsv.length === 0}
+              className="h-9 rounded-[var(--radius-input)] bg-primary px-4 text-sm text-white hover:bg-primary-hover disabled:opacity-60"
+            >
+              {enviando ? "Importando…" : "Confirmar e importar"}
+            </button>
+          )}
+          {filasCsv.length === 0 && !enviado && (
+            <p className="text-xs text-text-subtle">Sube un CSV en el paso 1 para poder importar (el fixture de ejemplo no se envía).</p>
+          )}
           <div className="flex justify-start">
             <button type="button" onClick={() => setPaso("cobertura")} className="h-9 rounded-[var(--radius-input)] border border-border px-4 text-sm hover:bg-surface-hover">
               Atrás

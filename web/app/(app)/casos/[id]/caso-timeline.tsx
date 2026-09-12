@@ -1,17 +1,41 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TraceDrawer } from "@/components/shared/trace-drawer";
 import type { EventoForense } from "@/lib/data";
+import { mapEventoBitacora } from "@/lib/data/supabase";
+import { useCanalForense } from "@/lib/realtime/usar-canal";
 
 /**
  * 09 §3, izquierda: timeline de bitácora agrupado por ronda. No hay campo
  * de ronda directo en `EventoForense` (DTO resumido): se infiere de
  * `ronda_inicio`/`ronda_fin` presentes en el propio flujo de eventos.
+ *
+ * CLAUDE.md regla 2 ("todo deja rastro") en vivo: suscrito a
+ * `forense.bitacora` filtrado por `caso_id` (solo con fuente supabase, ver
+ * `lib/realtime/canal.ts`) — un evento nuevo aparece sin recargar la
+ * página, nunca se anima algo que no llegó como fila real.
  */
-export function CasoTimeline({ eventos }: { eventos: EventoForense[] }) {
+export function CasoTimeline({ eventos, casoId }: { eventos: EventoForense[]; casoId: string }) {
   const [seleccionado, setSeleccionado] = useState<EventoForense | null>(null);
-  const ordenados = useMemo(() => [...eventos].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)), [eventos]);
+  const [enVivo, setEnVivo] = useState<EventoForense[]>(eventos);
+
+  useEffect(() => setEnVivo(eventos), [eventos]);
+
+  useCanalForense({
+    tabla: "bitacora",
+    filtro: `caso_id=eq.${casoId}`,
+    onCambio: (payload) => {
+      if (payload.eventType !== "INSERT" && payload.eventType !== "UPDATE") return;
+      const evento = mapEventoBitacora(payload.new as Record<string, unknown>);
+      setEnVivo((actual) => {
+        const sinDuplicado = actual.filter((e) => e.id !== evento.id);
+        return [...sinDuplicado, evento];
+      });
+    },
+  });
+
+  const ordenados = useMemo(() => [...enVivo].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)), [enVivo]);
 
   const totales = useMemo(
     () => ({
