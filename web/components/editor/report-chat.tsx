@@ -54,7 +54,7 @@ type Mensaje =
       propuesta: Propuesta;
       claveAplicar: string;
       advertencias: Array<{ codigo: string; detalle: string }>;
-      estado: "pendiente" | "aplicando" | "aplicada" | "descartada" | "conflicto";
+      estado: "pendiente" | "aplicando" | "descartando" | "aplicada" | "descartada" | "conflicto";
       versionCreada?: number;
       origen: string;
     };
@@ -188,17 +188,28 @@ export function ReportChat({
     }
   }
 
+  /**
+   * Descartar solo se marca cuando el BFF lo confirma. Antes se pintaba
+   * "descartada" de inmediato y, si la escritura fallaba, la UI mostraba un
+   * estado que no existía en el servidor: la propuesta seguía viva y podía
+   * aplicarse desde otra sesión. Ahora el estado intermedio es `descartando`
+   * y el error devuelve la propuesta a `pendiente`.
+   */
   async function descartar(mensaje: Extract<Mensaje, { autor: "propuesta" }>) {
-    if (mensaje.estado === "aplicada") return;
-    actualizarPropuesta(mensaje.id, { estado: "descartada" });
+    if (mensaje.estado !== "pendiente" && mensaje.estado !== "conflicto") return;
+    const estadoPrevio = mensaje.estado;
+    actualizarPropuesta(mensaje.id, { estado: "descartando" });
     const resultado = await descartarPropuesta({
       caso_id: casoId,
       propuesta_id: mensaje.propuesta.propuesta_id,
       idempotency_key: uuid(),
     });
     if (!resultado.ok) {
+      actualizarPropuesta(mensaje.id, { estado: estadoPrevio });
       agregar({ id: uuid(), autor: "sistema", texto: describirError(resultado.error), tono: "error" });
+      return;
     }
+    actualizarPropuesta(mensaje.id, { estado: "descartada" });
   }
 
   return (
@@ -289,11 +300,11 @@ export function ReportChat({
                         </p>
                       ))}
 
-                      {m.estado === "pendiente" || m.estado === "aplicando" ? (
+                      {m.estado === "pendiente" || m.estado === "aplicando" || m.estado === "descartando" ? (
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            disabled={m.estado === "aplicando"}
+                            disabled={m.estado !== "pendiente"}
                             onClick={() => aplicar(m)}
                             className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-input)] bg-primary px-2.5 text-xs text-white hover:bg-primary-hover disabled:opacity-60"
                           >
@@ -302,9 +313,11 @@ export function ReportChat({
                           </button>
                           <button
                             type="button"
+                            disabled={m.estado !== "pendiente"}
                             onClick={() => descartar(m)}
-                            className="h-7 rounded-[var(--radius-input)] border border-border px-2.5 text-xs text-text-muted hover:bg-surface-hover"
+                            className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-input)] border border-border px-2.5 text-xs text-text-muted hover:bg-surface-hover disabled:opacity-60"
                           >
+                            {m.estado === "descartando" && <Loader2 size={12} className="animate-spin" aria-hidden />}
                             Descartar
                           </button>
                           <span className="text-[10px] text-text-subtle">
