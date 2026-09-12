@@ -106,12 +106,16 @@ export function QueueTable({ filas }: { filas: FilaCola[] }) {
   async function guardarVistaActual() {
     const nombre = window.prompt("Nombre de la vista", `Cola · ${nivel === "todos" ? "todos los niveles" : nivel}`);
     if (!nombre) return;
-    const { ok, fuente } = await guardarVistaConFallback({ nombre, ruta: RUTA_VISTA, filtros: filtros as unknown as Record<string, unknown> });
+    const { ok, fuente, error } = await guardarVistaConFallback({ nombre, ruta: RUTA_VISTA, filtros: filtros as unknown as Record<string, unknown> });
     if (ok) {
       toast.success(fuente === "servidor" ? `Vista "${nombre}" guardada en tu cuenta.` : `Vista "${nombre}" guardada en este navegador (sin backend de vistas en este entorno).`);
       setVistasVersion((v) => v + 1);
     } else {
-      toast.error("No se pudo guardar la vista.", { duration: Infinity });
+      // `error` viene de un rechazo REAL del servidor (400/401/403/429): se
+      // muestra tal cual, nunca se disfraza de "guardado en el navegador"
+      // (Corte 3 hallazgo 4 — el fallback a localStorage es solo para
+      // "backend no configurado" o sin red).
+      toast.error(error ?? "No se pudo guardar la vista.", { duration: Infinity });
     }
   }
 

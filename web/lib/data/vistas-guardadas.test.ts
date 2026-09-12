@@ -61,6 +61,22 @@ describe("listarVistasConFallback", () => {
     expect(resultado.fuente).toBe("local");
     expect(resultado.vistas).toEqual([]);
   });
+
+  it("con 400 (argumento_invalido): NUNCA cae a localStorage, aunque haya vistas locales guardadas (Corte 3 hallazgo 4)", async () => {
+    guardarVista({ nombre: "Local que no debe aparecer", ruta: "/", filtros: {} });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: "argumento_invalido" }) }));
+    const resultado = await listarVistasConFallback("/");
+    expect(resultado.fuente).toBe("servidor");
+    expect(resultado.vistas).toEqual([]);
+    expect(resultado.error).toBeTruthy();
+  });
+
+  it("con 429 (demasiadas_solicitudes): NUNCA cae a localStorage, y el mensaje refleja el rate limit", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429, json: async () => ({ error: "demasiadas_solicitudes", retry_after_ms: 5000 }) }));
+    const resultado = await listarVistasConFallback("/");
+    expect(resultado.fuente).toBe("servidor");
+    expect(resultado.error).toMatch(/5s/);
+  });
 });
 
 describe("guardarVistaConFallback / borrarVistaConFallback", () => {
@@ -76,6 +92,22 @@ describe("guardarVistaConFallback / borrarVistaConFallback", () => {
     const resultado = await guardarVistaConFallback({ nombre: "x", ruta: "/", filtros: {} });
     expect(resultado).toEqual({ ok: true, fuente: "local" });
     expect(leerVistasGuardadas()).toHaveLength(1);
+  });
+
+  it("guardarVistaConFallback: 401 (sesión expirada) -> NUNCA escribe en localStorage como si hubiera tenido éxito", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: "no_autenticado" }) }));
+    const resultado = await guardarVistaConFallback({ nombre: "x", ruta: "/", filtros: {} });
+    expect(resultado.ok).toBe(false);
+    expect(resultado.fuente).toBe("servidor");
+    expect(resultado.error).toMatch(/sesión/);
+    expect(leerVistasGuardadas()).toEqual([]);
+  });
+
+  it("guardarVistaConFallback: 429 -> no cae a local, propaga el rechazo", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429, json: async () => ({ error: "demasiadas_solicitudes" }) }));
+    const resultado = await guardarVistaConFallback({ nombre: "x", ruta: "/", filtros: {} });
+    expect(resultado.ok).toBe(false);
+    expect(leerVistasGuardadas()).toEqual([]);
   });
 
   it("borrarVistaConFallback: servidor ok -> no toca localStorage", async () => {
