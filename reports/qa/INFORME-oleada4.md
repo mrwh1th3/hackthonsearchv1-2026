@@ -161,7 +161,20 @@ Tres conclusiones, en orden de importancia:
    6 006 movimientos). QA no sube el umbral: el umbral es del juez.
 2. **La culpable es una sola pista: F1** se lleva 42 de los 48 s del desglose;
    las otras trece suman menos de 6 s, y F3 (4.8 s) es la única otra visible.
-3. **No es la máquina: es el PLAN, y depende de CUÁNDO se analiza.** La misma
+3. **No es la máquina: es el efecto de estadísticas anteriores al clon**
+   (medido; no se corrió `EXPLAIN`, así que se afirma el efecto, no el plan).
+   No es una consulta lenta aislada: entre dos desgloses del **mismo**
+   snapshot, en la misma base y con minutos de diferencia, varias pistas se
+   mueven un orden de magnitud, que es justo lo que hace una estimación mala y
+   no lo que hace una máquina cargada.
+
+   | pista | desglose 1 | desglose de la prueba |
+   |---|---|---|
+   | F1 | 42 343 ms | 42 762 ms |
+   | F3 | 104 ms | 4 773 ms |
+   | F2 | 17 ms | 244 ms |
+
+   Y la comprobación directa: la misma
    `pista_f1`, sobre el mismo snapshot y la misma base, tarda 42 762 ms si las
    estadísticas se calcularon **antes** del clon y 242 ms si se calculan
    **después** (175×; el `analyze` de las cuatro tablas cuesta 121 ms).
@@ -195,8 +208,19 @@ servidor cancela primero y el motivo viaja en stderr.
 
 | Suite | Comando | Exit | Resultado |
 |---|---|---|---|
-| Integración | `node --test --test-concurrency=1 "tests/integration/*.test.mjs"` | _pendiente_ | _pendiente_ |
+| Integración (12 archivos) | `node --test --test-concurrency=1 "tests/integration/*.test.mjs"` | **1** | 149 pruebas: 147 pass, **2 fail**, 0 skipped, 299 s |
 | E2E webapp | `node --test "tests/e2e/*.test.mjs"` | **0** | 8 pruebas: 8 pass, 0 fail, 0 skipped |
+
+Los dos `fail` son **el mismo hallazgo**: `rendimiento-pistas.test.mjs` (la
+prueba y su padre). El único `^not ok` de nivel superior en toda la corrida es
+`correr_pistas sobre un clon de gen-v1 cabe en el gate de 30 s`. Ninguna otra
+prueba se rompió con el cambio de `_ayudas.mjs`, que es el único archivo de
+esta oleada que usan los doce archivos del banco.
+
+**Para quien integre:** mientras el hallazgo de §4 siga abierto, la suite de
+integración sale con **exit 1** por ese único motivo, y cada corrida paga ~49 s
+extra de desglose y deja dos clones de 8 k CFDI en `forense_qa` si se la mata a
+media prueba. No es una regresión: es el aviso.
 
 ## 6. Lo que NO se probó
 
