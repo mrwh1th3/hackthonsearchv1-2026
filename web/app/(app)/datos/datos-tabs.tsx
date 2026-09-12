@@ -27,7 +27,7 @@ export function DatosTabs({ mapperEjemplo, corridas }: { mapperEjemplo: MapperPr
           </button>
         ))}
       </div>
-      {modo === "cargar" ? <DatosWizard mapperEjemplo={mapperEjemplo} /> : <InyeccionEnVivo corridas={corridas} />}
+      {modo === "cargar" ? <DatosWizard mapperEjemplo={mapperEjemplo} corridas={corridas} /> : <InyeccionEnVivo corridas={corridas} />}
     </div>
   );
 }
