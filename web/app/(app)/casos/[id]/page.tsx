@@ -1,11 +1,10 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChartPanel } from "@/components/shared/chart-panel";
 import { NivelBadge } from "@/components/shared/badges";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { ClusterForceGraph } from "@/components/shared/force-graph";
-import { TrayectoriaChart } from "@/components/shared/trayectoria-chart";
+import { TrayectoriaPanel } from "@/components/shared/trayectoria-panel";
 import { getDataSource } from "@/lib/data";
 import { CasoPanels } from "./caso-panels";
 import { CasoTimeline } from "./caso-timeline";
@@ -82,25 +81,7 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
         <Tabs.Content value="paneles">{panels}</Tabs.Content>
       </Tabs.Root>
 
-      {trayectoria.length > 0 && (
-        <ChartPanel
-          title="Trayectoria"
-          unidad="MXN"
-          alcance={`RFC ${caso.rfc_principal}`}
-          columns={[
-            { key: "periodo", header: "Periodo" },
-            { key: "evento", header: "Evento", render: (p) => p.evento ?? "—" },
-            { key: "monto_emitido", header: "Emitido", align: "right" },
-            { key: "monto_recibido", header: "Recibido", align: "right" },
-            { key: "n_cfdi", header: "N° CFDI", align: "right" },
-          ]}
-          rows={trayectoria}
-          getRowKey={(p) => p.periodo}
-          csvFilename={`trayectoria-${caso.rfc_principal}`}
-        >
-          <TrayectoriaChart puntos={trayectoria} />
-        </ChartPanel>
-      )}
+      {trayectoria.length > 0 && <TrayectoriaPanel rfc={caso.rfc_principal} puntos={trayectoria} />}
 
       {contraste && (
         <section className="rounded-[var(--radius-card)] border border-border bg-surface p-4">
