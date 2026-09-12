@@ -41,8 +41,23 @@ node --test "tests/e2e/*.test.mjs"
 
 | Suite | Comando | Exit | Resultado |
 |---|---|---|---|
-| Integración | `node --test --test-concurrency=1 "tests/integration/*.test.mjs"` | ver §Resultados | 8 archivos |
-| E2E webapp | `node --test "tests/e2e/*.test.mjs"` | 0 | 7 pruebas, 0 fallos |
+| Integración (9 archivos) | `node --test --test-concurrency=1 "tests/integration/*.test.mjs"` | **0** | 131 pruebas: 130 pass, 0 fail, 0 skipped, 1 todo, 153 s |
+| E2E webapp | `node --test "tests/e2e/*.test.mjs"` | **0** | 7 pruebas: 7 pass, 0 fail, 0 skipped, 0 todo |
+| Invariantes (aislada, para cerrar QA-001) | `node --test tests/integration/reglas-invariantes.test.mjs` | **0** | 10 pruebas, 0 fail, **0 todo** |
+
+El `1 todo` de la suite completa es el marcador de QA-001, que seguía puesto
+cuando se lanzó esa corrida; se quitó después y la prueba pasa sola (tercera
+fila). La próxima corrida completa dará `0 todo`.
+
+**La suite completa exige base recién preparada.** La primera corrida con todo
+junto tardó 953 s y dio 12 fallos, todos `psql exit -1` a los 120 000 ms: eran
+**timeouts**, no fallos de lógica. Causa: cada ensayo de inyección deja un clon
+del dominio entero de gen-v1 (~8 mil CFDI) y varias corridas acumuladas hacen
+que `correr_pistas` y las tools se pasen del límite. Arreglado en dos frentes
+—los ensayos borran su clon al terminar, y el timeout de `psql` sube a 300 s
+porque un `exit -1` sin stderr es el peor diagnóstico posible—: sobre base
+recién preparada la misma suite tarda **153 s** y pasa entera. La limpieza se
+comprobó: ni una línea `[limpieza]` en el log, o sea que ningún `delete` falló.
 
 ## Lo que se entregó en esta oleada
 
@@ -174,7 +189,8 @@ versión 2 e invalidaría cualquier prueba posterior que asumiera `version_base:
 |---|---|---|---|---|
 | QA-004 | **alta** | forense-db (+ docs de `eval/inyecciones`) | **abierto** | Tras clonar, `armar_clusters` rehace el selector sobre todo el snapshot y se queda con los mejores egos (gen-v1: 64 candidatos → 3 clusters). Los RFC inyectados quedan **fuera**, aunque traigan dos o tres familias: `RET251001DD4` (E1+F4+T1) y `TRB190311FF6` (R1+F1+T2) no entraban a ningún cluster, así que `clusters_afectados` no tenía nada que despachar y la promesa de 21 §3.2 —«despacha primero los clusters con RFC inyectados»— no se cumplía. **Mitigación aplicada en la prueba:** llamar `forense.armar_cluster_para(corrida, rfc)` por cada RFC afectado después de `armar_clusters`. Hay que decidir si esa llamada la hace `clonar_corrida_con_inyeccion`, el workflow `FORENSE_inyectar` o el paso 4 del README; hoy no la hace nadie. |
 | QA-005 | baja | forense-qa | abierto | `tests/integration/rpc-envelope.test.mjs` llama a `forense_escribir_senal` y `forense_registrar_evidencia` con payloads que la RPC acepta pero que **no** cumplen `tools.forense_*`: `p_detalle` con claves de más (`resumen`, `origen`) y `comprobacion` como cadena donde el contrato pide `{codigo, referencias}`. No es un fallo de producto —la RPC es más permisiva que el contrato— pero el banco estaba ejercitando una forma que el modelo nunca podrá enviar. `tools-payload.test.mjs` ya usa la forma del contrato; falta alinear el otro archivo. |
-| QA-001 | baja | forense-db | **cerrado** | `ck_bitacora_tipo_evento` rechazaba `paso_en_cola` y `paso_checkpoint`. `009_runtime_eventos.sql` amplió el catálogo. |
+| QA-001 | baja | forense-db | **cerrado** | `ck_bitacora_tipo_evento` rechazaba `paso_en_cola` y `paso_checkpoint` (y no incluía `corrida_cargada`). `009_runtime_eventos.sql` amplió el catálogo. Verificado quitando el marcador `todo` —un test `todo` reporta `ok` pase o falle, así que el contador no probaba nada— y ejecutando la prueba desnuda: `node --test tests/integration/reglas-invariantes.test.mjs` → exit 0, 10/10, 0 todo. |
+| QA-006 | baja | forense-db | abierto | Para que el barrido de la regla 7 siguiera verde hubo que **ampliar** su ventana de clasificación de ±3 a ±6 líneas: en `db/tests/assertions_010.sql` B7 el literal `'definitivo'` va dentro de un `begin … exception … end` y la aserción que demuestra el rechazo queda cuatro líneas más abajo. El uso es legítimo, pero el detector quedó más flojo. Arreglo: pegar la aserción al literal o poner un comentario de guarda en la misma línea; entonces la ventana vuelve a ±3. |
 | QA-002 | cosmética | forense-db | **cerrado** | `forense.trg_investigacion_completa` quedaba con `execute` para PUBLIC. Hoy **ninguna** función de trigger del schema lo tiene, y `rls-scope.test.mjs` lo exige (`deepEqual(triggers, [])`) en vez de excusarlo. |
 | QA-003 | media | forense-db | **cerrado** | Reenviar el mismo payload sin `idempotency_key` propagaba `unique_violation` (n8n habría visto un 500 sin diagnóstico). Hoy llega como envelope: `ok` booleano, con motivo si es rechazo o la misma `inyeccion_id` si es repetición, y no se crea una segunda ingesta con el mismo `hash_payload`. Se quitó el `todo`. |
 
@@ -190,6 +206,17 @@ versión 2 e invalidaría cualquier prueba posterior que asumiera `version_base:
 4. `009_editor.sql` sigue ausente del árbol: `preparar-db.sh` lo anuncia y no
    bloquea, pero las pruebas del editor contra DB real no se pueden montar
    hasta que llegue.
+5. QA-006: devolver la ventana del barrido de «definitivo» a ±3 en cuanto
+   forense-db acerque la aserción de `assertions_010.sql` B7.
+
+## Otros cambios en pruebas compartidas
+
+- `reglas-invariantes.test.mjs`: `forense.cargar_o_clonar_snapshot` entra en la
+  lista de funciones que pueden nombrar `ground_truth`. Es el clonado de
+  runtime de 010 —copia dominio y etiquetas a la corrida nueva, como
+  `clonar_corrida`—, no está en la superficie `public.forense_*` del agente y
+  la propia prueba sigue exigiendo que ninguna excepción sea ejecutable por
+  `anon`/`authenticated`.
 
 ## Resultados de la corrida final
 

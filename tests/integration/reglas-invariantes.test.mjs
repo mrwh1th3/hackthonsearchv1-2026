@@ -237,7 +237,7 @@ test('las 11 herramientas public.forense_* aún no existen: la aserción anterio
 // alternativa que esa misma decisión descartó. Marcada `todo` para no dejar el banco en
 // rojo: pasa sola en cuanto la migración aditiva añada el valor.
 test('bitacora.tipo_evento acepta todos los valores del contrato product.evento_forense',
-  { skip: saltar, todo: 'QA-001: ck_bitacora_tipo_evento rechaza paso_en_cola y paso_checkpoint (forense-db)' }, () => {
+  { skip: saltar }, () => {
   const producto = leerJson('contracts/schemas/product.schema.json');
   const defs = producto.$defs ?? producto.definitions;
   const tipos = defs.evento_forense.properties.tipo_evento.enum;
