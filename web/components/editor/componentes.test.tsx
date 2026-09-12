@@ -13,15 +13,25 @@ import { ReportChat } from "./report-chat";
 /**
  * Pruebas de UI del editor (hoja, citas, índice, modos y chat).
  *
- * POR QUÉ VIVEN AQUÍ Y NO EN `tests/editor/`: `web/vitest.config.ts`
- * (propiedad de forense-webapp) no permite cargar en entorno **jsdom** los
- * archivos situados fuera de `web/` — el mismo archivo con
- * `@vitest-environment node` sí carga, con jsdom falla con "Failed to load
- * url … Does the file exist?" (restricción `server.fs.allow` del pipeline web
- * de Vite). Las pruebas de contrato, documento y BFF sí están en
- * `tests/editor/` (entorno node). Pedido al coordinador en
- * `solicitudes_coordinador`: añadir `server.fs.allow` al config para poder
- * moverlas; no se toca configuración ajena desde aquí.
+ * POR QUÉ VIVEN AQUÍ Y NO EN `tests/editor/` (comprobado en H8, no supuesto):
+ * el intento de mover este archivo falla por DOS causas encadenadas, y la
+ * segunda no se arregla con configuración.
+ *
+ * 1. `web/vitest.config.ts` (propiedad de forense-webapp) no declara
+ *    `server.fs.allow`, así que el pipeline de Vite se niega a servir un
+ *    archivo de fuera de `web/` en entorno jsdom: "Failed to load url …
+ *    Does the file exist?". Con `@vitest-environment node` sí carga, que es
+ *    por qué el resto de `tests/editor/` (contratos, documento, BFF) sí vive
+ *    allí: `include` ya cubre `../tests/editor/**`.
+ * 2. Añadiendo `server.fs.allow: ["..", "."]` el archivo carga y entonces
+ *    falla lo siguiente: "Failed to resolve import '@testing-library/react'".
+ *    `node_modules` está en `web/`, y un importador situado fuera de ese árbol
+ *    no resuelve los bare imports. Eso exige alias de resolución o una
+ *    devDependency en la raíz — es decir, lockfile, que es del coordinador.
+ *
+ * Se quedan aquí, bajo `web/components/editor/` (ownership de forense-editor),
+ * y el pedido va a `solicitudes_coordinador` con las dos causas, no solo la
+ * primera. No se toca configuración ajena desde aquí.
  */
 
 const CASO = "00000000-0000-4000-8000-000000000100";
