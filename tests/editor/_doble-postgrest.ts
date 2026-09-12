@@ -119,6 +119,20 @@ export function clienteFalso(almacen: Almacen): ClienteForense {
     /** Imita `forense.aplicar_propuesta` de 006 §7 (incluido su log de bitácora). */
     rpc(nombre, args = {}) {
       almacen.rpc.push({ nombre, args });
+      // `forense.log` (002 §1): asigna seq y resuelve corrida desde `casos`.
+      if (nombre === "log") {
+        const caso = almacen.casos.find((c) => c.id === args.p_caso);
+        if (!caso) return Promise.resolve({ data: null, error: { message: "caso inexistente", code: "P0002" } });
+        almacen.bitacora.push({
+          corrida_id: caso.corrida_id,
+          caso_id: args.p_caso,
+          seq: almacen.bitacora.length + 1,
+          agente: args.p_agente,
+          tipo_evento: args.p_tipo,
+          payload: args.p_payload,
+        });
+        return Promise.resolve({ data: null, error: null });
+      }
       if (nombre !== "aplicar_propuesta") {
         return Promise.resolve({ data: null, error: { message: `rpc desconocida: ${nombre}` } });
       }

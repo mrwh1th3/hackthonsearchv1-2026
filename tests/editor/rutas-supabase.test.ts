@@ -143,6 +143,36 @@ describe("BFF del editor en modo supabase (repositorio inyectado)", () => {
     expect(cuerpo.estado).toBe("descartada");
     expect(db.propuestas_edicion[0].estado).toBe("descartada");
     expect(db.expedientes).toHaveLength(1);
+
+    // CLAUDE.md regla 2: descartar es un paso, así que deja rastro. Y lo deja
+    // por `forense.log`, no por INSERT a mano en `bitacora`.
+    expect(cuerpo.bitacora).toBe(true);
+    expect(db.rpc.filter((r) => r.nombre === "log")).toHaveLength(1);
+    const evento = db.bitacora.at(-1)!;
+    expect(evento.tipo_evento).toBe("edicion");
+    expect(evento.agente).toBe("editor");
+    expect((evento.payload as { evento_real: string }).evento_real).toBe("propuesta_descartada");
+  });
+
+  it("descartar dos veces anota una sola vez (el segundo no transiciona)", async () => {
+    const db = montar();
+    const { json } = await pedirPropuesta("00000000-0000-4000-8000-000000000480");
+    const cuerpo = async () => {
+      const res = await postDescartar(
+        await post("/api/reportes/descartar", {
+          caso_id: CASO,
+          propuesta_id: json.propuesta.propuesta_id,
+          idempotency_key: "00000000-0000-4000-8000-000000000481",
+        }),
+      );
+      return res.json();
+    };
+    expect((await cuerpo()).bitacora).toBe(true);
+    const segundo = await cuerpo();
+    expect(segundo.estado).toBe("descartada");
+    // No pasó nada la segunda vez: no se inventa un evento.
+    expect(segundo.bitacora).toBe(false);
+    expect(db.bitacora.filter((b) => b.tipo_evento === "edicion")).toHaveLength(1);
   });
 
   /**

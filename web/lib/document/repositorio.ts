@@ -123,7 +123,12 @@ export interface RepositorioExpediente {
     previsualizacion: Documento,
     ctx?: ContextoEdicion,
   ): Promise<{ ok: boolean; propuestaId: string; repetida: boolean }>;
-  descartar(casoId: string, propuestaId: string): Promise<ResultadoEscritura<{ estado: string }>>;
+  /**
+   * Descartar no crea versión (07 §4) pero SÍ es un paso: deja evento
+   * `edicion` con `payload.evento_real='propuesta_descartada'`. `bitacora`
+   * dice si ese evento quedó escrito de verdad.
+   */
+  descartar(casoId: string, propuestaId: string): Promise<ResultadoEscritura<{ estado: string; bitacora: boolean }>>;
   revertir(
     casoId: string,
     args: { version_objetivo: number; version_base: number; idempotency_key: string },
@@ -164,7 +169,8 @@ export const repositorioFixture: RepositorioExpediente = {
   },
   async descartar(casoId, propuestaId) {
     const r = descartarPropuestaGuardada(casoId, propuestaId);
-    return r.ok ? { ok: true, valor: { estado: r.valor.estado } } : r;
+    // El modo fixture jamás afirma haber escrito bitácora.
+    return r.ok ? { ok: true, valor: { estado: r.valor.estado, bitacora: false } } : r;
   },
   async revertir(casoId, args) {
     return revertirAVersion(casoId, args);
@@ -245,18 +251,27 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
   }
 
   /**
-   * Evento `edicion` en `forense.bitacora` (CLAUDE.md regla 2). `corrida_id`
-   * es NOT NULL: se resuelve desde `forense.casos`. `aplicar_propuesta` ya lo
-   * escribe en el servidor (006 §7), así que esto solo se usa para revertir.
+   * Evento `edicion` en `forense.bitacora` (CLAUDE.md regla 2) **por
+   * `forense.log`**, no por INSERT directo: la función es la que asigna
+   * `seq` (`forense.next_seq`, 002 §1), resuelve `corrida_id` y `cluster_id`
+   * desde `forense.casos` y respeta el contrato de la tabla. Un INSERT a mano
+   * se salta la secuencia y deja la bitácora sin orden.
+   *
+   * `tipo_evento` es siempre `'edicion'` —el CHECK de la tabla no acepta
+   * valores nuevos y ese enum no es de este worker—; el matiz va en
+   * `payload.evento_real`, igual que hace 006 §7.
+   *
+   * Devuelve si el evento quedó escrito: la ruta lo declara como `bitacora`
+   * y la UI no puede afirmar trazabilidad que no ocurrió.
    */
   async function bitacoraEdicion(casoId: string, payload: Record<string, unknown>): Promise<boolean> {
-    const { data, error } = await cliente.from("casos").select("corrida_id").eq("id", casoId).maybeSingle();
-    const corridaId = (data as { corrida_id?: string } | null)?.corrida_id;
-    if (error || !corridaId) return false;
-    const escritura = await cliente
-      .from("bitacora")
-      .insert({ corrida_id: corridaId, caso_id: casoId, agente: "editor", tipo_evento: "edicion", payload });
-    return !escritura.error;
+    const { error } = await cliente.rpc("log", {
+      p_caso: casoId,
+      p_agente: "editor",
+      p_tipo: "edicion",
+      p_payload: payload,
+    });
+    return !error;
   }
 
   /** Fila de la propuesta, SIEMPRE acotada al caso de la petición. */
@@ -440,25 +455,36 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
       return { ok: false, propuestaId: propuesta.propuesta_id, repetida: false };
     },
 
-    /** Descartar registra estado y **no** crea versión (07 §4). */
+    /**
+     * Descartar registra estado y **no** crea versión (07 §4), pero sí deja
+     * rastro: evento `edicion` con `payload.evento_real='propuesta_descartada'`.
+     *
+     * El evento se escribe SOLO si la transición ocurrió. Una propuesta que ya
+     * estaba aplicada o descartada sale por el camino corto sin log: la regla
+     * 2 también prohíbe lo contrario, anotar un paso que no pasó.
+     */
     async descartar(casoId, propuestaId) {
-      const { data, error } = await cliente
-        .from("propuestas_edicion")
-        .select("id,estado")
-        .eq("id", propuestaId)
-        .eq("caso_id", casoId)
-        .maybeSingle();
-      if (error) throw new Error(`propuestas_edicion: ${error.message}`);
-      const fila = data as { estado?: string } | null;
+      const fila = await leerPropuesta(casoId, propuestaId);
       if (!fila) return { ok: false, motivo: "propuesta_desconocida" };
-      if (fila.estado !== "propuesta") return { ok: true, valor: { estado: fila.estado ?? "descartada" } };
+      if (fila.estado !== "propuesta") return { ok: true, valor: { estado: fila.estado, bitacora: false } };
       const upd = await cliente
         .from("propuestas_edicion")
         .update({ estado: "descartada" })
         .eq("id", propuestaId)
+        .eq("caso_id", casoId)
         .eq("estado", "propuesta");
       if (upd.error) throw new Error(`descartar: ${upd.error.message}`);
-      return { ok: true, valor: { estado: "descartada" } };
+      // Confirmación: el UPDATE condicional pudo no tocar ninguna fila (una
+      // aplicación concurrente ganó la carrera). Se relee antes de anotar.
+      const despues = await leerPropuesta(casoId, propuestaId);
+      const estado = despues?.estado ?? fila.estado;
+      if (estado !== "descartada") return { ok: true, valor: { estado, bitacora: false } };
+      const anotado = await bitacoraEdicion(casoId, {
+        evento_real: "propuesta_descartada",
+        propuesta_id: propuestaId,
+        version_base: fila.version_base,
+      });
+      return { ok: true, valor: { estado, bitacora: anotado } };
     },
 
     /**
