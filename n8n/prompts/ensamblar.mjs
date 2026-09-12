@@ -48,6 +48,19 @@ export const ARCHIVO_POR_ROL = Object.freeze({
   mapper: 'mapper.md',
 });
 
+// Ejemplos adversariales por familia (trampas legítimas de 02). Son una VARIANTE del prompt,
+// no parte del bloque fijo: se activan con `opciones.fewshot` y cambian `meta.variante_prompt`
+// para que el loop de 10 compare corridas cambiando una sola cosa. Ver README.md §Variantes.
+export const FEWSHOT_POR_ROL = Object.freeze({
+  documental: 'fewshot-documental.md',
+  financiero: 'fewshot-financiero.md',
+  relacional: 'fewshot-relacional.md',
+  temporal: 'fewshot-temporal.md',
+  externo: 'fewshot-externo.md',
+});
+
+export const FEWSHOT_POR_DEFECTO = false;
+
 export const SCHEMA_SALIDA_POR_ROL = Object.freeze({
   documental: 'agents.especialista',
   financiero: 'agents.especialista',
@@ -573,9 +586,18 @@ export function ensamblar(rol, paqueteContexto, opciones = {}) {
   const tools = toolsPorRol(rol, ronda);
   const schemaSalida = SCHEMA_SALIDA_POR_ROL[rol];
 
+  const fewshot = opciones.fewshot ?? FEWSHOT_POR_DEFECTO;
+  if (fewshot && !FEWSHOT_POR_ROL[rol]) {
+    throw new ErrorEnsamblado(
+      'fewshot_no_disponible',
+      `No hay ejemplo adversarial para el rol ${rol}: sólo las cinco familias tienen trampas en 02.`,
+    );
+  }
+
   const bloquesSystem = [
     leerPrompt('comun.md').trimEnd(),
     leerPrompt(ARCHIVO_POR_ROL[rol]).trimEnd(),
+    ...(fewshot ? [leerPrompt(FEWSHOT_POR_ROL[rol]).trimEnd()] : []),
     `## Contrato de salida\n\n${renderContratoCompacto(schemaSalida)}`,
     `## Herramientas permitidas en esta tarea\n\n${tools.length === 0
       ? 'Ninguna. No tienes herramientas: no simules llamadas ni pidas datos nuevos.'
@@ -679,6 +701,10 @@ export function ensamblar(rol, paqueteContexto, opciones = {}) {
     meta: Object.freeze({
       rol,
       ronda,
+      fewshot,
+      // Identifica la variante de prompt de esta llamada. El runtime la usa para calcular
+      // `prompt_hash` y 10 para comparar corridas que cambian una sola cosa.
+      variante_prompt: fewshot ? `${rol}+fewshot` : rol,
       techo_caracteres: techo,
       ambito_techo: ambito,
       caracteres: system.length + contenidoUsuario.length,

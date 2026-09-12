@@ -147,15 +147,16 @@ test('el system que recibe cada rol trae cuándo parar, contradatos y su contrat
 });
 
 test('los ejemplos pequeños de los prompts usan fuentes sintéticas marcadas (17 §8)', () => {
-  for (const rol of [...ROLES_LLM, 'mapper']) {
-    const texto = leerArchivoPrompt(ARCHIVO_POR_ROL[rol]);
+  // Todos los .md de la carpeta, no sólo los de rol: los ejemplos adversariales también.
+  for (const archivo of archivosPrompt()) {
+    const texto = leerArchivoPrompt(archivo);
     const bloques = texto.split('```json').slice(1).map(b => b.split('```')[0]);
     for (const bloque of bloques) {
       const rfcs = [...bloque.matchAll(/[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}/g)].map(m => m[0]);
-      assert.deepEqual(rfcs, [], `${rol}: el ejemplo trae un RFC con forma real`);
+      assert.deepEqual(rfcs, [], `${archivo}: el ejemplo trae un RFC con forma real`);
     }
     if (bloques.some(b => b.includes('ENTIDAD'))) {
-      assert.ok(texto.includes('DEMO:'), `${rol}: las entidades de ejemplo deben ir con prefijo DEMO:`);
+      assert.ok(texto.includes('DEMO:'), `${archivo}: las entidades de ejemplo deben ir con prefijo DEMO:`);
     }
   }
 });

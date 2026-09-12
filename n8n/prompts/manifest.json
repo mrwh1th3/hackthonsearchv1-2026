@@ -3,12 +3,12 @@
   "contracts_version": "1.0.0",
   "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
   "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
-  "version_prompts": "24ae5ea40429",
+  "version_prompts": "e4a2f861e988",
   "archivos": [
     {
       "name": "README.md",
-      "sha256": "90e6f99bd863e8bd368a37eceb58ac73318ab7921a50471c2716f9f022c7c77d",
-      "chars": 122
+      "sha256": "dd5e6fd49dd44ad4b960a87e6c2299c225293c74454996922e8896a81df81069",
+      "chars": 5796
     },
     {
       "name": "auditor.md",
@@ -32,8 +32,8 @@
     },
     {
       "name": "ensamblar.mjs",
-      "sha256": "51e47fac297d47bfda384a3b2dae835693c02c2b9807c76f90714d9e5427df79",
-      "chars": 32467
+      "sha256": "5de34624fabd6cbb75145017def1ecd620b3581fb76b4ca945c403a95ab02546",
+      "chars": 33619
     },
     {
       "name": "esp-documental.md",
@@ -61,9 +61,34 @@
       "chars": 3102
     },
     {
+      "name": "fewshot-documental.md",
+      "sha256": "6781ec4750c23d07e7e73304fd0dc88c7106d0ad6fff478e39ee954e2b859836",
+      "chars": 1650
+    },
+    {
+      "name": "fewshot-externo.md",
+      "sha256": "551b7b52391525af631379081b61a3808de6edcd7476d01d7450d07f687a4595",
+      "chars": 1624
+    },
+    {
+      "name": "fewshot-financiero.md",
+      "sha256": "bf63b4760683d75c96d36896d6f3c318f60f7775d0ac4f109dd0922f88cf7ad2",
+      "chars": 1690
+    },
+    {
+      "name": "fewshot-relacional.md",
+      "sha256": "58b0ac18b8791a816f1496da14caebeed9c4d1b765ba572255338720d1720f2e",
+      "chars": 1577
+    },
+    {
+      "name": "fewshot-temporal.md",
+      "sha256": "6618ccafb3e3e13bfe8fa01f2e3219764cc70d9711cf8efb4ab290f32917f3f7",
+      "chars": 1592
+    },
+    {
       "name": "manifest.mjs",
-      "sha256": "0c27a888e4dd511fc3c32c4d52c1db80b8816ef29b5d30d8bea37929969d03b0",
-      "chars": 5194
+      "sha256": "b17ea5104c936f2e48154ffb85c47a45a51d672623625f985fb7f3a9fdfe5898",
+      "chars": 5509
     },
     {
       "name": "mapper.md",
@@ -239,6 +264,32 @@
     "forense_validar_evidencia",
     "forense_evaluar_frontera",
     "forense_despertar"
+  ],
+  "fewshot_por_rol": {
+    "documental": "fewshot-documental.md",
+    "financiero": "fewshot-financiero.md",
+    "relacional": "fewshot-relacional.md",
+    "temporal": "fewshot-temporal.md",
+    "externo": "fewshot-externo.md"
+  },
+  "fewshot_por_defecto": false,
+  "variantes": [
+    "documental",
+    "financiero",
+    "relacional",
+    "temporal",
+    "externo",
+    "auditor",
+    "defensor",
+    "replica",
+    "redactor",
+    "editor",
+    "mapper",
+    "documental+fewshot",
+    "financiero+fewshot",
+    "relacional+fewshot",
+    "temporal+fewshot",
+    "externo+fewshot"
   ],
   "schema_salida_por_rol": {
     "documental": "agents.especialista",

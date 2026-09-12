@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { contractVersion } from '../../contracts/index.mjs';
 import {
   ROLES_LLM, SCHEMA_SALIDA_POR_ROL, MODELO_PROPUESTO_POR_ROL, TECHO_CARACTERES,
-  TOOLS_DE_SISTEMA, toolsPorRol,
+  TOOLS_DE_SISTEMA, FEWSHOT_POR_ROL, FEWSHOT_POR_DEFECTO, toolsPorRol,
 } from './ensamblar.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -61,6 +61,12 @@ export function construirManifest() {
     roles: [...ROLES_LLM, 'mapper'],
     tools_por_rol,
     tools_de_sistema_prohibidas: [...TOOLS_DE_SISTEMA],
+    fewshot_por_rol: { ...FEWSHOT_POR_ROL },
+    fewshot_por_defecto: FEWSHOT_POR_DEFECTO,
+    variantes: [
+      ...[...ROLES_LLM, 'mapper'],
+      ...Object.keys(FEWSHOT_POR_ROL).map(rol => `${rol}+fewshot`),
+    ],
     schema_salida_por_rol: { ...SCHEMA_SALIDA_POR_ROL },
     modelo_propuesto_por_rol: { ...MODELO_PROPUESTO_POR_ROL },
     techo_caracteres_por_rol: { ...TECHO_CARACTERES },
@@ -102,6 +108,7 @@ export function verificarManifest() {
   for (const clave of [
     'version_manifest', 'contracts_version', 'regla_hash', 'roles', 'tools_de_sistema_prohibidas',
     'tools_por_rol', 'schema_salida_por_rol', 'modelo_propuesto_por_rol', 'techo_caracteres_por_rol',
+    'fewshot_por_rol', 'fewshot_por_defecto', 'variantes',
   ]) {
     if (JSON.stringify(actual[clave]) !== JSON.stringify(esperado[clave])) {
       diferencias.push(`${clave} desactualizado`);
