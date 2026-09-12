@@ -19,6 +19,7 @@ import { armarToolResultsNodo } from '../runtime/nodos/armar-tool-results.mjs';
 import { expandirColaToolsNodo } from '../runtime/nodos/expandir-cola-tools.mjs';
 import { evaluarFronteraNodo } from '../runtime/nodos/evaluar-frontera.mjs';
 import { normalizarInvestigacionNodo } from '../runtime/nodos/normalizar-investigacion.mjs';
+import { despacharClustersNodo } from '../runtime/nodos/despachar-clusters.mjs';
 import { toolsPorRol } from '../prompts/ensamblar.mjs';
 
 import { clasificar } from '../runtime/transporte.mjs';
@@ -483,4 +484,57 @@ test('[SIMULADO] normalizar: sin cluster_id hace falta origen + valor', () => {
     () => normalizarInvestigacionNodo({ body: { corrida_id: UUID.corrida, idempotency_key: 'k' } }),
     /se requiere cluster_id/,
   );
+});
+
+// ─────────────────────────── despachar-clusters (bucle de corrida, hallazgo H11)
+
+const colaDe = (n) => Array.from({ length: n }, (_, i) => ({ cluster_id: `c${i + 1}`, score: 1 - i / 100 }));
+const despachar = (over = {}) => despacharClustersNodo({
+  corrida_id: 'corrida-1', investigacion_id: 'inv-1', idempotency_base: 'k',
+  max_activos: 2, casos_activos: 0, pendientes: colaDe(6), ...over,
+});
+
+test('despacho: admite hasta MAX_ACTIVOS y deja el resto EN COLA, no fallido', () => {
+  const s = despachar();
+  assert.equal(s.length, 2);
+  assert.deepEqual(s.map((i) => i.cluster_id), ['c1', 'c2']);
+  assert.equal(s[0].en_cola, 4);
+  assert.deepEqual(s[0].cola_restante, ['c3', 'c4', 'c5', 'c6']);
+  assert.equal(s.every((i) => i.despachar === true), true);
+});
+
+test('despacho: sólo llena los slots que la corrida tiene libres', () => {
+  assert.equal(despachar({ casos_activos: 1 }).filter((i) => i.despachar).length, 1);
+  const lleno = despachar({ casos_activos: 2 });
+  assert.deepEqual(lleno.map((i) => i.despachar), [false]);
+  assert.equal(lleno[0].motivo, 'sin slot libre');
+  // Más activos que el techo (un caso creado fuera del bucle) no produce slots
+  // negativos ni despachos de más.
+  assert.deepEqual(despachar({ casos_activos: 5 }).map((i) => i.despachar), [false]);
+});
+
+test('despacho: nunca devuelve cero ítems — si devolviera, el bucle moriría', () => {
+  for (const caso of [{ pendientes: [] }, { pendientes: null }, { casos_activos: 9 },
+    { max_activos: 0 }, { pendientes: [{ score: 1 }] }]) {
+    const s = despachar(caso);
+    assert.equal(s.length, 1, `${JSON.stringify(caso)} debe emitir un ítem centinela`);
+    assert.equal(s[0].despachar, false);
+    assert.equal(s[0].cluster_id, null);
+  }
+  assert.equal(despachar({ pendientes: [] })[0].motivo, 'cola vacia');
+});
+
+test('despacho: una clave de idempotencia por (corrida, cluster)', () => {
+  const s = despachar();
+  assert.deepEqual(s.map((i) => i.idempotency_key), ['k:c1', 'k:c2']);
+  // Repetir la vuelta con la misma cola da las mismas claves: reintentar el
+  // despacho no crea casos nuevos (regla 10).
+  assert.deepEqual(despachar().map((i) => i.idempotency_key), s.map((i) => i.idempotency_key));
+});
+
+test('despacho: respeta el orden de la cola tal como llega de SQL', () => {
+  const invertida = colaDe(6).reverse();
+  assert.deepEqual(despacharClustersNodo({
+    max_activos: 3, casos_activos: 0, pendientes: invertida, idempotency_base: 'k',
+  }).map((i) => i.cluster_id), ['c6', 'c5', 'c4']);
 });
