@@ -23,6 +23,9 @@ import {
   renderContratoCompacto, toolsPorRol,
 } from '../prompts/ensamblar.mjs';
 import { MAX_TOKENS_SALIDA } from './config.mjs';
+// Voz: el endpoint y las variables permitidas son de forense-voice
+// (integrations/elevenlabs). El runtime los CONSUME, no los redefine.
+import { ENDPOINT_LLAMADA } from '../../integrations/elevenlabs/index.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ_N8N = path.resolve(AQUI, '..');
@@ -127,6 +130,33 @@ export function catalogoPrompts({ dir = DIR_PROMPTS } = {}) {
     techos: { ...TECHO_CARACTERES },
     roles,
   };
+}
+
+// Módulos de `integrations/` (dueño: forense-voice) embebidos VERBATIM en un
+// Code node. No se copia lógica a mano: se lee el archivo, se quitan los
+// `import`/`export` de ESM (n8n Code nodes no son módulos) y se declara el
+// `require` equivalente. Si forense-voice cambia el módulo, el JSON cambia y
+// `--check` lo detecta; lo que NO ocurre es que el workflow lleve una copia
+// vieja de la verificación de firma.
+const DIR_INTEGRACIONES = path.resolve(RAIZ_N8N, '..', 'integrations');
+
+export function embeberModulo(relativa, { requires = [] } = {}) {
+  const ruta = path.join(DIR_INTEGRACIONES, relativa);
+  const texto = fs.readFileSync(ruta, 'utf8');
+  const cuerpo = texto
+    .split('\n')
+    .filter((l) => !/^\s*import\s/.test(l))
+    .join('\n')
+    .replace(/^export\s+(const|function|class|let)\s/gm, '$1 ')
+    .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
+    .trimEnd();
+  return [
+    `// ===== EMBEBIDO VERBATIM de integrations/${relativa} (dueño: forense-voice).`,
+    '// Generado por n8n/runtime/generar-workflows.mjs — no editar aquí.',
+    ...requires.map((r) => `const { ${r.nombres.join(', ')} } = require('${r.modulo}');`),
+    cuerpo,
+    `// ===== fin de integrations/${relativa}`,
+  ].join('\n');
 }
 
 /** Constantes que el generador inyecta en el cuerpo de un Code node. */
@@ -893,9 +923,38 @@ export function investigarCluster() {
   ));
   add(sql(
     'Paquete auditor final',
-    'SELECT * FROM forense.paquete_auditor_final($1::uuid)',
+    // `paquete_auditor_final` (010) NO devuelve la forma exacta que consume
+    // `dictaminar()`: tres adaptaciones deterministas, todas en SQL, ninguna
+    // en el Code node y ninguna a partir de texto libre.
+    //   1. `caso.n_reintentos` — 010 lo emite dentro de `presupuesto`.
+    //   2. `presupuesto.permite_reintento` — 010 emite `agotado`; el techo de
+    //      2 reintentos vive en `Claim de reintento` y se replica aquí.
+    //   3. `evidencia[].hecho_validado.monto_centavos` — 010 lo emite en la
+    //      raíz del ítem (entero, redondeado desde el NUMERIC de la columna).
+    //      `dictaminar` lo lee dentro de `hecho_validado` y LANZA si falta.
+    // Ver `solicitudes_coordinador` de la entrega: si 010 cambia, se borra
+    // esta capa, no se duplica.
+    [
+      'SELECT p.caso_id, p.cluster_id, p.corrida_id, p.investigacion_id,',
+      "       p.caso || jsonb_build_object('n_reintentos',",
+      "         coalesce(p.presupuesto->'n_reintentos', '0'::jsonb)) AS caso,",
+      '       p.pistas,',
+      '       (SELECT coalesce(jsonb_agg(e || jsonb_build_object(',
+      "                 'hecho_validado',",
+      "                 case when e->>'monto_centavos' is null then '{}'::jsonb",
+      "                      else jsonb_build_object('monto_centavos',",
+      "                             (e->>'monto_centavos')::bigint) end",
+      "                 || coalesce(e->'hecho_validado', '{}'::jsonb))",
+      "               ORDER BY e->>'evidencia_id'), '[]'::jsonb)",
+      '          FROM jsonb_array_elements(p.evidencia) e) AS evidencia,',
+      '       p.pendientes, p.cobertura_completa,',
+      "       p.presupuesto || jsonb_build_object('permite_reintento',",
+      "         coalesce((p.presupuesto->>'agotado')::boolean, false) = false",
+      "         AND coalesce((p.presupuesto->>'n_reintentos')::int, 0) < 2) AS presupuesto",
+      '  FROM forense.paquete_auditor_final($1::uuid) p',
+    ].join('\n'),
     '={{ $json.caso_id }}',
-    'Entrada preparada por backend, nunca JSON de agente sin validar (07 §Code node).',
+    'Entrada preparada por backend, nunca JSON de agente sin validar (07 §Code node). Adapta la forma de 010 a la que consume dictaminar(): n_reintentos, permite_reintento y monto_centavos dentro de hecho_validado.',
   ));
   add(code('Auditor Final', 'auditor-final'));
   add(si('¿Rechazo reparable?', '={{ $json.rechazo !== null }}'));
@@ -1116,7 +1175,18 @@ export function reintento() {
   fila = 1; columna = 9;
   add(sql(
     'Barrera reintento',
-    'SELECT * FROM forense.estado_barrera($1::uuid, $2::text)',
+    // `forense.estado_barrera` devuelve UN jsonb escalar, no una tabla: con
+    // `SELECT *` n8n recibía `{estado_barrera:{…}}` y el IF siguiente leía
+    // `$json.completa` = undefined, es decir, la barrera nunca cerraba por la
+    // rama buena. Lo cazó `n8n/tests/verificar-forma-nodos.mjs` en H8.
+    // Mismo patrón que «Esperar barrera R1»: jsonb_to_record y las columnas
+    // de identidad proyectadas a mano.
+    [
+      'SELECT $1::uuid AS caso_id, b.paso, b.completa, b.faltantes, b.vencida',
+      '  FROM jsonb_to_record(forense.estado_barrera($1::uuid, $2::text))',
+      '    AS b(ok boolean, existe boolean, paso text, completa boolean,',
+      '         faltantes jsonb, vencida boolean, estado jsonb)',
+    ].join('\n'),
     `${R('caso_id')}, ={{ 'reintento' + $('Validar intento').first().json.intento }}`,
     'Mismo patrón que la barrera de ronda: el conjunto exacto de tarea_id, no un conteo.',
   ));
@@ -1717,7 +1787,7 @@ export function notificarCompletada() {
     'n8n-nodes-base.httpRequest',
     {
       method: 'POST',
-      url: 'https://api.elevenlabs.io/v1/convai/twilio/outbound-call',
+      url: ENDPOINT_LLAMADA,
       authentication: 'genericCredentialType',
       genericAuthType: 'httpHeaderAuth',
       sendBody: true,
@@ -1791,20 +1861,49 @@ export function resultadoLlamada() {
     '// 16 §3: firma sobre el cuerpo CRUDO + ventana temporal. Firma inválida →',
     '// 401 sin escribir nada.',
     '//',
-    '// STUB MARCADO: el adaptador real es de forense-voice',
-    '// (integrations/elevenlabs), que todavía no existe. Este nodo declara la',
-    '// INTERFAZ que consumirá: {crudo, firma, tolerancia_s} → {valido, evento}.',
-    '// Mientras el adaptador no exista, VERIFICACION_DISPONIBLE=false y el nodo',
-    '// RECHAZA: nunca acepta un callback sin verificar.',
-    'const VERIFICACION_DISPONIBLE = false;',
-    'const TOLERANCIA_S = 300;',
+    '// El stub de la oleada 1 (VERIFICACION_DISPONIBLE=false) desapareció en H8:',
+    '// aquí va el verificador REAL de forense-voice, embebido verbatim por el',
+    '// generador. Se llama en su FORMA POSICIONAL',
+    '// verificarFirma(rawBody, headers, secreto, ahora_ms, opciones).',
+    '//',
+    '// REQUISITO DE DESPLIEGUE: n8n sólo expone `crypto` a los Code nodes si',
+    '// NODE_FUNCTION_ALLOW_BUILTIN incluye `crypto` (ver IMPORT.md §Variables).',
+    '// Sin eso este nodo lanza y el callback se RECHAZA, que es el lado seguro.',
+    embeberModulo('elevenlabs/hmac.mjs', {
+      requires: [{ modulo: 'crypto', nombres: ['createHmac', 'timingSafeEqual'] }],
+    }),
+    embeberModulo('elevenlabs/callback.mjs'),
+    '',
     'const x = $input.first().json;',
-    "const firma = (x.headers ?? {})['elevenlabs-signature'] ?? null;",
-    'if (!firma) throw new Error(\'callback sin cabecera de firma: 401\');',
-    'if (!VERIFICACION_DISPONIBLE) {',
-    "  throw new Error('verificador HMAC no instalado (integrations/elevenlabs, forense-voice): el callback se rechaza en vez de aceptarse sin verificar');",
+    '// El cuerpo CRUDO: sin él no hay firma que verificar (un JSON reserializado',
+    "// no reproduce los bytes firmados). El webhook va en modo 'raw body'",
+    '// (options.rawBody = true en «Webhook resultado»), y en ese modo n8n NO',
+    '// entrega siempre un string: según versión llega Buffer, o {data,type} de',
+    '// un Buffer serializado, o base64. `verificarFirma` exige string y si no lo',
+    '// es devuelve `cuerpo_no_crudo`, así que la normalización va aquí y se',
+    '// prueba aparte (n8n/tests/voz.test.mjs), no se supone.',
+    'function cuerpoCrudo(j) {',
+    '  for (const v of [j.body, j.rawBody, j.data]) {',
+    "    if (typeof v === 'string') return v;",
+    '    if (v && typeof v === \'object\') {',
+    '      if (typeof Buffer !== \'undefined\' && Buffer.isBuffer(v)) return v.toString(\'utf8\');',
+    "      if (v.type === 'Buffer' && Array.isArray(v.data)) return Buffer.from(v.data).toString('utf8');",
+    '    }',
+    '  }',
+    '  return null;',
     '}',
-    'const salida = { valido: false, tolerancia_s: TOLERANCIA_S, evento: null };',
+    'const crudo = cuerpoCrudo(x);',
+    'if (typeof crudo !== \'string\' || crudo.length === 0) {',
+    "  throw new Error('el webhook no entregó el cuerpo crudo (¿options.rawBody?): no se puede verificar la firma (401)');",
+    '}',
+    'const secreto = $env.FORENSE_ELEVENLABS_WEBHOOK_SECRET ?? null;',
+    'const r = verificarFirma(crudo, x.headers ?? {}, secreto, Date.now(), {});',
+    'if (!r.valido) throw new Error(`callback rechazado (401): ${r.motivo}`);',
+    'const evento = JSON.parse(crudo);',
+    'const salida = Object.assign(',
+    '  { valido: true, tolerancia_s: TOLERANCIA_FIRMA_S, evento },',
+    '  estadoDesdeCallback(evento),',
+    ');',
     'return [{ json: salida }];',
   ].join('\n')));
 
@@ -2226,12 +2325,18 @@ export const CONTRATOS_NODOS = Object.freeze({
 export const FORMA_PENDIENTE = Object.freeze({
   FORENSE_ejecutar_agente: Object.freeze([]),
   FORENSE_errores: Object.freeze([]),
+  // 'Paquete auditor final' salió de la lista en H8: ya no es `SELECT *`. Su
+  // consulta nombra las diez columnas y adapta la forma de 010 a la que
+  // consume `dictaminar()`, así que el texto ES comprobable. Además
+  // `n8n/tests/verificar-forma-nodos.mjs` la ejecuta contra Postgres.
   FORENSE_investigar_cluster: Object.freeze([
-    'Aplicar resolución', 'Cerrar caso', 'Guardar dictamen', 'Paquete auditor final',
+    'Aplicar resolución', 'Cerrar caso', 'Guardar dictamen',
     'Ronda fin R1', 'Validar citas',
   ]),
+  // 'Barrera reintento' salió en H8: dejó de ser `SELECT *` (usaba una
+  // función que devuelve jsonb escalar y perdía todas las columnas).
   FORENSE_reintento: Object.freeze([
-    'Barrera reintento', 'Crear tareas de revisión', 'Expandir para reintento',
+    'Crear tareas de revisión', 'Expandir para reintento',
     'Revalidar si cambió evidencia', 'Seleccionar autores',
   ]),
   FORENSE_editar_expediente: Object.freeze(['Cargar versión base', 'Guardar propuesta']),

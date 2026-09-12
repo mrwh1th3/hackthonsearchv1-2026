@@ -570,7 +570,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Entrada preparada por backend, nunca JSON de agente sin validar (07 §Code node).\nSELECT * FROM forense.paquete_auditor_final($1::uuid)",
+        "query": "-- Entrada preparada por backend, nunca JSON de agente sin validar (07 §Code node). Adapta la forma de 010 a la que consume dictaminar(): n_reintentos, permite_reintento y monto_centavos dentro de hecho_validado.\nSELECT p.caso_id, p.cluster_id, p.corrida_id, p.investigacion_id,\n       p.caso || jsonb_build_object('n_reintentos',\n         coalesce(p.presupuesto->'n_reintentos', '0'::jsonb)) AS caso,\n       p.pistas,\n       (SELECT coalesce(jsonb_agg(e || jsonb_build_object(\n                 'hecho_validado',\n                 case when e->>'monto_centavos' is null then '{}'::jsonb\n                      else jsonb_build_object('monto_centavos',\n                             (e->>'monto_centavos')::bigint) end\n                 || coalesce(e->'hecho_validado', '{}'::jsonb))\n               ORDER BY e->>'evidencia_id'), '[]'::jsonb)\n          FROM jsonb_array_elements(p.evidencia) e) AS evidencia,\n       p.pendientes, p.cobertura_completa,\n       p.presupuesto || jsonb_build_object('permite_reintento',\n         coalesce((p.presupuesto->>'agotado')::boolean, false) = false\n         AND coalesce((p.presupuesto->>'n_reintentos')::int, 0) < 2) AS presupuesto\n  FROM forense.paquete_auditor_final($1::uuid) p",
         "options": {
           "queryReplacement": "={{ $json.caso_id }}"
         }
