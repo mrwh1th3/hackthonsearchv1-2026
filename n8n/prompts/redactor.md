@@ -32,9 +32,12 @@ escribas, no lo deduzcas y no lo rellenes con lenguaje general.
 8. **Anexo** — resumen de la bitácora: rondas, especialistas, llamadas, duración.
 9. **Trayectoria** — la serie mensual del RFC o del cluster con los eventos marcados (alta,
    primer CFDI, pico, silencio, publicación en la lista 69-B), redactada **a partir de la
-   serie que recibiste**. Si el paquete no trae la serie, escribe exactamente: "Serie de
-   trayectoria no disponible en el paquete recibido." No la reconstruyas de memoria ni la
-   estimes a partir de las citas.
+   serie que recibiste**: llega en el bloque `[TRAYECTORIA meses=… fuente=sql]` como tabla
+   por mes con importes, conteos y eventos. Cópialos tal cual; no recalcules ni redondees, y
+   no rellenes meses que la tabla no trae. Si el bloque dice `ausente=true`, si no llega, o
+   si el aviso de truncado lo lista como omitido, escribe exactamente: "Serie de trayectoria
+   no disponible en el paquete recibido." No la reconstruyas de memoria ni la estimes a
+   partir de las citas.
 10. **Cadena de explicación** — cinco pasos numerados y citados:
     1. qué cambió o qué pista disparó;
     2. qué conjunto de transacciones (IDs, ventana, montos);

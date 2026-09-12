@@ -441,6 +441,37 @@ function textoDeNodoTipTap(nodo) {
   return (nodo.content ?? []).map(textoDeNodoTipTap).join('');
 }
 
+/**
+ * Serie mensual calculada por SQL (contracts 1.2.0). Todos sus campos son tipados —`mes` con
+ * patrón, importes como cadena decimal, `eventos[].tipo` con enum, `referencia` con el
+ * formato de cita—, así que no es texto libre y no va dentro de un fence. Los importes se
+ * copian **verbatim**: formatearlos en JS sería que el código decida lo que muestra el
+ * expediente sobre un número que salió de SQL (regla 4).
+ */
+function textoTrayectoria(serie) {
+  const filas = serie.map(m => {
+    const eventos = (m.eventos ?? [])
+      .map(e => `${e.tipo}@${e.fecha}${e.referencia ? ` ref=${e.referencia}` : ''}`)
+      .join(' ; ') || '(sin eventos)';
+    return `| ${m.mes} | ${m.facturado} | ${m.recibido} | ${m.nomina} | ${m.n_cfdi} | ${m.n_movimientos} | ${eventos} |`;
+  });
+  return [
+    `[TRAYECTORIA meses=${serie.length} fuente=sql]`,
+    '| mes | facturado | recibido | nomina | n_cfdi | n_movimientos | eventos |',
+    '|---|---|---|---|---|---|---|',
+    ...filas,
+    'Importes y conteos tal como los devolvió SQL: cópialos, no los recalcules ni los redondees.',
+    'Los meses que no aparecen no están en la serie: no los rellenes.',
+  ].join('\n');
+}
+
+const TRAYECTORIA_AUSENTE = [
+  '[TRAYECTORIA ausente=true]',
+  'El paquete no incluye serie de trayectoria.',
+  'Escribe la sección Trayectoria exactamente así: "Serie de trayectoria no disponible en el paquete recibido."',
+  'No la reconstruyas de memoria ni la estimes a partir de las citas.',
+].join('\n');
+
 function bloquesDatos(rol, paquete) {
   const d = paquete.datos ?? {};
   const bloques = [];
@@ -477,11 +508,11 @@ function bloquesDatos(rol, paquete) {
   }
 
   const ordenPorRol = {
-    auditor: ['evidencia', 'argumentos', 'resoluciones'],
-    defensor: ['evidencia', 'argumentos', 'resoluciones'],
-    replica: ['argumentos', 'evidencia', 'resoluciones'],
-    redactor: ['evidencia', 'argumentos', 'resoluciones'],
-    editor: ['documento', 'seleccion', 'evidencia', 'argumentos', 'resoluciones'],
+    auditor: ['evidencia', 'argumentos', 'resoluciones', 'trayectoria'],
+    defensor: ['evidencia', 'argumentos', 'resoluciones', 'trayectoria'],
+    replica: ['argumentos', 'evidencia', 'resoluciones', 'trayectoria'],
+    redactor: ['evidencia', 'argumentos', 'resoluciones', 'trayectoria'],
+    editor: ['documento', 'seleccion', 'evidencia', 'argumentos', 'resoluciones', 'trayectoria'],
   };
 
   for (const categoria of ordenPorRol[rol] ?? []) {
@@ -504,6 +535,18 @@ function bloquesDatos(rol, paquete) {
       for (const r of d.resoluciones ?? []) {
         const cuerpo = `[RESOLUCION defensa_id=${r.defensa_id} decision=${r.decision}]\n${marcarNoConfiable('replica.razon', r.razon, { defensa_id: r.defensa_id })}`;
         bloques.push(bloque(`Resolución ${r.defensa_id}`, cuerpo, { truncable: true, ids: [`DEFENSA:${r.defensa_id}`] }));
+      }
+    }
+    if (categoria === 'trayectoria') {
+      const serie = Array.isArray(d.trayectoria) ? d.trayectoria : null;
+      if (serie && serie.length > 0) {
+        bloques.push(bloque('Trayectoria mensual (calculada por SQL)', textoTrayectoria(serie), {
+          truncable: true, ids: ['TRAYECTORIA'],
+        }));
+      } else if (rol === 'redactor') {
+        // La sección 9 del expediente (21 §4) es obligatoria: la ausencia de la serie se
+        // declara como dato positivo en vez de dejar que el modelo la deduzca del silencio.
+        bloques.push(bloque('Trayectoria mensual: no incluida en el paquete', TRAYECTORIA_AUSENTE));
       }
     }
     if (categoria === 'documento' && d.documento) {
