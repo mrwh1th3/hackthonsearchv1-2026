@@ -128,6 +128,40 @@ else
   fi
 fi
 
+echo "== eval/metricas.py sobre el snapshot cargado =="
+RAIZ_EVAL="$(dirname "$DBDIR")"
+if command -v python3 >/dev/null 2>&1 \
+   && "$PSQL" -d "$DB" -X -t -A -c "select 1 from forense.corridas where nombre='gen-v1'" | grep -q 1; then
+  if PSQL="$PSQL" python3 "$RAIZ_EVAL/eval/metricas.py" --corrida gen-v1 --db "$DB" --json \
+       > "$TMP/metricas.json" 2>"$LOG"; then
+    fpr=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['carril_datos']['selector_dos_familias']['fpr_trampas']['fpr'])" "$TMP/metricas.json")
+    rec=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['carril_datos']['selector_dos_familias']['recall_conservador'])" "$TMP/metricas.json")
+    base_fpr=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['carril_datos']['baseline_dos_pistas']['fpr_trampas']['fpr'])" "$TMP/metricas.json")
+    echo "  selector dos familias: FPR trampas=$fpr recall conservador=$rec (baseline dos pistas FPR=$base_fpr)"
+    anotar "eval/metricas.py corre sobre gen-v1 y devuelve el bloque del carril de datos" true \
+      "fpr=$fpr recall=$rec"
+    anotar "el selector de dos familias cumple la meta de FPR sobre trampas (<=0.15)" \
+      "$(python3 -c "print(str(float('$fpr') <= 0.15).lower())")" "fpr=$fpr"
+    anotar "el selector de dos familias no marca mas trampas que el baseline de dos pistas" \
+      "$(python3 -c "print(str(float('$fpr') <= float('$base_fpr')).lower())")" \
+      "selector=$fpr baseline=$base_fpr"
+    if PSQL="$PSQL" python3 "$RAIZ_EVAL/eval/comparar_corridas.py" --base gen-v1 --nueva gen-v1 \
+         --db "$DB" >/dev/null 2>>"$LOG"; then
+      anotar "eval/comparar_corridas.py compara dos corridas sin mezclarlas" true ""
+    else
+      anotar "eval/comparar_corridas.py compara dos corridas sin mezclarlas" false "ver log"
+      fallos=$((fallos + 1))
+    fi
+  else
+    echo "  FALLA eval/metricas.py"
+    head -10 "$LOG"
+    anotar "eval/metricas.py corre sobre gen-v1 y devuelve el bloque del carril de datos" false "ver log"
+    fallos=$((fallos + 1))
+  fi
+else
+  echo "  omitido: sin python3 o sin snapshot gen-v1"
+fi
+
 echo "== contrato de pistas (contracts/entities.pista) =="
 RAIZ="$(dirname "$DBDIR")"
 if command -v node >/dev/null 2>&1 && [ -d "$RAIZ/contracts/node_modules" ]; then
