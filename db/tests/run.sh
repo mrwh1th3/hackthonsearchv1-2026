@@ -74,6 +74,8 @@ aplicar "$DBDIR/006_producto_ui.sql" "006_producto_ui.sql"
 aplicar "$DBDIR/007_notificaciones_voz.sql" "007_notificaciones_voz.sql"
 aplicar "$DBDIR/008_ingesta.sql" "008_ingesta.sql"
 aplicar "$DBDIR/009_runtime_eventos.sql" "009_runtime_eventos.sql"
+aplicar "$DBDIR/010_runtime_funciones.sql" "010_runtime_funciones.sql"
+aplicar "$DBDIR/011_metricas_corrida.sql" "011_metricas_corrida.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$DBDIR/seeds/seed_producto.sql" "seeds/seed_producto.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
@@ -85,7 +87,8 @@ reaplicar_ok=true
 for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" \
          "$DBDIR/004_clusters.sql" "$DBDIR/005_rpc.sql" "$DBDIR/006_producto_ui.sql" \
          "$DBDIR/007_notificaciones_voz.sql" "$DBDIR/008_ingesta.sql" \
-         "$DBDIR/009_runtime_eventos.sql" \
+         "$DBDIR/009_runtime_eventos.sql" "$DBDIR/010_runtime_funciones.sql" \
+         "$DBDIR/011_metricas_corrida.sql" \
          "$DBDIR/seeds/seed_fake.sql" "$DBDIR/seeds/seed_producto.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
@@ -106,6 +109,7 @@ aplicar "$HERE/assertions_005.sql" "tests/assertions_005.sql"
 aplicar "$HERE/assertions_006_007.sql" "tests/assertions_006_007.sql"
 aplicar "$HERE/assertions_008.sql" "tests/assertions_008.sql"
 aplicar "$HERE/assertions_009.sql" "tests/assertions_009.sql"
+aplicar "$HERE/assertions_010.sql" "tests/assertions_010.sql"
 
 echo "== paquetes de inyección (eval/inyecciones) =="
 bash "$HERE/cargar_paquetes.sh" "$DB" || fallos=$((fallos + 1))
@@ -145,6 +149,43 @@ if command -v python3 >/dev/null 2>&1 \
     anotar "el selector de dos familias no marca mas trampas que el baseline de dos pistas" \
       "$(python3 -c "print(str(float('$fpr') <= float('$base_fpr')).lower())")" \
       "selector=$fpr baseline=$base_fpr"
+    # 011: v_metricas_corrida debe coincidir CAMPO A CAMPO con el carril de
+    # datos de eval/metricas.py. Dos implementaciones de la misma métrica
+    # que discrepan son una métrica que no se puede citar.
+    "$PSQL" -d "$DB" -X -t -A -c \
+      "select forense.v_metricas_corrida((select id from forense.corridas where nombre='gen-v1'))" \
+      > "$TMP/metricas_sql.json" 2>>"$LOG"
+    if python3 - "$TMP/metricas.json" "$TMP/metricas_sql.json" >"$TMP/cmp.txt" 2>&1 <<'PYCMP'
+import json, sys
+py = json.load(open(sys.argv[1]))
+sql = json.load(open(sys.argv[2]))
+dif = []
+if sql.get('parcial') is not False:
+    dif.append('v_metricas_corrida sigue declarandose parcial')
+for regla, esperado in (py.get('carril_datos') or {}).items():
+    obtenido = (sql.get('carril_datos') or {}).get(regla)
+    if obtenido is None:
+        dif.append(regla + ': ausente en SQL'); continue
+    for k, v in esperado.items():
+        if obtenido.get(k) != v:
+            dif.append('%s.%s py=%r sql=%r' % (regla, k, v, obtenido.get(k)))
+for k in ('acierto_de_cache', 'tasa_de_ronda_2', 'reintentos'):
+    if k not in sql:
+        dif.append('falta el bloque ' + k)
+print('; '.join(dif[:8]))
+sys.exit(1 if dif else 0)
+PYCMP
+    then
+      anotar "v_metricas_corrida coincide con eval/metricas.py en el carril de datos" true \
+        "baseline y selector iguales campo a campo"
+    else
+      anotar "v_metricas_corrida coincide con eval/metricas.py en el carril de datos" false \
+        "$(head -c 300 "$TMP/cmp.txt")"
+      echo "  FALLA igualdad v_metricas_corrida vs eval/metricas.py"
+      head -3 "$TMP/cmp.txt"
+      fallos=$((fallos + 1))
+    fi
+
     if PSQL="$PSQL" python3 "$RAIZ_EVAL/eval/comparar_corridas.py" --base gen-v1 --nueva gen-v1 \
          --db "$DB" >/dev/null 2>>"$LOG"; then
       anotar "eval/comparar_corridas.py compara dos corridas sin mezclarlas" true ""
