@@ -1,29 +1,27 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { validateContract } from "@/lib/contracts/validate";
+import { obtenerPerfilPrivado } from "@/lib/data/privado";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { checkRateLimit, clientKeyFromRequest } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
+import { leerConfigWebhook, reenviarAWebhook } from "@/lib/security/webhook";
 
+// ajv compila código en tiempo de ejecución (Function()): esta ruta debe
+// correr en Node.js, nunca en Edge.
 export const runtime = "nodejs";
 
 const LIMIT = 10;
 const WINDOW_MS = 60_000;
 
 /**
- * 21 §3.1 especifica el cuerpo de inyección
- * `{corrida_base_id, ingesta_id, idempotency_key, prioridad}`, pero
- * `contracts/release.json` v1.0.0 todavía no tiene un `ingesta.inyeccion`
- * (solo `ingesta.mapper|mapping|transform`). Este schema local con zod es una
- * validación de forma, "sin contrato v1.0.0"; se solicitó al coordinador
- * incorporarlo como contrato formal (ver solicitudes_coordinador del corte).
+ * BFF de `product.inyectar` (21 §3.1, contratos 1.2.0). El cuerpo se valida
+ * contra el contrato real (`corrida_base_id`, `origen`, `tablas`|`archivos`,
+ * `idempotency_key`) — ya no contra el schema zod local del Corte 1, que
+ * pedía `ingesta_id`/`prioridad`: esos campos no existen en `product.
+ * inyectar` (`additionalProperties: false` los habría rechazado si el
+ * validador real llegara a correr). Nunca muta el snapshot base: eso lo
+ * decide n8n/DB (clona la corrida), esta ruta solo reenvía y confirma.
  */
-const InyeccionBodySchema = z.object({
-  corrida_base_id: z.string().uuid(),
-  ingesta_id: z.string().uuid(),
-  idempotency_key: z.string().uuid(),
-  prioridad: z.literal("inyectados"),
-});
-
 export async function POST(req: Request) {
   if (!isSameOriginRequest(req)) {
     return NextResponse.json({ error: "origen_no_permitido" }, { status: 403 });
@@ -47,21 +45,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "cuerpo_invalido" }, { status: 400 });
   }
 
-  const parsed = InyeccionBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "cuerpo_invalido", detalles: parsed.error.issues, nota: "validación local sin contrato v1.0.0 (ver 21 §3.1)" },
-      { status: 422 },
-    );
+  const result = validateContract("product.inyectar", body);
+  if (!result.ok) {
+    return NextResponse.json({ error: "contrato_invalido", detalles: result.errors }, { status: 422 });
   }
 
-  const webhookBase = process.env.N8N_WEBHOOK_BASE;
-  const webhookSecret = process.env.INTERNAL_WEBHOOK_SECRET;
-  if (!webhookBase || !webhookSecret) {
+  const config = leerConfigWebhook();
+  if (!config) {
     return NextResponse.json({ error: "backend_no_configurado" }, { status: 503 });
   }
 
-  return NextResponse.json({ error: "backend_no_configurado" }, { status: 503 });
+  const perfil = await obtenerPerfilPrivado();
+  const solicitud = { ...(body as Record<string, unknown>), perfil_id: perfil.id };
+
+  const reenvio = await reenviarAWebhook(config, "inyecciones", solicitud);
+  if (!reenvio.ok) {
+    return NextResponse.json({ error: reenvio.error }, { status: reenvio.status });
+  }
+  return NextResponse.json({ idempotency_key: (body as { idempotency_key: string }).idempotency_key, ...reenvio.body }, { status: 202 });
 }
 
 export async function GET() {

@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/shared/app-shell";
-import { getDataSource } from "@/lib/data";
+import { obtenerNotificacionesPrivadas, obtenerPerfilPrivado } from "@/lib/data/privado";
 
 export const dynamic = "force-dynamic";
 
@@ -7,11 +7,13 @@ export const dynamic = "force-dynamic";
  * Envuelve toda ruta autenticada (todo excepto /login) con el shell de
  * 15 §3. `middleware.ts` ya garantiza sesión válida antes de llegar aquí;
  * este layout solo trae perfil/notificaciones para pintar el shell, nunca
- * decide autorización.
+ * decide autorización. Perfil/notificaciones son privados (CLAUDE.md regla
+ * 3): se leen de `lib/data/privado.ts`, nunca del `DataSource` seleccionable
+ * por `NEXT_PUBLIC_DATA_SOURCE` (`SupabaseDataSource.getPerfil()` lanza a
+ * propósito si algo la llama).
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const ds = getDataSource();
-  const [perfil, notificaciones] = await Promise.all([ds.getPerfil(), ds.listNotificaciones()]);
+  const [perfil, notificaciones] = await Promise.all([obtenerPerfilPrivado(), obtenerNotificacionesPrivadas()]);
   const noLeidas = notificaciones.filter((n) => !n.leida_at).length;
 
   return (

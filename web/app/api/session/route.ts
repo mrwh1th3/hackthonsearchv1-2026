@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDataSource } from "@/lib/data";
+import { obtenerPerfilPrivado } from "@/lib/data/privado";
 import { getDemoPassword, signSession, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
 import { checkRateLimit, clientKeyFromRequest } from "@/lib/security/rate-limit";
 import { isSameOriginRequest } from "@/lib/security/origin";
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "credenciales_invalidas" }, { status: 401 });
   }
 
-  const perfil = await getDataSource().getPerfil();
+  const perfil = await obtenerPerfilPrivado();
   const token = await signSession({ sub: "auditor", perfil_id: perfil.id });
   if (!token) {
     return NextResponse.json({ error: "sesion_no_configurada" }, { status: 503 });
