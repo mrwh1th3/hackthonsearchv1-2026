@@ -427,7 +427,6 @@ export class SupabaseDataSource implements DataSource {
     "listNotificaciones", // requiere 007 (docs/16 §6) y siempre por BFF privado, nunca anon público
     "listInyecciones", // requiere forense.inyecciones (008, docs/19)
     "getInyeccion", // idem
-    "getContraste", // no existe una v_contraste; ver solicitudes_coordinador
   ]);
 
   constructor() {
@@ -645,13 +644,15 @@ export class SupabaseDataSource implements DataSource {
     return mapTrayectoriaRpc((data ?? {}) as Fila);
   }
 
-  async getContraste(_casoId: string): Promise<ContrasteCaso | null> {
-    // No hay `v_contraste` en 001-003 (solo v_grafo/v_trayectoria_rfc/
-    // v_metricas_corrida): construir "por qué esta sí y aquella no" a mano
-    // en la webapp violaría CLAUDE.md regla 4 (el LLM/UI no decide/deriva
-    // el veredicto). Pedido a solicitudes_coordinador.
-    void _casoId;
-    return null;
+  async getContraste(casoId: string): Promise<ContrasteCaso | null> {
+    // `forense.v_contraste_caso` (db/018) decide el comparable y la razón en
+    // SQL. La webapp no deriva ni completa nada: cero filas significa "este
+    // caso no tiene contraste en su corrida" y se devuelve `null`. Fabricar
+    // una fila aquí sería la webapp opinando sobre el veredicto (regla 4).
+    const { data, error } = await this.client.rpc("v_contraste_caso", { p_caso: casoId });
+    if (error) throw new Error(`SupabaseDataSource.getContraste: ${error.message}`);
+    const filas = (data ?? []) as ContrasteCaso[];
+    return filas[0] ?? null;
   }
 
   /**

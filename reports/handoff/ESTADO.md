@@ -116,6 +116,27 @@ contrato `entities.pista` sólo admiten `disparada|no_evaluable`.
 - 07 §153 fija `completo = cobertura_completa && pendientes.length === 0`, así que una limitación `cobertura_incompleta` deja el caso en `no_concluyente` **por diseño**, no por un defecto. El nodo de frontera emite esa limitación cuando la cadena sigue hacia RFC no investigados, tanto si la frontera no era significativa como si ya se gastó la cuota.
 - 03 §187 exige para `anomalia_explicada` "refutación demostrada de todas las pistas investigadas y ninguna limitación pendiente": el dictaminador pide ahora que todas las pistas **evaluables** estén descartadas, y `completo` sigue exigiendo la lista de pendientes vacía.
 
+### Riesgo de producto con número: el panel Contraste sale vacío 3 de 4 veces
+`forense.v_contraste_caso` (018) está en el techo de lo que los datos
+permiten, y el techo es bajo. Medido sobre los clusters reales de `gen-v1`:
+4 clusters → 4 casos, de los que **2** tienen otro caso del mismo giro (o sea
+**1 par**), y como el comparable tiene que estar por debajo en gravedad, sólo
+el lado más grave del par puede consultarlo: **1 de 4 casos obtiene
+contraste**. El límite es la densidad de casos por giro, no el SQL.
+
+Consecuencia para el demo: contra Supabase con gen-v1, el panel que responde
+la pregunta literal del juez no aparece en 3 de cada 4 casos. En modo fixture
+sí aparece, porque `web/lib/data/fixture.ts` trae un contraste sembrado — pero
+enseñar el fixture cuando se anunció producción es justo lo que 13 §Reglas
+prohíbe sin identificarlo.
+
+Dos salidas, y son excluyentes:
+1. **Más densidad por giro en gen-v2** (pedido a forense-db en esta oleada): que haya varios clusters del mismo giro con solape de pistas y resultados distintos. Es la salida limpia: no cambia ninguna regla.
+2. **Relajar el emparejamiento** en `product.contraste`: comparar por grupo de pares (tamaño y giro cercano) en vez de giro exacto, o admitir comparables más graves añadiendo un cuarto valor a `razon_tipificada`. Es decisión de contrato, o sea mía, y **no** se toma hasta medir la opción 1 sobre gen-v2.
+
+Medir sobre gen-v2 en cuanto exista: cuántos casos de cuántos obtienen
+contraste. Si sigue por debajo de la mitad, se toma la opción 2.
+
 ## Abierto
 - ~~Aplicar 014–017 a Supabase~~ **hecho** (2026-09-12 14:32–14:35, versiones 20260912143247/143340/143417/143459). Verificado en remoto, no por el "ok" del aplicador: las cinco funciones tocadas con `md5(prosrc)` idéntico al cuerpo del archivo que las define en último lugar (`cobertura_caso` contra 016; `paquete_auditor_final` y `guardar_dictamen` contra 017); `proacl` de las cinco sin ninguna entrada de PUBLIC (`{postgres=X/postgres, service_role=X/postgres}`); `max_expansiones_caso=1`; `evaluacion_pistas->(p.id::text)` presente y `->p.codigo` ausente; asesores idénticos a la línea base tomada antes de aplicar (22 INFO + 2 WARN preexistentes, ningún ERROR nuevo). Prueba funcional sobre el remoto, en un bloque revertido por excepción: sin frontera pedida `true`, con la lista de candidatos poblada `true`, con una señal que pide frontera `false`; cero residuos.
 - ~~Deriva de `003_pistas_recalibrada_2b`~~ **resuelta por comprobación** (2026-09-12): el remoto registra esa migración sin archivo en `db/`, pero es solo historia del nombre con que se aplicó el 003 ya calibrado. Los cuerpos coinciden byte a byte: `pista_d3` `b69e55c8…` (6 354), `pista_f3` `28ab859a…` (5 325), `pista_t2` `454f6019…` (7 101), los tres idénticos a `db/003_pistas.sql`. `correr_pistas` difiere del 003 local a propósito: el remoto tiene `66f1be11…` (3 726), que es exactamente el cuerpo de `db/014_estadisticas.sql` (014 la redefine para meter el ANALYZE como primer paso). Una instalación limpia desde `db/` reproduce el mismo estado; no falta ningún archivo.

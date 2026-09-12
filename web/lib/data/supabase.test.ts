@@ -292,7 +292,8 @@ describe("SupabaseDataSource (cliente falso inyectado)", () => {
     const ds = conClienteFalso({});
     expect(ds.label).toBe("supabase");
     expect(ds.noDisponibles.has("listNotificaciones")).toBe(true);
-    expect(ds.noDisponibles.has("getContraste")).toBe(true);
+    // getContraste salió de la lista al existir forense.v_contraste_caso (db/018).
+    expect(ds.noDisponibles.has("getContraste")).toBe(false);
   });
 
   it("listCorridas mapea filas de forense.corridas", async () => {
@@ -339,12 +340,35 @@ describe("SupabaseDataSource (cliente falso inyectado)", () => {
     await expect(ds.getPerfil()).rejects.toThrow(/privad/i);
   });
 
-  it("listNotificaciones/listInyecciones/getInyeccion/getContraste responden vacío/null, nunca lanzan", async () => {
+  it("listNotificaciones/listInyecciones/getInyeccion responden vacío/null, nunca lanzan", async () => {
     const ds = conClienteFalso({});
     await expect(ds.listNotificaciones()).resolves.toEqual([]);
     await expect(ds.listInyecciones()).resolves.toEqual([]);
     await expect(ds.getInyeccion("x")).resolves.toBeNull();
-    await expect(ds.getContraste("x")).resolves.toBeNull();
+  });
+
+  it("getContraste lee la RPC v_contraste_caso y devuelve su única fila", async () => {
+    const fila = {
+      caso_id: "caso-1",
+      rfc_comparable: "CON250401G47",
+      giro_compartido: "construccion",
+      pistas_solapadas: ["R2"],
+      resultado_comparable: "anomalia_explicada",
+      razon_tipificada: "familia_faltante",
+      explicacion: "CON250401G47 comparte el giro y R2, y confirmó 1 familia.",
+    };
+    const ds = conClienteFalso({}, { v_contraste_caso: { data: [fila], error: null } });
+    await expect(ds.getContraste("caso-1")).resolves.toEqual(fila);
+  });
+
+  it("getContraste devuelve null con cero filas: la webapp no fabrica un comparable (regla 4)", async () => {
+    const ds = conClienteFalso({}, { v_contraste_caso: { data: [], error: null } });
+    await expect(ds.getContraste("caso-1")).resolves.toBeNull();
+  });
+
+  it("getContraste propaga un error real de Postgres en vez de fingir que no hay contraste", async () => {
+    const ds = conClienteFalso({}, { v_contraste_caso: { data: null, error: { message: "function does not exist" } } });
+    await expect(ds.getContraste("caso-1")).rejects.toThrow(/function does not exist/);
   });
 
   it("getMapperEjemplo devuelve el mismo ejemplo fijo que la fuente fixture (no hay tabla que lo respalde en ninguna fuente)", async () => {
