@@ -138,7 +138,10 @@ done
 # 018 (oleada 6, forense-db): `v_contraste_caso`, la vista del panel Contraste
 # ("por qué esta sí y aquella no", 21 §2). Sin ella `getContraste` devuelve null
 # contra datos reales y el panel queda vacío en el demo.
-for n in 010 011 012 013 014 015 016 017 018; do
+# 019 (oleada 6, forense-db): recalibra la pierna (a) de T2 (sincronía) a la
+# ventana de un lote de timbrado. Es `create or replace` de una sola función;
+# sin ella T2 marca 85 de 100 RFC sobre un snapshot con hora intradía.
+for n in 010 011 012 013 014 015 016 017 018 019; do
   for f in "$RAIZ"/db/${n}_*.sql; do
     [ -e "$f" ] || continue
     aplicar "db/$(basename "$f")" condicional

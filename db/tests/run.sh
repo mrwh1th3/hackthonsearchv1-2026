@@ -89,6 +89,7 @@ aplicar "$DBDIR/015_cobertura.sql" "015_cobertura.sql"
 aplicar "$DBDIR/016_permisos_cobertura.sql" "016_permisos_cobertura.sql"
 aplicar "$DBDIR/017_evaluacion_pistas.sql" "017_evaluacion_pistas.sql"
 aplicar "$DBDIR/018_contraste.sql" "018_contraste.sql"
+aplicar "$DBDIR/019_pista_t2.sql" "019_pista_t2.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$DBDIR/seeds/seed_producto.sql" "seeds/seed_producto.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
@@ -104,7 +105,7 @@ for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" 
          "$DBDIR/011_metricas_corrida.sql" "$DBDIR/012_inyeccion_clusters.sql" \
          "$DBDIR/013_rendimiento.sql" "$DBDIR/014_estadisticas.sql" \
          "$DBDIR/015_cobertura.sql" "$DBDIR/016_permisos_cobertura.sql" \
-         "$DBDIR/017_evaluacion_pistas.sql" "$DBDIR/018_contraste.sql" \
+         "$DBDIR/017_evaluacion_pistas.sql" "$DBDIR/018_contraste.sql" "$DBDIR/019_pista_t2.sql" \
          "$DBDIR/seeds/seed_fake.sql" "$DBDIR/seeds/seed_producto.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
@@ -133,6 +134,7 @@ aplicar "$HERE/assertions_015.sql" "tests/assertions_015.sql"
 aplicar "$HERE/assertions_016.sql" "tests/assertions_016.sql"
 aplicar "$HERE/assertions_017.sql" "tests/assertions_017.sql"
 aplicar "$HERE/assertions_018.sql" "tests/assertions_018.sql"
+aplicar "$HERE/assertions_019.sql" "tests/assertions_019.sql"
 
 echo "== paquetes de inyección (eval/inyecciones) =="
 bash "$HERE/cargar_paquetes.sh" "$DB" || fallos=$((fallos + 1))

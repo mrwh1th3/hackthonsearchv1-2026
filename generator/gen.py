@@ -58,6 +58,34 @@ CENT = Decimal("0.01")
 # (docs/04 §Parámetros). El generador se niega a usarla salvo --holdout.
 SEMILLA_RESERVADA = 20260211
 
+# ---------------------------------------------------------------------
+# Resolución intradía (--horario)
+#
+# `plano`    : toda emisión a las 10:30, como gen-v1. Es el DEFAULT y no
+#              puede cambiar: `gen-v1` está cargado en la base compartida y
+#              las aserciones `db/tests/assertions_*_gen.sql` miden sobre él.
+# `intradia` : hora y minuto repartidos. Desbloquea la pierna (a) de T2
+#              (sincronía), que sobre un dataset con una sola hora del día
+#              queda `no_evaluable` por construcción (ver el comentario de
+#              `forense.pista_t2` en db/003_pistas.sql).
+#
+# Garantía de reproducibilidad: el azar de la hora sale de un generador
+# APARTE (`Mundo.rng_hora`), nunca de `Mundo.rng`. En modo `plano` ese
+# generador no se consume ni una vez, así que la secuencia del azar
+# principal —y con ella cada RFC, importe y fecha de gen-v1— es idéntica
+# byte a byte. Comparación en generator/README.md §Reproducibilidad.
+HORARIOS = ("plano", "intradia")
+DATASET_POR_HORARIO = {"plano": "gen-v1", "intradia": "gen-v2"}
+
+# Peso relativo de cada hora del día para una emisión legítima. Dos picos
+# (media mañana y media tarde), comida marcada y cola de timbrado al cierre
+# de la jornada. No es uniforme de 0 a 23: nadie factura a las 3 a.m., y una
+# uniforme de 24 h le regalaría a T2 una dispersión que no existe.
+PESOS_HORA = ((8, 4), (9, 9), (10, 13), (11, 14), (12, 12), (13, 8),
+              (14, 5), (15, 9), (16, 12), (17, 10), (18, 7), (19, 4),
+              (20, 2), (21, 1))
+_PESO_TOTAL = sum(p for _, p in PESOS_HORA)
+
 
 def dinero(x) -> Decimal:
     return Decimal(str(x)).quantize(CENT, rounding=ROUND_HALF_UP)
@@ -78,11 +106,17 @@ def mes_sumar(y: int, m: int, k: int) -> Tuple[int, int]:
 
 
 class Mundo:
-    def __init__(self, rng: random.Random, fake, corte: datetime, meses: int):
+    def __init__(self, rng: random.Random, fake, corte: datetime, meses: int,
+                 horario: str = "plano", rng_hora: Optional[random.Random] = None):
         self.rng = rng
         self.fake = fake
         self.corte = corte
         self.meses = meses
+        # Azar de la hora del día, SEPARADO del azar principal: en modo
+        # 'plano' no se consume, así que gen-v1 no se mueve.
+        self.horario = horario
+        self.intradia = (horario == "intradia")
+        self.rng_hora = rng_hora if rng_hora is not None else random.Random(0)
         self.contribuyentes: List[dict] = []
         self.cuentas: List[dict] = []
         self.cfdi: List[dict] = []
@@ -224,6 +258,39 @@ class Mundo:
     def ts(self, d: date, hora: int = 10, minuto: int = 30) -> str:
         return "%s %02d:%02d:00%s" % (d.isoformat(), hora, minuto, TZ)
 
+    def hora_emision(self) -> Tuple[int, int]:
+        """Hora y minuto de una emisión legítima.
+
+        `plano` devuelve siempre 10:30 (gen-v1). `intradia` reparte sobre el
+        horario laboral con `PESOS_HORA` y minuto uniforme: dispersión real,
+        no una uniforme de 0 a 23 que le regalaría a T2 una separación que en
+        un padrón verdadero no existe."""
+        if not self.intradia:
+            return 10, 30
+        u = self.rng_hora.random() * _PESO_TOTAL
+        acum = 0
+        hora = PESOS_HORA[-1][0]
+        for h, peso in PESOS_HORA:
+            acum += peso
+            if u < acum:
+                hora = h
+                break
+        return hora, self.rng_hora.randrange(60)
+
+    @staticmethod
+    def rafaga(k: int, n: int, hora_inicio: int = 9, minuto_inicio: int = 5,
+               minutos_totales: int = 105) -> Tuple[int, int]:
+        """Hora y minuto del k-ésimo timbrado de una ráfaga de `n`.
+
+        ESTRICTAMENTE CRECIENTE con k y sin azar: la pierna (a) de T2 encadena
+        con `f.fecha >= c.f_act and f.fecha <= c.f_ini + interval '6 hours'`,
+        así que una hora no monótona rompe el enlace en silencio. El paso sale
+        de `minutos_totales`, que debe quedar por debajo de las 6 h de la
+        regla (105 min ≈ 1 h 45)."""
+        paso = minutos_totales // max(n - 1, 1)
+        t = hora_inicio * 60 + minuto_inicio + paso * k
+        return t // 60, t % 60
+
     def mes_ventana(self, i: int) -> Tuple[date, date]:
         """Mes i de la ventana (0 = el más antiguo). Devuelve (primero, ultimo_util)."""
         y, m = mes_sumar(self.corte.year, self.corte.month, -(self.meses - 1) + i)
@@ -237,7 +304,14 @@ class Mundo:
     def factura(self, emisor: str, receptor: str, f: date, total, clave: str,
                 metodo: str = "PUE", tipo: str = "I", descripcion: Optional[str] = None,
                 cancelado: bool = False, uuid_sustituye: Optional[str] = None,
-                hora: int = 10, minuto: int = 30) -> dict:
+                hora: Optional[int] = None, minuto: Optional[int] = None) -> dict:
+        # La hora se sortea SOLO aquí (no en `ts`): `cuenta`, `complemento` y
+        # `cancelar` conservan su hora fija, que no informa a ninguna pista y
+        # sólo añadiría ruido al diff entre gen-v1 y gen-v2.
+        if hora is None or minuto is None:
+            h_def, m_def = self.hora_emision()
+            hora = h_def if hora is None else hora
+            minuto = m_def if minuto is None else minuto
         total = dinero(total)
         subtotal = dinero(total / (Decimal("1") + IVA))
         row = {
@@ -534,6 +608,9 @@ def parse_args(argv=None):
     p.add_argument("--fecha-corte", dest="fecha_corte", default="2026-01-31",
                    help="fecha de corte FIJA (no el reloj); la ventana cierra aquí")
     p.add_argument("--out", default="data/gen/")
+    p.add_argument("--horario", choices=HORARIOS, default="plano",
+                   help="plano = 10:30 para todo (gen-v1, DEFAULT, no cambiar); "
+                        "intradia = horas repartidas y ráfagas (gen-v2, habilita T2)")
     p.add_argument("--holdout", action="store_true",
                    help="autoriza explícitamente la semilla reservada de comprobación final")
     return p.parse_args(argv)
@@ -557,7 +634,11 @@ def main(argv=None) -> int:
     d = date.fromisoformat(args.fecha_corte)
     corte = datetime(d.year, d.month, d.day, 23, 59, 59)
 
-    m = Mundo(rng, fake, corte, args.meses)
+    # Semilla propia y derivada para la hora del día: así el modo intradía no
+    # desplaza ni un paso la secuencia de `rng`, y sigue siendo determinista.
+    rng_hora = random.Random("hora|%d|%s" % (args.seed, args.fecha_corte))
+
+    m = Mundo(rng, fake, corte, args.meses, horario=args.horario, rng_hora=rng_hora)
 
     import tipologias
     import trampas
@@ -581,10 +662,12 @@ def main(argv=None) -> int:
         "|".join("%s:%s" % (k, info[k]["sha256"]) for k in sorted(info)).encode()
     ).hexdigest()
 
+    nombre_dataset = DATASET_POR_HORARIO[args.horario]
     manifiesto = {
-        "dataset": "gen-v1",
+        "dataset": nombre_dataset,
         "dataset_hash": dataset_hash,
         "generador": "generator/gen.py",
+        "horario": args.horario,
         "semilla": args.seed,
         "holdout": bool(args.holdout),
         "fecha_corte": corte.strftime("%Y-%m-%d %H:%M:%S") + TZ,
@@ -598,6 +681,12 @@ def main(argv=None) -> int:
             "trampas": res_tra["trampas"],
             "familias_evaluables": ["D", "F", "R", "T", "E"],
             "pistas_primera_entrega": ["D2", "F1", "F2", "R1", "R2", "E1", "T1"],
+            # Resolución intradía: sin ella la pierna (a) de T2 (sincronía de
+            # menos de 6 h) no es comprobable y queda no_evaluable con su
+            # motivo en bitácora. Lo declara el dataset, no lo adivina la pista.
+            "resolucion_intradia": args.horario == "intradia",
+            "t2_sincronia_evaluable": args.horario == "intradia",
+            "horas_distintas_cfdi": len(set(f["fecha"][11:16] for f in m.cfdi)),
         },
         "invariantes": chequeo,
         "advertencias": [
@@ -615,7 +704,8 @@ def main(argv=None) -> int:
         fh.write("\n")
 
     dur = (datetime.now() - t0).total_seconds()
-    print("dataset gen-v1  hash=%s  %.1fs" % (dataset_hash[:16], dur))
+    print("dataset %s  horario=%s  hash=%s  %.1fs"
+          % (nombre_dataset, args.horario, dataset_hash[:16], dur))
     for k in sorted(info):
         print("  %-24s %6d filas" % (k, info[k]["filas"]))
     print("  tipologías: %s" % ", ".join(sorted(res_tip["tipologias"])))
