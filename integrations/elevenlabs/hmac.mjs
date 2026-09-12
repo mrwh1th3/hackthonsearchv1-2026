@@ -1,0 +1,96 @@
+// integrations/elevenlabs/hmac.mjs — Verificación HMAC del callback post-llamada (16 §3).
+//
+// SUPUESTO EXPLÍCITO (sin cuenta ElevenLabs verificada, sin red aquí): se
+// asume un esquema de firma tipo Svix/Stripe `t=<epoch_s>,v0=<hex hmac-sha256
+// de "<t>.<cuerpo_crudo>">`. Es el único convenio con evidencia en el repo —
+// n8n/runtime/voz-adaptador.mjs ya parsea `t=(\d+)` de la firma. El esquema
+// se pasa por `opciones`, no está cableado: confirmar contra la cuenta real y
+// ajustar aquí (header/prefijos/mensaje), sin reescribir el resto del módulo.
+
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export const RUTA_CALLBACK = '/webhook/forense/elevenlabs-resultado';
+export const TOLERANCIA_FIRMA_S = 300;
+
+const OPCIONES_POR_DEFECTO = Object.freeze({
+  header: 'elevenlabs-signature',
+  prefijoTimestamp: 't=',
+  prefijoFirma: 'v0=',
+  separador: ',',
+  construirMensaje: (t, crudo) => `${t}.${crudo}`,
+});
+
+function extraerHeader(headers, nombre) {
+  if (!headers) return null;
+  if (headers[nombre] !== undefined) return headers[nombre];
+  const entrada = Object.entries(headers).find(([clave]) => clave.toLowerCase() === nombre.toLowerCase());
+  return entrada ? entrada[1] : null;
+}
+
+function analizarFirma(valor, opciones) {
+  if (!valor) return null;
+  const partes = String(valor).split(opciones.separador).map((parte) => parte.trim());
+  let t = null;
+  let v0 = null;
+  for (const parte of partes) {
+    if (parte.startsWith(opciones.prefijoTimestamp)) t = parte.slice(opciones.prefijoTimestamp.length);
+    else if (parte.startsWith(opciones.prefijoFirma)) v0 = parte.slice(opciones.prefijoFirma.length);
+  }
+  if (!t || !v0 || !/^\d+$/.test(t)) return null;
+  return { t, v0 };
+}
+
+/**
+ * Verifica la firma HMAC de un callback sobre el CUERPO CRUDO (nunca el
+ * objeto ya parseado: reserializar cambia bytes y rompe la firma).
+ *
+ * Dos formas de llamada, ambas soportadas para no dejar una trampa de
+ * integración si el runtime importa esta función con la convención del stub:
+ *   - Posicional (18, canónica aquí): verificarFirma(rawBody, headers, secreto, ahora, opciones?)
+ *   - Objeto (paridad con n8n/runtime/voz-adaptador.mjs): verificarFirma({crudo, firma, ahora_ms, tolerancia_s})
+ *
+ * @returns {{valido:boolean, motivo:string|null}}
+ */
+export function verificarFirma(a, b, c, d, e) {
+  if (a && typeof a === 'object' && !Buffer.isBuffer(a)) {
+    const { crudo, firma, ahora_ms, tolerancia_s } = a;
+    const opciones = tolerancia_s ? { ventanaS: tolerancia_s } : undefined;
+    return verificarFirma(crudo, { 'elevenlabs-signature': firma }, c ?? b, ahora_ms, opciones);
+  }
+
+  const rawBody = a;
+  const headers = b;
+  const secreto = c;
+  const ahora = d ?? Date.now();
+  const opciones = { ...OPCIONES_POR_DEFECTO, ...(e ?? {}) };
+  const ventanaS = opciones.ventanaS ?? TOLERANCIA_FIRMA_S;
+
+  if (typeof rawBody !== 'string') {
+    return { valido: false, motivo: 'cuerpo_no_crudo' };
+  }
+  if (!secreto) {
+    return { valido: false, motivo: 'secreto_no_configurado' };
+  }
+  const encabezado = extraerHeader(headers, opciones.header);
+  if (!encabezado) return { valido: false, motivo: 'sin_firma' };
+
+  const analizada = analizarFirma(encabezado, opciones);
+  if (!analizada) return { valido: false, motivo: 'firma_malformada' };
+
+  const edadS = Math.abs(ahora / 1000 - Number(analizada.t));
+  if (!Number.isFinite(edadS) || edadS > ventanaS) {
+    return { valido: false, motivo: 'fuera_de_ventana' };
+  }
+
+  const mensaje = opciones.construirMensaje(analizada.t, rawBody);
+  const esperadaHex = createHmac('sha256', secreto).update(mensaje).digest('hex');
+  const bufEsperada = Buffer.from(esperadaHex, 'hex');
+  const bufRecibida = Buffer.from(analizada.v0, 'hex');
+  if (bufRecibida.length === 0 || bufEsperada.length !== bufRecibida.length) {
+    return { valido: false, motivo: 'firma_invalida' };
+  }
+  if (!timingSafeEqual(bufEsperada, bufRecibida)) {
+    return { valido: false, motivo: 'firma_invalida' };
+  }
+  return { valido: true, motivo: null };
+}
