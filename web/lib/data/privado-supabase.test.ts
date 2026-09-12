@@ -16,8 +16,11 @@ const {
   codigosPorRfc,
   guardarVistaPrivada,
   isPrivadoSupabaseConfigured,
+  leerInvestigacionesPrivadas,
   leerInvestigacionPrivada,
+  leerInyeccionesPrivadas,
   leerInyeccionPrivada,
+  leerNotificacionesPrivadas,
   leerPerfilPrivado,
   leerVistasGuardadasPrivadas,
   mapInvestigacion,
@@ -277,23 +280,49 @@ function clienteFalso(respuestas: Record<string, { data: unknown; error: { messa
   } as any;
 }
 
+/**
+ * Cliente falso que solo registra qué `.eq(col, val)` se invocaron —
+ * Corte 3 hallazgo 1: la prueba de seguridad real no es "¿la fila correcta
+ * salió?" (eso ya lo cubre `clienteFalso`) sino "¿la consulta preguntó por
+ * `perfil_id`, o trajo la tabla completa?". `clienteFalso` no puede probar
+ * esto solo (indexa por un único valor de columna), así que esta variante
+ * espía las llamadas en vez de resolverlas por contenido.
+ */
+function clienteEspiaEq(data: unknown = []) {
+  const llamadas: Array<[string, unknown]> = [];
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    order: () => chain,
+    limit: () => chain,
+    eq: (col: string, val: unknown) => {
+      llamadas.push([col, val]);
+      return chain;
+    },
+    maybeSingle: async () => ({ data: Array.isArray(data) ? (data[0] ?? null) : data, error: null }),
+    then: (resolve: (v: unknown) => unknown) => resolve({ data, error: null }),
+  };
+  return { cliente: { from: () => chain, rpc: async () => ({ data: null, error: null }) }, llamadas };
+}
+
 describe("leerPerfilPrivado", () => {
   beforeEach(() => _resetClientePrivadoParaTests());
 
-  it("mapea la única fila de forense.perfiles", async () => {
+  it("bootstrap de login (sin perfil_id todavía): mapea la única fila de forense.perfiles", async () => {
     _inyectarClienteParaTests(
       clienteFalso({
         perfiles: {
-          data: {
-            id: "00000000-0000-4000-8000-0000000006a1",
-            nombre: "Equipo Forense (demo)",
-            organizacion: "Hackathon Infosys",
-            correo: "demo@forense.invalid",
-            telefono_e164: null,
-            timezone: "America/Monterrey",
-            llamadas_activadas: false,
-            permiso_aviso_at: null,
-          },
+          data: [
+            {
+              id: "00000000-0000-4000-8000-0000000006a1",
+              nombre: "Equipo Forense (demo)",
+              organizacion: "Hackathon Infosys",
+              correo: "demo@forense.invalid",
+              telefono_e164: null,
+              timezone: "America/Monterrey",
+              llamadas_activadas: false,
+              permiso_aviso_at: null,
+            },
+          ],
           error: null,
         },
       }),
@@ -301,6 +330,11 @@ describe("leerPerfilPrivado", () => {
     const perfil = await leerPerfilPrivado();
     expect(perfil.id).toBe("00000000-0000-4000-8000-0000000006a1");
     expect(perfil.correo).toBe("demo@forense.invalid");
+  });
+
+  it("bootstrap con más de un perfil: falla alto en vez de tomar 'la primera fila' en silencio", async () => {
+    _inyectarClienteParaTests(clienteFalso({ perfiles: { data: [{ id: "a" }, { id: "b" }], error: null } }));
+    await expect(leerPerfilPrivado()).rejects.toThrow(/más de un perfil/);
   });
 
   it("tabla vacía (sin seed_producto.sql aplicado): lanza en vez de fingir un perfil, nunca cae a fixture en silencio", async () => {
@@ -312,6 +346,48 @@ describe("leerPerfilPrivado", () => {
     _inyectarClienteParaTests(clienteFalso({ perfiles: { data: null, error: { message: "conexión perdida" } } }));
     await expect(leerPerfilPrivado()).rejects.toThrow(/conexión perdida/);
   });
+
+  it("con perfilId: filtra por id (.eq), nunca por 'la primera fila'", async () => {
+    const { cliente, llamadas } = clienteEspiaEq({ id: "mi-perfil", nombre: "X", organizacion: null, correo: null, telefono_e164: null, timezone: "America/Monterrey", llamadas_activadas: false, permiso_aviso_at: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _inyectarClienteParaTests(cliente as any);
+    const perfil = await leerPerfilPrivado("mi-perfil");
+    expect(perfil.id).toBe("mi-perfil");
+    expect(llamadas).toContainEqual(["id", "mi-perfil"]);
+  });
+
+  it("con perfilId inexistente: lanza (nunca cae de vuelta a la resolución de bootstrap)", async () => {
+    _inyectarClienteParaTests(clienteFalso({ perfiles: { data: null, error: null } }));
+    await expect(leerPerfilPrivado("no-existe")).rejects.toThrow(/no existe el perfil/);
+  });
+});
+
+describe("leerInvestigacionesPrivadas / leerNotificacionesPrivadas / leerInyeccionesPrivadas: filtran por perfil_id de la sesión", () => {
+  beforeEach(() => _resetClientePrivadoParaTests());
+
+  it("leerInvestigacionesPrivadas nunca trae investigaciones de otros perfiles", async () => {
+    const { cliente, llamadas } = clienteEspiaEq([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _inyectarClienteParaTests(cliente as any);
+    await leerInvestigacionesPrivadas("perfil-abc");
+    expect(llamadas).toContainEqual(["perfil_id", "perfil-abc"]);
+  });
+
+  it("leerNotificacionesPrivadas nunca trae notificaciones de otros perfiles", async () => {
+    const { cliente, llamadas } = clienteEspiaEq([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _inyectarClienteParaTests(cliente as any);
+    await leerNotificacionesPrivadas("perfil-abc");
+    expect(llamadas).toContainEqual(["perfil_id", "perfil-abc"]);
+  });
+
+  it("leerInyeccionesPrivadas nunca trae inyecciones de otros perfiles", async () => {
+    const { cliente, llamadas } = clienteEspiaEq([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _inyectarClienteParaTests(cliente as any);
+    await leerInyeccionesPrivadas("perfil-abc");
+    expect(llamadas).toContainEqual(["perfil_id", "perfil-abc"]);
+  });
 });
 
 describe("leerInvestigacionPrivada", () => {
@@ -319,7 +395,16 @@ describe("leerInvestigacionPrivada", () => {
 
   it("id inexistente: null (404 legítimo), no fixture", async () => {
     _inyectarClienteParaTests(clienteFalso({ investigaciones: { data: null, error: null } }));
-    expect(await leerInvestigacionPrivada("no-existe")).toBeNull();
+    expect(await leerInvestigacionPrivada("no-existe", "perfil-1")).toBeNull();
+  });
+
+  it("filtra por id Y por perfil_id: una investigación de OTRO perfil nunca se cruza, aunque se conozca el id", async () => {
+    const { cliente, llamadas } = clienteEspiaEq(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _inyectarClienteParaTests(cliente as any);
+    expect(await leerInvestigacionPrivada("inv-1", "perfil-abc")).toBeNull();
+    expect(llamadas).toContainEqual(["id", "inv-1"]);
+    expect(llamadas).toContainEqual(["perfil_id", "perfil-abc"]);
   });
 });
 
@@ -328,7 +413,57 @@ describe("leerInyeccionPrivada", () => {
 
   it("id inexistente en estado_inyeccion (RPC devuelve null): null, no fixture", async () => {
     _inyectarClienteParaTests(clienteFalso({ __rpc__: { data: null, error: null } }));
-    expect(await leerInyeccionPrivada("no-existe")).toBeNull();
+    expect(await leerInyeccionPrivada("no-existe", "perfil-1")).toBeNull();
+  });
+
+  it("perfil_id de la fila no coincide con la sesión: null (404 legítimo), aunque el id exista", async () => {
+    _inyectarClienteParaTests(
+      clienteFalso({
+        __rpc__: {
+          data: {
+            id: "iny-1",
+            perfil_id: "otro-perfil",
+            corrida_base_id: "base-1",
+            corrida_nueva_id: null,
+            origen: "ui",
+            estado: "completada",
+            rfcs_afectados: [],
+            creado: "2026-02-01T00:00:00Z",
+            terminado: null,
+            diagnostico: null,
+            timeline: [],
+          },
+          error: null,
+        },
+      }),
+    );
+    expect(await leerInyeccionPrivada("iny-1", "mi-perfil")).toBeNull();
+  });
+
+  it("perfil_id null en la fila (creada sin sesión, p.ej. origen 'ensayo'): sigue visible, no es de OTRO perfil", async () => {
+    _inyectarClienteParaTests(
+      clienteFalso({
+        __rpc__: {
+          data: {
+            id: "iny-1",
+            perfil_id: null,
+            corrida_base_id: "base-1",
+            corrida_nueva_id: null,
+            origen: "ensayo",
+            estado: "completada",
+            rfcs_afectados: [],
+            creado: "2026-02-01T00:00:00Z",
+            terminado: null,
+            diagnostico: null,
+            timeline: [],
+          },
+          error: null,
+        },
+        casos: { data: [], error: null },
+        pistas: { data: [], error: null },
+      }),
+    );
+    expect(await leerInyeccionPrivada("iny-1", "mi-perfil")).not.toBeNull();
   });
 
   it("arma diagnostico/timeline desde la RPC estado_inyeccion", async () => {
@@ -356,7 +491,7 @@ describe("leerInyeccionPrivada", () => {
         pistas: { data: [], error: null },
       }),
     );
-    const iny = await leerInyeccionPrivada("iny-1");
+    const iny = await leerInyeccionPrivada("iny-1", "perfil-1");
     expect(iny).not.toBeNull();
     expect(iny?.timeline).toEqual([{ paso: "recibida", ts: "2026-02-01T00:00:00Z" }]);
     expect(iny?.diagnostico).toEqual({ mensaje: "1 fila(s) aceptada(s), 0 rechazada(s)" });
@@ -398,7 +533,7 @@ describe("leerInyeccionPrivada", () => {
         },
       }),
     );
-    const iny = await leerInyeccionPrivada("iny-1");
+    const iny = await leerInyeccionPrivada("iny-1", "perfil-1");
     expect(iny?.diff).toEqual([{ rfc: "DEMO:A", nivel_anterior: null, nivel_nuevo: "presuncion_alta", pistas_nuevas: ["F1"], caso_id: "caso-nueva-1" }]);
   });
 });

@@ -44,32 +44,41 @@ export function fuentePrivadaActual(): "supabase" | "fixture" {
   return usaSupabase ? "supabase" : "fixture";
 }
 
-export async function obtenerPerfilPrivado(): Promise<Perfil> {
-  return usaSupabase ? leerPerfilPrivado() : fuentePrivada.getPerfil();
+/**
+ * Sin `perfilId`: solo válido para el bootstrap de login (`/api/session`,
+ * antes de que exista una sesión que resolver). Todo lo demás DEBE pasar el
+ * `perfil_id` de `requerirSesionServidor()`/`session.perfil_id` — ver
+ * `leerPerfilPrivado` para el porqué (Corte 3 hallazgo 1, nunca "la primera
+ * fila"). El fixture es un único perfil sintético compartido: no hay nada
+ * que filtrar ahí, pero la firma es simétrica para no bifurcar los
+ * llamadores por fuente de datos.
+ */
+export async function obtenerPerfilPrivado(perfilId?: string): Promise<Perfil> {
+  return usaSupabase ? leerPerfilPrivado(perfilId) : fuentePrivada.getPerfil();
 }
 
-export async function obtenerNotificacionesPrivadas(desde?: string): Promise<Notificacion[]> {
-  const todas = usaSupabase ? await leerNotificacionesPrivadas() : await fuentePrivada.listNotificaciones();
+export async function obtenerNotificacionesPrivadas(perfilId: string, desde?: string): Promise<Notificacion[]> {
+  const todas = usaSupabase ? await leerNotificacionesPrivadas(perfilId) : await fuentePrivada.listNotificaciones();
   if (!desde) return todas;
   const corte = new Date(desde).getTime();
   if (Number.isNaN(corte)) return todas;
   return todas.filter((n) => new Date(n.creado).getTime() > corte);
 }
 
-export async function obtenerHistorialPrivado(): Promise<Investigacion[]> {
-  return usaSupabase ? leerInvestigacionesPrivadas() : fuentePrivada.listInvestigaciones();
+export async function obtenerHistorialPrivado(perfilId: string): Promise<Investigacion[]> {
+  return usaSupabase ? leerInvestigacionesPrivadas(perfilId) : fuentePrivada.listInvestigaciones();
 }
 
-export async function obtenerInvestigacionPrivada(id: string): Promise<Investigacion | null> {
-  return usaSupabase ? leerInvestigacionPrivada(id) : fuentePrivada.getInvestigacion(id);
+export async function obtenerInvestigacionPrivada(id: string, perfilId: string): Promise<Investigacion | null> {
+  return usaSupabase ? leerInvestigacionPrivada(id, perfilId) : fuentePrivada.getInvestigacion(id);
 }
 
-export async function obtenerInyeccionesPrivadas(): Promise<InyeccionResumen[]> {
-  return usaSupabase ? leerInyeccionesPrivadas() : fuentePrivada.listInyecciones();
+export async function obtenerInyeccionesPrivadas(perfilId: string): Promise<InyeccionResumen[]> {
+  return usaSupabase ? leerInyeccionesPrivadas(perfilId) : fuentePrivada.listInyecciones();
 }
 
-export async function obtenerInyeccionPrivada(id: string): Promise<InyeccionResumen | null> {
-  return usaSupabase ? leerInyeccionPrivada(id) : fuentePrivada.getInyeccion(id);
+export async function obtenerInyeccionPrivada(id: string, perfilId: string): Promise<InyeccionResumen | null> {
+  return usaSupabase ? leerInyeccionPrivada(id, perfilId) : fuentePrivada.getInyeccion(id);
 }
 
 /**

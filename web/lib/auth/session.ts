@@ -1,4 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 /**
  * Sesión demo (15 §4). Credencial fija auditor/1234 para un workspace
@@ -80,3 +82,32 @@ export async function verifySession(token: string | undefined | null): Promise<S
 }
 
 export const SESSION_MAX_AGE_SECONDS = SESSION_TTL_SECONDS;
+
+/**
+ * Sesión resuelta desde las cookies del request actual — para Server
+ * Components de `app/(app)/**`, que a diferencia de las rutas API no
+ * reciben un `Request` del que leer la cabecera `cookie` a mano. Corte 3
+ * hallazgo 1: hasta ahora estas páginas invocaban `lib/data/privado.ts` sin
+ * pasar ningún `perfil_id`, así que las lecturas privadas nunca se filtraban
+ * por sesión (perfil/investigaciones/notificaciones/inyecciones/vistas
+ * leían "la primera fila" o la tabla entera). Este helper es la manera
+ * correcta de leer *cuál* sesión hay — `middleware.ts` ya decidió *si* hay
+ * sesión, esto no repite ese gate.
+ */
+export async function sesionDesdeCookies(): Promise<SessionPayload | null> {
+  const store = await cookies();
+  return verifySession(store.get(SESSION_COOKIE)?.value);
+}
+
+/**
+ * Igual que `sesionDesdeCookies`, pero redirige a `/login` si no hay sesión
+ * en vez de devolver `null` — belt-and-braces sobre `middleware.ts` (que ya
+ * garantiza esto para toda ruta de `app/(app)/**`) para que ningún Server
+ * Component nuevo pueda olvidar el chequeo y leer datos privados sin saber
+ * de quién.
+ */
+export async function requerirSesionServidor(): Promise<SessionPayload> {
+  const session = await sesionDesdeCookies();
+  if (!session) redirect("/login");
+  return session;
+}

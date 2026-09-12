@@ -325,49 +325,81 @@ async function construirDiff(
 // API pública del módulo — consumida únicamente por `./privado.ts`
 // ---------------------------------------------------------------------------
 
-export async function leerPerfilPrivado(): Promise<Perfil> {
+/**
+ * Sin `perfilId`: bootstrap de login (`/api/session`, único punto que
+ * todavía no tiene un `perfil_id` de sesión — es lo que la crea). El
+ * workspace demo tiene UN solo perfil compartido ('auditor' es la única
+ * credencial y `forense.perfiles` no tiene columna de usuario todavía). En
+ * vez de tomar "la primera fila" en silencio (CLAUDE.md regla 3 — Corte 3
+ * hallazgo 1), se exige explícitamente esa invariante: si algún día hay más
+ * de un perfil, esto falla alto en vez de autenticar contra el equivocado.
+ *
+ * Con `perfilId`: todas las demás lecturas (ya con sesión) filtran por id,
+ * nunca por "la primera fila".
+ */
+export async function leerPerfilPrivado(perfilId?: string): Promise<Perfil> {
   const client = clientePrivilegiado();
-  const { data, error } = await client.from("perfiles").select("*").order("creado", { ascending: true }).limit(1).maybeSingle();
+  if (perfilId) {
+    const { data, error } = await client.from("perfiles").select("*").eq("id", perfilId).maybeSingle();
+    if (error) throw new Error(`leerPerfilPrivado: ${error.message}`);
+    if (!data) throw new Error(`leerPerfilPrivado: no existe el perfil ${perfilId}.`);
+    return mapPerfil(data as FilaPerfil);
+  }
+  const { data, error } = await client.from("perfiles").select("*").limit(2);
   if (error) throw new Error(`leerPerfilPrivado: ${error.message}`);
-  if (!data) throw new Error("leerPerfilPrivado: forense.perfiles está vacío (falta correr db/seeds/seed_producto.sql).");
-  return mapPerfil(data as FilaPerfil);
+  const filas = (data ?? []) as FilaPerfil[];
+  if (filas.length === 0) {
+    throw new Error("leerPerfilPrivado: forense.perfiles está vacío (falta correr db/seeds/seed_producto.sql).");
+  }
+  if (filas.length > 1) {
+    throw new Error(
+      "leerPerfilPrivado: hay más de un perfil en forense.perfiles y el login demo ('auditor') todavía no sabe " +
+        "elegir entre ellos (CLAUDE.md regla 3 — nunca 'la primera fila'); falta una columna de usuario o resolver " +
+        "esto explícitamente antes de sumar un segundo perfil.",
+    );
+  }
+  return mapPerfil(filas[0]);
 }
 
-export async function leerInvestigacionesPrivadas(): Promise<Investigacion[]> {
+export async function leerInvestigacionesPrivadas(perfilId: string): Promise<Investigacion[]> {
   const client = clientePrivilegiado();
-  const { data, error } = await client.from("investigaciones").select("*").order("creado", { ascending: false });
+  const { data, error } = await client.from("investigaciones").select("*").eq("perfil_id", perfilId).order("creado", { ascending: false });
   if (error) throw new Error(`leerInvestigacionesPrivadas: ${error.message}`);
   return (data ?? []).map((f) => mapInvestigacion(f as FilaInvestigacion));
 }
 
-export async function leerInvestigacionPrivada(id: string): Promise<Investigacion | null> {
+export async function leerInvestigacionPrivada(id: string, perfilId: string): Promise<Investigacion | null> {
   const client = clientePrivilegiado();
-  const { data, error } = await client.from("investigaciones").select("*").eq("id", id).maybeSingle();
+  // `.eq("perfil_id", perfilId)` además de `.eq("id", id)`: una investigación
+  // de otro perfil con ese id nunca debe resolver a datos ajenos, aunque se
+  // conozca (o se adivine) el id — 404 legítimo, igual que un id inexistente.
+  const { data, error } = await client.from("investigaciones").select("*").eq("id", id).eq("perfil_id", perfilId).maybeSingle();
   if (error) throw new Error(`leerInvestigacionPrivada: ${error.message}`);
   return data ? mapInvestigacion(data as FilaInvestigacion) : null;
 }
 
-export async function leerNotificacionesPrivadas(): Promise<Notificacion[]> {
+export async function leerNotificacionesPrivadas(perfilId: string): Promise<Notificacion[]> {
   const client = clientePrivilegiado();
-  const { data, error } = await client.from("notificaciones").select("*").order("creado", { ascending: false });
+  const { data, error } = await client.from("notificaciones").select("*").eq("perfil_id", perfilId).order("creado", { ascending: false });
   if (error) throw new Error(`leerNotificacionesPrivadas: ${error.message}`);
   return (data ?? []).map((f) => mapNotificacion(f as FilaNotificacion));
 }
 
-export async function leerInyeccionesPrivadas(): Promise<InyeccionResumen[]> {
+export async function leerInyeccionesPrivadas(perfilId: string): Promise<InyeccionResumen[]> {
   const client = clientePrivilegiado();
-  const { data, error } = await client.from("inyecciones").select("*").order("creado", { ascending: false });
+  const { data, error } = await client.from("inyecciones").select("*").eq("perfil_id", perfilId).order("creado", { ascending: false });
   if (error) throw new Error(`leerInyeccionesPrivadas: ${error.message}`);
   return (data ?? []).map((f) => mapInyeccionResumen(f as FilaInyeccion));
 }
 
-export async function leerInyeccionPrivada(id: string): Promise<InyeccionResumen | null> {
+export async function leerInyeccionPrivada(id: string, perfilId: string): Promise<InyeccionResumen | null> {
   const client = clientePrivilegiado();
   const { data, error } = await client.rpc("estado_inyeccion", { p_inyeccion: id });
   if (error) throw new Error(`leerInyeccionPrivada: ${error.message}`);
   if (!data) return null;
   const estado = data as {
     id: string;
+    perfil_id?: string | null;
     corrida_base_id: string;
     corrida_nueva_id: string | null;
     origen: InyeccionResumen["origen"];
@@ -378,6 +410,12 @@ export async function leerInyeccionPrivada(id: string): Promise<InyeccionResumen
     diagnostico: Record<string, unknown> | null;
     timeline: Array<{ ts: string | null; evento: string | null }>;
   };
+  // `estado_inyeccion` (008) no acepta un filtro de perfil — sí devuelve
+  // `perfil_id` (el dueño real, escrito por `/api/inyecciones` al recibir la
+  // inyección). Una fila con dueño distinto es 404 legítimo aunque se
+  // conozca el id; una fila sin dueño (perfil_id null: origen 'ensayo' o
+  // pipeline sin sesión) no es DE OTRO perfil, sigue siendo visible.
+  if (estado.perfil_id && estado.perfil_id !== perfilId) return null;
   const diff = await construirDiff(client, estado.corrida_base_id, estado.corrida_nueva_id, estado.rfcs_afectados ?? []);
   return {
     id: estado.id,
