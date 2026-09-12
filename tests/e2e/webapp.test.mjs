@@ -47,6 +47,35 @@ function puertoLibre() {
   });
 }
 
+/**
+ * Un bloque de texto del documento con el que se puede construir una
+ * `seleccion` verificable: `paragraph`/`heading` (verificarSeleccion no
+ * reconstruye tablas ni listas con la misma semántica) y de 10..300
+ * caracteres — a partir de ~345 la enumeración anclada del servidor se
+ * declara `indeterminada` por presupuesto y no verificaría nada.
+ *
+ * `texto_hash` se calcula igual que el editor: sha256 del texto seleccionado
+ * (web/lib/document/documento.ts → hashTexto → sha256Hex).
+ */
+function seleccionVerificable(contenidoJson) {
+  const textoDe = (b) => (Array.isArray(b.content) ? b.content : []).map((t) => t.text ?? '').join('');
+  const bloque = contenidoJson.content.find(
+    (b) => (b.type === 'paragraph' || b.type === 'heading') && b.attrs?.id
+      && textoDe(b).length >= 10 && textoDe(b).length <= 300);
+  assert.ok(bloque, 'el documento del fixture no tiene ningún bloque de texto de 10..300 caracteres');
+  const texto = textoDe(bloque);
+  return {
+    bloqueId: bloque.attrs.id,
+    texto,
+    seleccion: {
+      from: 1,
+      to: 1 + texto.length,
+      block_ids: [bloque.attrs.id],
+      texto_hash: createHash('sha256').update(texto, 'utf8').digest('hex'),
+    },
+  };
+}
+
 let servidor; let base;
 
 async function arrancar() {
@@ -202,9 +231,19 @@ test('webapp servida con next start', { skip: saltar, timeout: 300000, concurren
       const bloques = doc.contenido_json.content.map((b) => b.attrs?.id).filter(Boolean);
       assert.ok(bloques.length >= 2, 'el documento del fixture no tiene bloques con id');
 
-      // Un hash con la forma del contrato; el servidor valida los block_ids
-      // contra el índice de la versión, que es lo que evita editar a ciegas.
-      const hash = createHash('sha256').update('seleccion-e2e').digest('hex');
+      // El `texto_hash` se calcula COMO LO CALCULA EL EDITOR: sha256 del texto
+      // seleccionado (web/lib/document/documento.ts → hashTexto → sha256Hex),
+      // sobre el texto real de un bloque de esta versión. Un hash inventado
+      // sería `desplazada` y la propuesta legítima moriría en 409.
+      //
+      // El bloque se DESCUBRE, no se supone: tiene que ser de texto
+      // (paragraph/heading — verificarSeleccion no reconstruye tablas ni
+      // listas con la misma semántica) y de menos de 300 caracteres, porque
+      // la enumeración anclada del servidor se declara `indeterminada` por
+      // presupuesto a partir de ~345 y entonces la respuesta sería 200 sin
+      // haber verificado nada.
+      const { texto, seleccion } = seleccionVerificable(doc.contenido_json);
+      const hash = seleccion.texto_hash;
 
       const pregunta = await conSesion('/api/reportes/propuestas', {
         method: 'POST',
@@ -229,7 +268,7 @@ test('webapp servida con next start', { skip: saltar, timeout: 300000, concurren
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           caso_id: CASO, version_base: doc.version, modo: 'propuesta',
-          seleccion: { from: 0, to: 40, block_ids: [bloques[1]], texto_hash: hash },
+          seleccion,
           mensaje: 'Aclara que la cifra viene de SQL, no del modelo.',
           evidencia_ids: [], idempotency_key: randomUUID(),
         }),
@@ -239,6 +278,11 @@ test('webapp servida con next start', { skip: saltar, timeout: 300000, concurren
       const respuesta = cpr.json;
       assert.ok(respuesta.propuesta || respuesta.patch || respuesta.modo === 'propuesta',
         `la propuesta no devolvió propuesta: ${JSON.stringify(respuesta).slice(0, 300)}`);
+      // Lo que se mide no es el 200: es que el servidor CONFIRMÓ el hash. Con
+      // `indeterminada` la petición también sale 200 y no se habría probado
+      // que el texto seleccionado es el que está en la versión base.
+      assert.equal(respuesta.seleccion_verificada, true,
+        'el servidor no verificó el texto_hash: la propuesta pasó sin comprobar la selección');
 
       // Proponer tampoco versiona: sólo Aplicar lo hace (regla 11).
       assert.equal((await versiones()).length, antes.length,
@@ -256,6 +300,130 @@ test('webapp servida con next start', { skip: saltar, timeout: 300000, concurren
         }),
       });
       assert.equal(desplazada.status, 409, `selección desplazada devolvió ${desplazada.status}`);
+      assert.equal((await cuerpo(desplazada)).json?.error, 'seleccion_desplazada');
+
+      // Y el caso que de verdad protege el texto_hash: el bloque SIGUE ahí,
+      // pero el texto que el usuario tenía seleccionado ya no es el que está
+      // guardado. Se usa `texto + 'x'`: más largo que el bloque, así que no
+      // es ninguna de sus subcadenas y la enumeración anclada lo prueba.
+      const movida = await conSesion('/api/reportes/propuestas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caso_id: CASO, version_base: doc.version, modo: 'propuesta',
+          seleccion: {
+            ...seleccion,
+            texto_hash: createHash('sha256').update(`${texto}x`, 'utf8').digest('hex'),
+          },
+          mensaje: 'sobre un texto que ya cambió',
+          evidencia_ids: [], idempotency_key: randomUUID(),
+        }),
+      });
+      const cm = await cuerpo(movida);
+      assert.equal(movida.status, 409,
+        `un texto_hash que no corresponde al bloque devolvió ${movida.status}: ${cm.texto.slice(0, 300)}`);
+      assert.equal(cm.json?.error, 'seleccion_desplazada');
+      // El motivo distingue este 409 del de bloques ausentes: sin él, la
+      // prueba no sabría cuál de las dos comprobaciones se ejecutó.
+      assert.equal(cm.json?.motivo, 'texto_hash',
+        `409 por otro motivo: ${JSON.stringify(cm.json).slice(0, 300)}`);
+
+      // Proponer —ni siquiera el rechazo— versiona.
+      assert.equal((await versiones()).length, antes.length,
+        'el ciclo de propuestas creó una versión sin pasar por Aplicar');
+    });
+
+    // Esta prueba va la ÚLTIMA del archivo: Aplicar sube el documento a la
+    // versión 2 y cualquier prueba posterior que asumiera `version_base: 1`
+    // empezaría a recibir 409 conflicto_version.
+    await t.test('Aplicar versiona una sola vez: propuesta → versión 2, y el doble Aplicar es idempotente', async () => {
+      const versiones = async () => {
+        const r = await conSesion(`/api/reportes/versiones?caso_id=${CASO}`);
+        assert.equal(r.status, 200);
+        return (await r.json()).versiones;
+      };
+
+      const antes = await versiones();
+      const doc = antes[antes.length - 1];
+      const { seleccion } = seleccionVerificable(doc.contenido_json);
+
+      // DOS propuestas sobre la MISMA versión base, como dos pestañas abiertas.
+      // La segunda se aplica al final para medir el conflicto de versión: una
+      // propuesta ya aplicada no sirve para eso (vuelve a devolver su versión,
+      // que es la idempotencia que se prueba antes).
+      const proponer = async (mensaje) => {
+        const r = await conSesion('/api/reportes/propuestas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            caso_id: CASO, version_base: doc.version, modo: 'propuesta',
+            seleccion, mensaje, evidencia_ids: [], idempotency_key: randomUUID(),
+          }),
+        });
+        const c = await cuerpo(r);
+        assert.equal(r.status, 200, c.texto.slice(0, 300));
+        const id = c.json?.propuesta?.propuesta_id;
+        assert.ok(id,
+          `la propuesta no trae propuesta_id y Aplicar no tendría qué aplicar: ${JSON.stringify(c.json).slice(0, 300)}`);
+        return id;
+      };
+      const propuestaId = await proponer('Deja explícito que el importe lo calcula SQL.');
+      const propuestaRezagada = await proponer('Otra redacción de la misma sección.');
+
+      // `caso_id` va en la query: el cuerpo es exactamente editor.aplicar
+      // (`additionalProperties: false`), así que meterlo dentro daría 422.
+      const clave = randomUUID();
+      const cuerpoAplicar = JSON.stringify({
+        propuesta_id: propuestaId,
+        version_base: doc.version,
+        idempotency_key: clave,
+      });
+      const aplicar = async () => conSesion(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: cuerpoAplicar,
+      });
+
+      const primera = await aplicar();
+      const c1 = await cuerpo(primera);
+      assert.equal(primera.status, 200, c1.texto.slice(0, 300));
+      assert.equal(c1.json.version, doc.version + 1,
+        `Aplicar dejó el documento en la versión ${c1.json.version}`);
+      assert.equal(c1.json.repetido, false, 'la primera aplicación se declaró repetida');
+      assert.ok(c1.json.reporte?.contenido_json, 'Aplicar no devolvió el reporte versionado');
+      const listaTrasAplicar = await versiones();
+      assert.equal(listaTrasAplicar.length, antes.length + 1,
+        'Aplicar no creó exactamente una versión');
+      assert.equal(listaTrasAplicar[listaTrasAplicar.length - 1].version, doc.version + 1);
+
+      // Doble clic / reentrega del webhook: misma clave, misma versión. Si
+      // creara una versión 3, cada reintento de red duplicaría el historial.
+      const segunda = await aplicar();
+      const c2 = await cuerpo(segunda);
+      assert.equal(segunda.status, 200, c2.texto.slice(0, 300));
+      assert.equal(c2.json.version, c1.json.version,
+        'el segundo Aplicar con la misma idempotency_key creó otra versión');
+      assert.equal(c2.json.repetido, true, 'el segundo Aplicar no se declaró repetido');
+      assert.equal((await versiones()).length, listaTrasAplicar.length,
+        'el segundo Aplicar añadió una versión al historial');
+
+      // 15 §10: la segunda pestaña aplica una propuesta calculada sobre la
+      // versión 1, que ya no es la vigente. El servidor no reintenta solo:
+      // 409 y el cliente conserva su borrador.
+      const vieja = await conSesion(`/api/reportes/aplicar?caso_id=${CASO}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propuesta_id: propuestaRezagada,
+          version_base: doc.version,
+          idempotency_key: randomUUID(),
+        }),
+      });
+      const c3 = await cuerpo(vieja);
+      assert.equal(vieja.status, 409,
+        `aplicar sobre una version_base vencida devolvió ${vieja.status}: ${c3.texto.slice(0, 300)}`);
+      assert.equal(c3.json?.error, 'conflicto_version');
+      assert.equal(c3.json?.version_actual, c1.json.version);
     });
   } finally {
     parar();
