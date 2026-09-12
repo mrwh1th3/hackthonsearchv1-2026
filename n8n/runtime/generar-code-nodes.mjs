@@ -28,6 +28,12 @@ const EPILOGO = 'return [{ json: salida }];';
 // declara aquí junto a su fuente y no se escribe a mano dentro del JSON.
 const PASO = "const paso = $('Decidir accion').first().json;";
 const EJECUCION = "const ejecucion = $('Cargar ejecución').first().json;";
+// Corrida: la identidad de la corrida (id, investigación, idempotencia) vive en
+// el nodo que la abrió y no se re-deriva en cada vuelta del bucle.
+const CORRIDA = "const corrida = $('Validar e idempotencia').first().json;";
+// Salida de varios ítems (un cluster por ítem) para el subworkflow en modo
+// `each`. El cuerpo garantiza al menos uno.
+const ITEMS = 'return salida.map((json) => ({ json }));';
 
 const nodo = (archivo, nota, preambulo = PREAMBULO, epilogo = EPILOGO) => ({
   fuente: path.join(RAIZ_N8N, 'runtime', 'nodos', `${archivo}.mjs`),
@@ -118,6 +124,50 @@ export const GENERADOS = [
   ),
   nodo('evaluar-frontera', 'Investigación: tabla de despertar de 03 y frontera material (07 §2.6).'),
   nodo('normalizar-investigacion', 'Investigación: une webhook y subworkflow; rechaza campos no aceptados.'),
+  // Corrida: un solo criterio de admisión, dos puntos de entrada. El despacho
+  // inicial recibe la cola COMPLETA del SELECT por score y cero casos activos;
+  // el redespacho de cada vuelta recibe la cola VIVA y los casos activos que
+  // devuelve `forense.cola_corrida`. Mismo cuerpo, distinto preámbulo: la
+  // admisión no puede divergir entre la primera vuelta y las siguientes.
+  {
+    fuente: path.join(RAIZ_N8N, 'runtime', 'nodos', 'despachar-clusters.mjs'),
+    destino: path.join(RAIZ_N8N, 'code', 'despachar-clusters-inicial.js'),
+    preambulo: [
+      CORRIDA,
+      'const filas = $input.all().map((i) => i.json);',
+      'const x = {',
+      '  corrida_id: corrida.corrida_id,',
+      '  investigacion_id: corrida.investigacion_id ?? null,',
+      '  idempotency_base: corrida.idempotency_key,',
+      '  max_activos: MAX_ACTIVOS,',
+      '  casos_activos: 0,',
+      // `alwaysOutputData` en el SELECT anterior hace que este nodo corra aunque
+      // no haya clusters; el ítem vacío se descarta por no traer cluster_id.
+      '  pendientes: filas.filter((f) => f && f.cluster_id)',
+      '    .map((f) => ({ cluster_id: f.cluster_id, score: f.score })),',
+      '};',
+    ].join('\n'),
+    epilogo: ITEMS,
+    nota: 'Corrida: despacho inicial — admite hasta MAX_ACTIVOS clusters y deja el resto EN COLA (17 §2, regla 10).',
+  },
+  {
+    fuente: path.join(RAIZ_N8N, 'runtime', 'nodos', 'despachar-clusters.mjs'),
+    destino: path.join(RAIZ_N8N, 'code', 'despachar-clusters-cola.js'),
+    preambulo: [
+      CORRIDA,
+      'const cola = $input.first().json;',
+      'const x = {',
+      '  corrida_id: corrida.corrida_id,',
+      '  investigacion_id: corrida.investigacion_id ?? null,',
+      '  idempotency_base: corrida.idempotency_key,',
+      '  max_activos: MAX_ACTIVOS,',
+      '  casos_activos: cola.casos_activos,',
+      '  pendientes: cola.pendientes ?? [],',
+      '};',
+    ].join('\n'),
+    epilogo: ITEMS,
+    nota: 'Corrida: redespacho por vuelta — llena los slots que se liberaron mientras quede cola (hallazgo alto H11).',
+  },
 ];
 
 export function extraerRegion(rutaFuente) {

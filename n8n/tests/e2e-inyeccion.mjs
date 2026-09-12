@@ -21,21 +21,26 @@
 // en forense.bitacora (regla 2) y el cluster del RFC inyectado se despacha
 // PRIMERO (QA-004 / 21 §3).
 //
-// HALLAZGO H10 (medido aquí, no específico de la inyección): el ensayo (a) llega
-// con dos familias sustentadas (R, T), evidencia válida y `pendientes` vacío, y
-// aun así el nivel se queda en `no_concluyente` porque `casos.cobertura_completa`
-// sigue en false. En 001–011 ninguna función la pone en true salvo
-// `guardar_dictamen`, que la copia del dictamen — y `dictaminar()` la EXIGE para
-// pasar de `no_concluyente`. Tal cual está, ningún caso puede alcanzar
-// `presuncion`. Hace falta que el cierre de la última ronda (o la validación de
-// evidencia) la fije cuando la cobertura es real. Petición a forense-db, no algo
-// que el runtime pueda arreglar sin inventarse el dato (regla 4).
+// HALLAZGO H10, RESUELTO EN H11 POR db/015: `casos.cobertura_completa` nacía en
+// false y nada la ponía en true, así que `dictaminar()` dejaba TODO caso en
+// `no_concluyente`. `forense.cobertura_caso` (015) la calcula en SQL y
+// `paquete_auditor_final` la expone calculada. Este script ya no la simula: se
+// limita a cerrar la ronda con las funciones reales y a REPORTAR lo que salga.
 //
-// PENDIENTE_DB_012: `forense.asegurar_clusters_inyectados(corrida, inyeccion)`
-// la entrega forense-db. Mientras no exista, este script usa el respaldo
-// `forense.armar_cluster_para` (004, ya existe) por cada RFC afectado — la misma
-// ruta de investigación manual que la función va a encapsular — y lo DECLARA en
-// la salida en vez de aprobarlo en silencio.
+// Qué cambia en H11 respecto de la versión anterior de este script:
+//   - `forense.asegurar_clusters_inyectados` (db/012) es OBLIGATORIA. El
+//     respaldo `armar_cluster_para` se retiró: probar contra el respaldo era
+//     probar una ruta que el demo no ejecuta.
+//   - La ronda simulada cierra por checkpoint (claim_step → finish_step →
+//     advance_case_if_ready → cerrar_ronda). Ningún UPDATE sobre
+//     `tareas_agente`: un UPDATE no deja rastro y fija la cobertura por la vía
+//     que precisamente se quiere medir.
+//   - El auditor simulado NO fabrica una evidencia por familia. Cita CFDI que
+//     existen en el snapshot y que `forense_validar_evidencia` acepta; cuántas
+//     familias quedan sustentadas es un RESULTADO, no una entrada.
+//   - El ensayo (c) sólo CUMPLE si el sistema llegó a cobertura completa y aun
+//     así no subió el nivel. Si la cobertura quedó incompleta, el nivel bajo no
+//     prueba discriminación: se reporta `requiere_api_real`.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -73,6 +78,10 @@ const ENSAYOS = [
     // tampoco vale: significaría que ni siquiera se miró.
     niveles: ['anomalia_explicada', 'no_concluyente'],
     porque: 'comercializadora legítima: entra al selector y el sistema la explica (21 §3.4)',
+    // Con cobertura incompleta CUALQUIER caso sale `no_concluyente`: acertar así
+    // no es discriminar. Sin cobertura completa el ensayo se reporta
+    // `requiere_api_real`.
+    exige_cobertura: true,
   },
 ];
 
@@ -187,14 +196,16 @@ const CORRIDA_BASE = psql(
 );
 if (!CORRIDA_BASE) throw new Error(`no hay corrida gen-v1 en ${BASE}`);
 
-const HAY_012 = psql(`select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname='forense' and p.proname='asegurar_clusters_inyectados'`) !== '0';
+for (const fn of ['asegurar_clusters_inyectados', 'cobertura_caso']) {
+  if (psql(`select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname='forense' and p.proname=${lit(fn)}`) === '0') {
+    throw new Error(`falta forense.${fn} en ${BASE}: aplica db/012 y db/015 antes de correr este e2e`);
+  }
+}
 
 if (!SALIDA_JSON) {
   console.log(`base=${BASE} corrida_base=${CORRIDA_BASE} gen-v1`);
-  console.log(HAY_012
-    ? 'db/012 presente: se ejecuta forense.asegurar_clusters_inyectados'
-    : 'PENDIENTE_DB_012: sin forense.asegurar_clusters_inyectados; respaldo forense.armar_cluster_para');
+  console.log('db/012 y db/015 presentes: clusters garantizados por RPC y cobertura calculada en SQL');
 }
 
 function correrEnsayo(ensayo) {
@@ -247,19 +258,8 @@ function correrEnsayo(ensayo) {
   const rfcs = pasoJson('rfcs_afectados',
     `select coalesce(to_jsonb(rfcs_afectados), '[]'::jsonb)::text
        from forense.inyecciones where id = ${lit(reg.inyeccion_id)}::uuid`);
-  let garantizados;
-  if (HAY_012) {
-    garantizados = filasDeNodo('nodo Asegurar clusters inyectados', 'Asegurar clusters inyectados',
-      [corrida, reg.inyeccion_id]);
-  } else {
-    garantizados = rfcs.map((rfc) => {
-      const antes = psql(`select count(*) from forense.clusters k
-         where k.corrida_id = ${lit(corrida)}::uuid and ${lit(rfc)} = any(k.rfcs)`);
-      const cid = paso(`respaldo armar_cluster_para(${rfc})`,
-        `select forense.armar_cluster_para(${lit(corrida)}::uuid, ${lit(rfc)})::text`);
-      return { cluster_id: cid, rfc, creado: antes === '0' };
-    });
-  }
+  const garantizados = filasDeNodo('nodo Asegurar clusters inyectados', 'Asegurar clusters inyectados',
+    [corrida, reg.inyeccion_id]);
   if (garantizados.length === 0) throw new Error('ningún cluster garantizado para los RFC inyectados');
 
   // 6. «Clusters afectados primero» + «Priorizar afectados» (el Code node real).
@@ -299,18 +299,36 @@ function correrEnsayo(ensayo) {
     : `array['documental','financiero','relacional','temporal','externo']::text[]`;
   pasoJson('crear_tareas_ronda(1)',
     `select forense.crear_tareas_ronda(${lit(caso.caso_id)}::uuid, 1, ${rolesSql})::text`);
-  paso('ronda 1: tareas completadas (proveedor simulado)',
-    `update forense.tareas_agente set estado='completada', terminado=now(),
-            lease_owner=NULL, lease_expires_at=NULL
-      where caso_id = ${lit(caso.caso_id)}::uuid and ronda = 1`);
-  paso('registrar barrera ronda1', `insert into forense.pasos_pipeline
-     (caso_id, paso, revision, tareas_esperadas, estado, deadline)
-     select ${lit(caso.caso_id)}::uuid, 'ronda1', 1,
-            coalesce(array_agg(id), '{}'), 'abierto', now() + interval '15 minutes'
-       from forense.tareas_agente where caso_id = ${lit(caso.caso_id)}::uuid and ronda = 1
-     on conflict do nothing`);
+
+  // Cierre por CHECKPOINT, no por UPDATE (17 §3). `crear_tareas_ronda` ya creó
+  // una ejecución por tarea y la barrera con el conjunto exacto de tarea_id;
+  // aquí sólo se reclama el lease y se termina con el fence que devolvió el
+  // claim. Un UPDATE directo saltaría el fencing y no dejaría rastro.
+  const ejecuciones = pasoJson('ejecuciones de la ronda 1',
+    `select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'rol', e.rol)), '[]'::jsonb)::text
+       from forense.ejecuciones_agente e
+      where e.caso_id = ${lit(caso.caso_id)}::uuid and e.tarea_id is not null`);
+  if (ejecuciones.length === 0) throw new Error('la ronda 1 no creó ejecuciones: no hay nada que cerrar');
+  for (const e of ejecuciones) {
+    const claim = pasoJson(`claim_step(${e.rol})`,
+      `select forense.claim_step(${lit(e.id)}::uuid, ${lit(`${SELLO}:${e.rol}`)})::text`);
+    if (claim.ok !== true) throw new Error(`claim_step(${e.rol}): ${JSON.stringify(claim).slice(0, 200)}`);
+    const fin = pasoJson(`finish_step(${e.rol})`,
+      `select forense.finish_step(${lit(e.id)}::uuid, ${claim.fence}::bigint, ${claim.revision}::int,
+         'terminado', '{"origen":"proveedor_simulado"}'::jsonb)::text`);
+    if (fin.ok !== true) throw new Error(`finish_step(${e.rol}): ${JSON.stringify(fin).slice(0, 200)}`);
+  }
   const avance = pasoJson('advance_case_if_ready(ronda1)',
     `select forense.advance_case_if_ready(${lit(caso.caso_id)}::uuid, 'ronda1', NULL)::text`);
+  if (avance.avanzo !== true) {
+    throw new Error(`la barrera de ronda 1 no cerró: ${JSON.stringify(avance).slice(0, 300)}`);
+  }
+  // `cerrar_ronda` es lo que recalcula la cobertura en la última ronda (015).
+  // Se cierra la ronda 1 (no hay ronda 2 en el ensayo) y la cobertura la vuelve
+  // a calcular `paquete_auditor_final` sobre el estado real del caso.
+  pasoJson('cerrar_ronda(1)',
+    `select coalesce(to_jsonb(t), 'null'::jsonb)::text from (
+       select * from forense.cerrar_ronda(${lit(caso.caso_id)}::uuid, 1, '{}'::jsonb)) t limit 1`);
 
   // 7b. Auditor SIMULADO: sin evidencia citada el paquete siempre sale
   //     `no_concluyente` y el ensayo no mediría nada. El proveedor es simulado,
@@ -321,27 +339,32 @@ function correrEnsayo(ensayo) {
   const tAuditor = pasoJson('abrir_tarea_cierre(auditor)',
     `select forense.abrir_tarea_cierre(${lit(caso.caso_id)}::uuid, 'auditor')::text`);
   const tareaAuditor = tAuditor.tarea_id ?? tAuditor.id;
-  const items = pasoJson('evidencia simulada por familia', `
+  // El auditor simulado NO fabrica una evidencia por familia: eso sería fijar el
+  // resultado que la prueba dice medir. Cita los CFDI del snapshot que
+  // efectivamente tocan a los RFC del caso y que la pista correspondiente
+  // referencia; cuántas familias quedan sustentadas lo decide el dato, y lo
+  // filtra después `forense_validar_evidencia`. Si un CFDI no existe o no
+  // interseca los RFC del caso, la RPC lo rechaza y aquí no se compensa.
+  const items = pasoJson('evidencia citada del snapshot', `
     with c as (select * from forense.casos where id = ${lit(caso.caso_id)}::uuid),
-         p as (select pi.id, pi.codigo, left(pi.codigo, 1) as familia, pi.rfc
-                 from forense.pistas pi, c
-                where pi.corrida_id = c.corrida_id
-                  and pi.rfc = any(array[c.rfc_principal] || coalesce(c.rfcs_satelite, '{}'))),
-         u as (select distinct on (p.familia) p.id, p.codigo, p.familia, p.rfc,
-                      f.uuid, f.emisor_rfc, f.receptor_rfc
+         rf as (select array[c.rfc_principal] || coalesce(c.rfcs_satelite, '{}') as rfcs from c),
+         p as (select pi.id, pi.codigo, left(pi.codigo, 1) as familia, pi.rfc, pi.detalle
+                 from forense.pistas pi, c, rf
+                where pi.corrida_id = c.corrida_id and pi.rfc = any(rf.rfcs)),
+         u as (select p.id, p.codigo, p.familia, f.uuid, f.emisor_rfc, f.receptor_rfc,
+                      row_number() over (partition by p.id order by f.uuid) as n
                  from p
                  join c on true
                  join forense.cfdi f on f.corrida_id = c.corrida_id
-                                    and (f.emisor_rfc = p.rfc or f.receptor_rfc = p.rfc)
-                order by p.familia, f.uuid)
+                                    and (f.emisor_rfc = p.rfc or f.receptor_rfc = p.rfc))
     select coalesce(jsonb_agg(jsonb_build_object(
              'tipo', 'cfdi', 'ref_id', 'CFDI:' || u.uuid, 'pista_id', u.id,
              'pista_codigo', u.codigo, 'familia', u.familia,
              'rfcs_afectados', to_jsonb(array[u.emisor_rfc, u.receptor_rfc]),
              'referencias', jsonb_build_array('CFDI:' || u.uuid),
-             'comprobacion', 'pista ' || u.codigo || ' sostenida por el CFDI ' || u.uuid,
-             'descripcion', 'evidencia simulada para ' || u.codigo)), '[]'::jsonb)::text
-      from u`);
+             'comprobacion', 'pista ' || u.codigo || ' citada sobre el CFDI ' || u.uuid,
+             'descripcion', 'cita del snapshot para ' || u.codigo)), '[]'::jsonb)::text
+      from u where u.n <= 2`);
   const registro = items.length
     ? pasoJson('forense_registrar_evidencia',
       `select public.forense_registrar_evidencia(p_caso=>${lit(caso.caso_id)}::uuid, p_agente=>'auditor',
@@ -349,6 +372,32 @@ function correrEnsayo(ensayo) {
     : { ok: true, nota: 'sin ids citables' };
   const validacion = pasoJson('forense_validar_evidencia',
     `select public.forense_validar_evidencia(${lit(caso.caso_id)}::uuid)::text`);
+
+  // La tarea de cierre del auditor también tiene que quedar terminal antes de
+  // pedir el paquete: `forense.cobertura_caso` (015) exige que TODAS las tareas
+  // del caso lo estén. Dejarla abierta era lo que mantenía la cobertura en
+  // false aunque la ronda 1 hubiera cerrado. Se cierra por checkpoint, igual
+  // que las de la ronda.
+  const ejecAuditor = psql(`select e.id::text from forense.ejecuciones_agente e
+     where e.tarea_id = ${lit(tareaAuditor)}::uuid limit 1`);
+  if (ejecAuditor) {
+    const claimA = pasoJson('claim_step(auditor)',
+      `select forense.claim_step(${lit(ejecAuditor)}::uuid, ${lit(`${SELLO}:auditor`)})::text`);
+    if (claimA.ok !== true) throw new Error(`claim_step(auditor): ${JSON.stringify(claimA).slice(0, 200)}`);
+    const finA = pasoJson('finish_step(auditor)',
+      `select forense.finish_step(${lit(ejecAuditor)}::uuid, ${claimA.fence}::bigint, ${claimA.revision}::int,
+         'terminado', '{"origen":"auditor_simulado"}'::jsonb)::text`);
+    if (finA.ok !== true) throw new Error(`finish_step(auditor): ${JSON.stringify(finA).slice(0, 200)}`);
+  }
+  const coberturaSql = pasoJson('forense.cobertura_caso (015)',
+    `select to_jsonb(forense.cobertura_caso(${lit(caso.caso_id)}::uuid))::text`);
+  const tareasNoTerminales = pasoJson('tareas no terminales del caso',
+    `select coalesce(jsonb_object_agg(t.agente, t.estado), '{}'::jsonb)::text
+       from forense.tareas_agente t
+      where t.caso_id = ${lit(caso.caso_id)}::uuid and t.estado not in ('completada','omitida')`);
+  const fronteraPendiente = Number(psql(`select count(*) from forense.clusters k,
+       unnest(coalesce(k.rfcs_frontera, '{}'::text[])) f
+      where k.id = ${lit(cluster)}::uuid and not (f = any(coalesce(k.rfcs, '{}'::text[])))`));
 
   // El paquete se lee con la MISMA consulta del nodo «Paquete auditor final» de
   // FORENSE_investigar_cluster, que adapta la forma de 010 a la que consume
@@ -378,14 +427,36 @@ function correrEnsayo(ensayo) {
     pistas_insertadas: recalculo.pistas_insertadas,
     clusters_armados: recalculo.clusters_armados,
     garantizados: garantizados.map((g) => ({ rfc: g.rfc, cluster_id: g.cluster_id, creado: g.creado })),
-    ruta_garantia: HAY_012 ? 'forense.asegurar_clusters_inyectados (db/012)' : 'PENDIENTE_DB_012: respaldo forense.armar_cluster_para',
+    ruta_garantia: 'forense.asegurar_clusters_inyectados (db/012)',
     despachados: despacho.map((d) => ({ cluster_id: d.cluster_id, garantizado: d.garantizado, creado: d.creado, rfc: d.rfc_inyectado })),
     en_cola: despacho[0].en_cola,
     caso_id: caso.caso_id,
     nivel: dictamen.nivel,
     niveles_esperados: ensayo.niveles,
-    cumple: ensayo.niveles.includes(dictamen.nivel),
+    // Veredicto en TRES estados. Un nivel bajo sólo prueba discriminación si el
+    // sistema llegó a cobertura completa y aun así no subió: con la cobertura
+    // incompleta, `dictaminar` devuelve `no_concluyente` por construcción y el
+    // ensayo (c) «acertaría» sin haber mirado nada. El proveedor simulado no
+    // sabe distinguir una comercializadora legítima de un carrusel -eso es lo
+    // que investiga el modelo-, así que ese caso se reporta como
+    // `requiere_api_real`, no como CUMPLE.
+    veredicto: (() => {
+      if (!ensayo.niveles.includes(dictamen.nivel)) return 'falla';
+      if (ensayo.exige_cobertura && paquete.cobertura_completa !== true) return 'requiere_api_real';
+      return 'cumple';
+    })(),
+    cumple: ensayo.niveles.includes(dictamen.nivel)
+      && (!ensayo.exige_cobertura || paquete.cobertura_completa === true),
     cobertura_completa: paquete.cobertura_completa,
+    cobertura_sql: coberturaSql,
+    // Por qué la cobertura quedó como quedó, con los tres términos de la regla
+    // de 015 a la vista: así el veredicto se puede discutir sin releer el script.
+    motivo_cobertura: paquete.cobertura_completa === true ? 'completa'
+      : (Object.keys(tareasNoTerminales).length > 0 ? 'tareas sin terminar: ' + JSON.stringify(tareasNoTerminales)
+        : (fronteraPendiente > 0 ? `${fronteraPendiente} RFC de frontera sin explorar y sin expansión usada (ronda 2 no simulada)`
+          : 'limitaciones abiertas en casos.pendientes')),
+    tareas_no_terminales: tareasNoTerminales,
+    rfcs_frontera_fuera_del_cluster: fronteraPendiente,
     pendientes: (paquete.pendientes ?? []).map((x) => x.motivo ?? x),
     familias_dictamen: dictamen.familias,
     regla_dictamen: dictamen.regla,
@@ -416,10 +487,10 @@ for (const ensayo of ENSAYOS) {
   try {
     const r = correrEnsayo(ensayo);
     resultados.push(r);
-    if (!r.cumple) fallo = `ensayo (${r.ensayo}): nivel ${r.nivel}, se esperaba ${r.niveles_esperados.join(' o ')}`;
+    if (r.veredicto === 'falla') fallo = `ensayo (${r.ensayo}): nivel ${r.nivel}, se esperaba ${r.niveles_esperados.join(' o ')}`;
     if (!SALIDA_JSON) {
-      console.log(`  → nivel=${r.nivel} (esperado ${r.niveles_esperados.join('|')}) ${r.cumple ? 'OK' : 'FALLA'}`);
-      console.log(`  → cobertura_completa=${r.cobertura_completa} pendientes=${JSON.stringify(r.pendientes)} evidencia=${r.evidencia_en_paquete}/${r.evidencia_valida_tecnica} familias=${JSON.stringify(r.familias_dictamen)}`);
+      console.log(`  → nivel=${r.nivel} (esperado ${r.niveles_esperados.join('|')}) ${r.veredicto.toUpperCase()}`);
+      console.log(`  → cobertura_completa=${r.cobertura_completa} (${r.motivo_cobertura}) pendientes=${JSON.stringify(r.pendientes)} evidencia=${r.evidencia_en_paquete}/${r.evidencia_valida_tecnica} familias=${JSON.stringify(r.familias_dictamen)}`);
       console.log(`  → garantizados=${r.garantizados.length} despachados=${r.despachados.length} en_cola=${r.en_cola} pistas=${JSON.stringify(r.pistas_insertadas)}`);
     }
   } catch (err) {
@@ -432,7 +503,9 @@ for (const ensayo of ENSAYOS) {
 const resumen = {
   base: BASE,
   corrida_base: CORRIDA_BASE,
-  db_012: HAY_012,
+  db_012: true,
+  db_015: true,
+  requieren_api_real: resultados.filter((r) => r.veredicto === 'requiere_api_real').map((r) => r.ensayo),
   ensayos: resultados,
   tiempos_por_etapa: tiempos,
   ms_total: tiempos.reduce((a, b) => a + b.ms, 0),
@@ -442,6 +515,11 @@ const resumen = {
 if (SALIDA_JSON) console.log(JSON.stringify(resumen, null, 2));
 else {
   console.log(`\nSQL total ${resumen.ms_total} ms en ${tiempos.length} consultas`);
-  console.log(fallo ? `FALLA ${fallo}` : 'ok: los ensayos (a) y (c) cumplen su nivel esperado');
+  const pendientesApi = resumen.requieren_api_real;
+  if (fallo) console.log(`FALLA ${fallo}`);
+  else if (pendientesApi.length > 0) {
+    console.log(`ok con reservas: ensayo(s) ${pendientesApi.join(', ')} REQUIEREN API REAL `
+      + '(el nivel esperado salió sin cobertura completa: el simulado no discrimina)');
+  } else console.log('ok: los ensayos (a) y (c) cumplen su nivel esperado con cobertura completa');
 }
 process.exit(fallo ? 1 : 0);
