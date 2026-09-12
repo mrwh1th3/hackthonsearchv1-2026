@@ -33,7 +33,9 @@ directriz al final y marcada como tarea subordinada.
 
 Lo que el ensamblador impide antes de llamar al modelo, con código de error tipificado:
 `senal_ajena_en_r1`, `pista_de_familia_ajena`, `hipotesis_libre`, `evidencia_no_validada`,
-`dictamen_ausente`, `tools_no_permitidas`, `contexto_invalido`, `rol_no_coincide`.
+`dictamen_ausente`, `tools_no_permitidas`, `contexto_invalido`, `rol_no_coincide`,
+`ambito_techo_invalido`, y los cuatro del reintento (`motivo_reintento_invalido`,
+`reintento_no_disponible`, `reintento_sin_intento`, `motivo_reintento_ausente`).
 
 El mapper se ensambla con `ensamblarMapper(perfilIngesta)`: su entrada es el perfil
 sanitizado de 19, no `runtime.contexto`.
@@ -76,7 +78,7 @@ mismo prompt cuando no fue así.
 ```bash
 node n8n/prompts/manifest.mjs --check   # falla (exit 1) si algo cambió sin regenerar
 node n8n/prompts/manifest.mjs --write   # regenera manifest.json
-node --test "tests/prompts/*.test.mjs"  # 71+ pruebas; incluye el check anterior
+node --test "tests/prompts/*.test.mjs"  # 96 pruebas; incluye el check anterior
 ```
 
 **Después de editar cualquier prompt hay que regenerar el manifest**, o el test falla y la

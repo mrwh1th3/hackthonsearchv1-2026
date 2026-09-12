@@ -3,12 +3,12 @@
   "contracts_version": "1.2.1",
   "regla_hash": "sha256 de cada archivo de n8n/prompts/ excepto manifest.json, ordenados por nombre; version_prompts = primeros 12 hex del sha256 de los hashes concatenados en ese orden",
   "nota": "Auditor Final no aparece: es código determinista, no un prompt. Los modelos son propuestas de 17 §7 para medir, no una asignación final.",
-  "version_prompts": "5eefeb37feb7",
+  "version_prompts": "61ed12e965dd",
   "archivos": [
     {
       "name": "README.md",
-      "sha256": "907a59181acfeeed2c9ab065915e17a682454992269680d563bee06e0a675db4",
-      "chars": 7925
+      "sha256": "3368db558f374eed7486fa5c0caa6d63c334b2a049108fe9b34511059a7ba8a5",
+      "chars": 8087
     },
     {
       "name": "auditor.md",
