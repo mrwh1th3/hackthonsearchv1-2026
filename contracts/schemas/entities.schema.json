@@ -1,0 +1,1015 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forense.invalid/contracts/v1/entities.schema.json",
+  "title": "Forense v1 — entities",
+  "$defs": {
+    "corrida": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "nombre": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "dataset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "dataset_hash": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+        },
+        "fecha_corte": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "corrida_origen_id": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "preparando",
+            "lista",
+            "procesando",
+            "completada",
+            "error"
+          ]
+        },
+        "version_prompts": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version_reglas": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "modo": {
+          "type": "string",
+          "enum": [
+            "fiscal",
+            "exploratorio_financiero",
+            "fixture"
+          ]
+        },
+        "familias_evaluables": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+          },
+          "maxItems": 5,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "inicio": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "fin": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "nombre",
+        "dataset",
+        "dataset_hash",
+        "fecha_corte",
+        "corrida_origen_id",
+        "estado",
+        "version_prompts",
+        "version_reglas",
+        "modo",
+        "familias_evaluables",
+        "inicio",
+        "fin"
+      ],
+      "additionalProperties": false
+    },
+    "caso": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "corrida_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "cluster_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "rfc_principal": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+        },
+        "rfcs_satelite": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "en_cola",
+            "ronda1",
+            "ronda2",
+            "auditando",
+            "defendiendo",
+            "replicando",
+            "validando",
+            "dictaminando",
+            "redactando",
+            "dictaminado",
+            "reintento",
+            "error"
+          ]
+        },
+        "nivel": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/nivel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tipologia": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/tipologia"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "familias_confirmadas": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+          },
+          "maxItems": 5,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "monto_en_riesgo": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/importe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moneda": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/moneda"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cobertura_completa": {
+          "type": "boolean"
+        },
+        "n_reintentos": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "presupuesto_agotado": {
+          "type": "boolean"
+        },
+        "creado": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "terminado": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "corrida_id",
+        "cluster_id",
+        "rfc_principal",
+        "rfcs_satelite",
+        "estado",
+        "nivel",
+        "tipologia",
+        "familias_confirmadas",
+        "monto_en_riesgo",
+        "moneda",
+        "cobertura_completa",
+        "n_reintentos",
+        "presupuesto_agotado",
+        "creado",
+        "terminado"
+      ],
+      "additionalProperties": false
+    },
+    "pista": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+        },
+        "corrida_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "codigo": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/pista_codigo"
+        },
+        "familia": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+        },
+        "rfc": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "disparada",
+            "no_evaluable"
+          ]
+        },
+        "resumen": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "referencias": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "corrida_id",
+        "codigo",
+        "familia",
+        "rfc",
+        "score",
+        "estado",
+        "resumen",
+        "referencias"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "D"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "pattern": "^D"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "F"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "pattern": "^F"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "R"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "pattern": "^R"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "T"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "pattern": "^T"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "E"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "codigo": {
+                "type": "string",
+                "pattern": "^E"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "tarea": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "corrida_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "cluster_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "agente": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/rol"
+        },
+        "ronda": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "intento": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "version_contexto": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "pendiente",
+            "ejecutando",
+            "completada",
+            "error",
+            "timeout",
+            "omitida"
+          ]
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "iniciado": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "terminado": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "caso_id",
+        "corrida_id",
+        "cluster_id",
+        "agente",
+        "ronda",
+        "intento",
+        "version_contexto",
+        "estado",
+        "idempotency_key",
+        "iniciado",
+        "terminado"
+      ],
+      "additionalProperties": false
+    },
+    "senal": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+        },
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "cluster_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "tarea_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "ronda": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "intento": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "version_contexto": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "familia": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+        },
+        "agente": {
+          "type": "string",
+          "enum": [
+            "documental",
+            "financiero",
+            "relacional",
+            "temporal",
+            "externo"
+          ]
+        },
+        "titular": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^[^\\r\\n]+$"
+        },
+        "detalle": {
+          "type": "object",
+          "properties": {
+            "pista_id": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+            },
+            "descripcion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "pista_id",
+            "descripcion"
+          ],
+          "additionalProperties": false
+        },
+        "rfcs": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+          },
+          "maxItems": 40,
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+          },
+          "maxItems": 40,
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "frontera": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "confianza": {
+          "type": "string",
+          "enum": [
+            "alta",
+            "media",
+            "baja"
+          ]
+        },
+        "refuta": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "caso_id",
+        "cluster_id",
+        "tarea_id",
+        "ronda",
+        "intento",
+        "version_contexto",
+        "familia",
+        "agente",
+        "titular",
+        "detalle",
+        "rfcs",
+        "ids",
+        "frontera",
+        "confianza",
+        "refuta"
+      ],
+      "additionalProperties": false
+    },
+    "evidencia_propuesta": {
+      "type": "object",
+      "properties": {
+        "pista_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+        },
+        "pista_codigo": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/pista_codigo"
+        },
+        "familia": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+        },
+        "tipo": {
+          "type": "string",
+          "enum": [
+            "cfdi",
+            "movimiento",
+            "atributo",
+            "lista",
+            "ciclo",
+            "nomina",
+            "par"
+          ]
+        },
+        "ref_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "referencias": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+          },
+          "maxItems": 40,
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "comprobacion": {
+          "type": "object",
+          "properties": {
+            "codigo": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/pista_codigo"
+            },
+            "referencias": {
+              "type": "array",
+              "items": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "codigo",
+            "referencias"
+          ],
+          "additionalProperties": false
+        },
+        "rfcs_afectados": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+          },
+          "maxItems": 40,
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "descripcion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "pista_id",
+        "pista_codigo",
+        "familia",
+        "tipo",
+        "ref_id",
+        "referencias",
+        "comprobacion",
+        "rfcs_afectados",
+        "descripcion"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "D"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pista_codigo": {
+                "type": "string",
+                "pattern": "^D"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "F"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pista_codigo": {
+                "type": "string",
+                "pattern": "^F"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "R"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pista_codigo": {
+                "type": "string",
+                "pattern": "^R"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "T"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pista_codigo": {
+                "type": "string",
+                "pattern": "^T"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familia": {
+                "const": "E"
+              }
+            },
+            "required": [
+              "familia"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pista_codigo": {
+                "type": "string",
+                "pattern": "^E"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dictamen": {
+      "type": "object",
+      "properties": {
+        "nivel": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/nivel"
+        },
+        "familias": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+          },
+          "maxItems": 5,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "monto_en_riesgo_centavos": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,13})$"
+        },
+        "moneda": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/moneda"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "regla": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "limitaciones": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/limitacion"
+          },
+          "maxItems": 40,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "nivel",
+        "familias",
+        "monto_en_riesgo_centavos",
+        "moneda",
+        "regla",
+        "limitaciones"
+      ],
+      "additionalProperties": false
+    },
+    "evidencia_validada": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+        },
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "pista_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+        },
+        "pista_codigo": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/pista_codigo"
+        },
+        "familia": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+        },
+        "tipo": {
+          "enum": [
+            "cfdi",
+            "movimiento",
+            "atributo",
+            "lista",
+            "ciclo",
+            "nomina",
+            "par"
+          ]
+        },
+        "ref_id": {
+          "type": "string",
+          "maxLength": 512,
+          "minLength": 1
+        },
+        "rfcs_afectados": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+          },
+          "maxItems": 40,
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "referencias": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+          },
+          "maxItems": 40,
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "valida_tecnica": {
+          "const": true
+        },
+        "refutada": {
+          "type": "boolean"
+        },
+        "validada": {
+          "type": "boolean"
+        },
+        "hecho_validado": {
+          "type": "object",
+          "properties": {
+            "comprobacion": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/pista_codigo"
+            },
+            "descripcion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "monto_centavos": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,13})$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "moneda": {
+              "anyOf": [
+                {
+                  "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/moneda"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "comprobacion",
+            "descripcion",
+            "monto_centavos",
+            "moneda"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "caso_id",
+        "pista_id",
+        "pista_codigo",
+        "familia",
+        "tipo",
+        "ref_id",
+        "rfcs_afectados",
+        "referencias",
+        "valida_tecnica",
+        "refutada",
+        "validada",
+        "hecho_validado"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "refutada": {
+                "const": true
+              }
+            },
+            "required": [
+              "refutada"
+            ]
+          },
+          "then": {
+            "properties": {
+              "validada": {
+                "const": false
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "validada": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

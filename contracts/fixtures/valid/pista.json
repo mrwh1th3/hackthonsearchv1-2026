@@ -1,0 +1,13 @@
+{
+  "id": "501",
+  "corrida_id": "00000000-0000-4000-8000-000000000001",
+  "codigo": "D2",
+  "familia": "D",
+  "rfc": "DEMO:ENTIDAD-0",
+  "score": 0.8,
+  "estado": "disparada",
+  "resumen": "Pista sintética para comprobar contrato.",
+  "referencias": [
+    "CFDI:00000000-0000-4000-8000-000000000901"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "701",
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "pista_id": "501",
+  "pista_codigo": "D2",
+  "familia": "D",
+  "tipo": "cfdi",
+  "ref_id": "00000000-0000-4000-8000-000000000901",
+  "rfcs_afectados": [
+    "DEMO:ENTIDAD-0"
+  ],
+  "referencias": [
+    "CFDI:00000000-0000-4000-8000-000000000901"
+  ],
+  "valida_tecnica": true,
+  "refutada": true,
+  "validada": true,
+  "hecho_validado": {
+    "comprobacion": "D2",
+    "descripcion": "Resultado simulado para contrato, no verificación real.",
+    "monto_centavos": "100000",
+    "moneda": "MXN"
+  }
+}

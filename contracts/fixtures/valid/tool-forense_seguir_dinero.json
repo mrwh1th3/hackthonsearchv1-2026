@@ -1,0 +1,13 @@
+{
+  "tarea_id": "00000000-0000-4000-8000-000000000300",
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "p_operacion": "00000000-0000-4000-8000-000000000501",
+  "fencing_token": "1",
+  "herramienta": "forense_seguir_dinero",
+  "argumentos": {
+    "p_cuenta": "DEMO:CUENTA-0",
+    "p_desde": "2026-01-01T00:00:00Z",
+    "p_saltos": 3,
+    "p_monto_min": "0.00"
+  }
+}

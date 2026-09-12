@@ -1,0 +1,12 @@
+{
+  "execution_id": "00000000-0000-4000-8000-000000000600",
+  "revision": 1,
+  "paso": 0,
+  "fencing_token": "1",
+  "estado_interno": "preparar_contexto",
+  "context_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "prompt_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "deadline_at": "2026-01-31T12:12:00Z",
+  "pending_tool_use_ids": [],
+  "mensajes_ref": null
+}

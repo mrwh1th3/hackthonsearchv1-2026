@@ -4,6 +4,8 @@ Las tablas y utilidades viven en el schema `forense` de un proyecto Supabase ded
 
 Convenciones: montos `numeric(14,2)`, fechas `timestamptz`, identificadores de negocio `text`, estructuras variables `jsonb`.
 
+DTO de transporte ejecutables en `contracts/README.md`: BIGINT y dinero se serializan como strings para evitar pérdida de precisión; UUID como string. Los DTO son vistas de intercambio, no sustituyen las tablas ni las migraciones. Conservar campos adicionales de persistencia al mapearlos.
+
 **Contrato de implementación.** Este documento es la especificación de las futuras migraciones, no un archivo SQL listo para ejecutar: los bloques marcados como pseudocódigo requieren implementación y prueba. Las migraciones se aplican una sola vez y en orden; los datasets y fixtures se cargan después con loaders separados.
 
 **Aislamiento por snapshot.** Cada corrida conserva sus propios hechos, incluida la lista SAT utilizada y el ground truth de evaluación. El mismo RFC, CLABE, UUID o ID de movimiento puede existir en varias corridas: su identidad en la base incluye siempre `corrida_id`. Nunca se consulta un hecho por su identificador de negocio sin ese filtro. Una corrida nueva importa o copia un snapshot completo antes de ejecutar pistas; no reutiliza accidentalmente filas de otra corrida ni copia sus resultados.

@@ -1,0 +1,31 @@
+{
+  "schema_version": "mapper.v1",
+  "adapter_candidate": "generic_financial",
+  "field_mappings": [
+    {
+      "source": "amount",
+      "target": "is_laundering",
+      "transform": {
+        "op": "decimal",
+        "decimal_separator": ".",
+        "scale": 2
+      },
+      "confidence": "media",
+      "reason": "Requiere confirmar semántica monetaria."
+    }
+  ],
+  "relationships": [],
+  "ambiguities": [
+    "Faltan zona horaria y moneda."
+  ],
+  "missing_required_fields": [
+    "moneda",
+    "cuenta_origen",
+    "cuenta_destino",
+    "fecha"
+  ],
+  "proposed_capabilities": [],
+  "warnings": [
+    "No puede promoverse este mapeo parcial."
+  ]
+}

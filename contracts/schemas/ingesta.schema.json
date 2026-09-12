@@ -1,0 +1,391 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forense.invalid/contracts/v1/ingesta.schema.json",
+  "title": "Forense v1 — ingesta",
+  "$defs": {
+    "transform": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "as_text",
+                "trim",
+                "integer",
+                "currency_code"
+              ]
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "normalize_case"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "upper",
+                "lower"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "decimal"
+            },
+            "decimal_separator": {
+              "type": "string",
+              "enum": [
+                ".",
+                ","
+              ]
+            },
+            "scale": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            }
+          },
+          "required": [
+            "op",
+            "decimal_separator",
+            "scale"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "datetime",
+                "date"
+              ]
+            },
+            "format": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "required": [
+            "op",
+            "format",
+            "timezone"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "boolean_enum",
+                "map_enum"
+              ]
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 100,
+              "minItems": 1
+            }
+          },
+          "required": [
+            "op",
+            "entries"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "coalesce_columns"
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "op",
+            "columns"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "join_key"
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "separator": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8
+            },
+            "namespace": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "required": [
+            "op",
+            "columns",
+            "separator",
+            "namespace"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "mapping": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "id_origen",
+            "monto",
+            "moneda",
+            "fecha",
+            "cuenta_origen",
+            "cuenta_destino",
+            "uuid",
+            "emisor_rfc",
+            "receptor_rfc",
+            "rfc",
+            "clabe",
+            "rfc_titular",
+            "tipo",
+            "giro",
+            "fecha_alta",
+            "subtotal",
+            "iva",
+            "total",
+            "cancelado",
+            "metodo_pago",
+            "clave_prod_serv"
+          ]
+        },
+        "transform": {
+          "$ref": "https://forense.invalid/contracts/v1/ingesta.schema.json#/$defs/transform"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "alta",
+            "media",
+            "baja"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        }
+      },
+      "required": [
+        "source",
+        "target",
+        "transform",
+        "confidence",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "mapper": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "mapper.v1"
+        },
+        "adapter_candidate": {
+          "type": "string",
+          "enum": [
+            "canonical",
+            "ibm_financial",
+            "generic_financial",
+            "generic_fiscal",
+            "unsupported"
+          ]
+        },
+        "field_mappings": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/ingesta.schema.json#/$defs/mapping"
+          },
+          "maxItems": 100,
+          "minItems": 0
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source_table": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "source_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "maxItems": 10,
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "target_table": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "target_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "maxItems": 10,
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "source_table",
+              "source_fields",
+              "target_table",
+              "target_fields"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 40,
+          "minItems": 0
+        },
+        "ambiguities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1200
+          },
+          "maxItems": 40,
+          "minItems": 0
+        },
+        "missing_required_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "maxItems": 100,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "proposed_capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/pista_codigo"
+          },
+          "maxItems": 14,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1200
+          },
+          "maxItems": 40,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "schema_version",
+        "adapter_candidate",
+        "field_mappings",
+        "relationships",
+        "ambiguities",
+        "missing_required_fields",
+        "proposed_capabilities",
+        "warnings"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

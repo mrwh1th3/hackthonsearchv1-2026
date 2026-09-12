@@ -1,0 +1,543 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forense.invalid/contracts/v1/editor.schema.json",
+  "title": "Forense v1 — editor",
+  "$defs": {
+    "solicitud": {
+      "type": "object",
+      "properties": {
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "version_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "modo": {
+          "type": "string",
+          "enum": [
+            "pregunta",
+            "propuesta"
+          ]
+        },
+        "seleccion": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "to": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "block_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "maxItems": 100,
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "texto_hash": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            }
+          },
+          "required": [
+            "from",
+            "to",
+            "block_ids",
+            "texto_hash"
+          ],
+          "additionalProperties": false
+        },
+        "directriz_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "mensaje": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "evidencia_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "idempotency_key": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "caso_id",
+        "version_base",
+        "modo",
+        "mensaje",
+        "evidencia_ids",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    "mark": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "bold",
+                "italic",
+                "strike",
+                "code",
+                "underline"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "link"
+            },
+            "attrs": {
+              "type": "object",
+              "properties": {
+                "href": {
+                  "type": "string",
+                  "pattern": "^(https://|/(?!/))",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "href"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "attrs"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "text": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/mark"
+          },
+          "maxItems": 8,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "block": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "paragraph",
+                "heading"
+              ]
+            },
+            "attrs": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "level": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6
+                },
+                "textAlign": {
+                  "type": "string",
+                  "enum": [
+                    "left",
+                    "center",
+                    "right",
+                    "justify"
+                  ]
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "content": {
+              "type": "array",
+              "items": {
+                "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/text"
+              },
+              "maxItems": 200,
+              "minItems": 0
+            }
+          },
+          "required": [
+            "type",
+            "attrs",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "bulletList",
+                "orderedList",
+                "listItem",
+                "blockquote",
+                "table",
+                "tableRow",
+                "tableCell",
+                "tableHeader"
+              ]
+            },
+            "attrs": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "content": {
+              "type": "array",
+              "items": {
+                "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/block"
+              },
+              "maxItems": 200,
+              "minItems": 1
+            }
+          },
+          "required": [
+            "type",
+            "attrs",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "horizontalRule"
+            },
+            "attrs": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "attrs"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "documento": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "doc"
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/block"
+          },
+          "maxItems": 300,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "patch": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "replace_block"
+            },
+            "block_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "before_hash": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            },
+            "after": {
+              "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/block"
+            }
+          },
+          "required": [
+            "op",
+            "block_id",
+            "before_hash",
+            "after"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "insert_after"
+            },
+            "block_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "before_hash": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            },
+            "after": {
+              "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/block"
+            }
+          },
+          "required": [
+            "op",
+            "block_id",
+            "before_hash",
+            "after"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "remove_block"
+            },
+            "block_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "before_hash": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            }
+          },
+          "required": [
+            "op",
+            "block_id",
+            "before_hash"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "replace_document"
+            },
+            "before_hash": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+            },
+            "after": {
+              "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/documento"
+            }
+          },
+          "required": [
+            "op",
+            "before_hash",
+            "after"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "propuesta": {
+      "type": "object",
+      "properties": {
+        "propuesta_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "version_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "mensaje": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "patch": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/patch"
+          },
+          "maxItems": 80,
+          "minItems": 1
+        },
+        "diff": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80000
+        },
+        "citas": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+          },
+          "maxItems": 100,
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "propuesta_id",
+        "version_base",
+        "mensaje",
+        "patch",
+        "diff",
+        "citas"
+      ],
+      "additionalProperties": false
+    },
+    "aplicar": {
+      "type": "object",
+      "properties": {
+        "propuesta_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "version_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "idempotency_key": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "propuesta_id",
+        "version_base",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    "reporte": {
+      "type": "object",
+      "properties": {
+        "caso_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "estado_revision": {
+          "type": "string",
+          "enum": [
+            "borrador",
+            "validado"
+          ]
+        },
+        "autor": {
+          "type": "string",
+          "enum": [
+            "agente",
+            "humano"
+          ]
+        },
+        "creado": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "contenido_json": {
+          "$ref": "https://forense.invalid/contracts/v1/editor.schema.json#/$defs/documento"
+        },
+        "markdown": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80000
+        },
+        "content_hash": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+        }
+      },
+      "required": [
+        "caso_id",
+        "version",
+        "estado_revision",
+        "autor",
+        "creado",
+        "contenido_json",
+        "markdown",
+        "content_hash"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "hackathon_started": false,
+  "hackathon_started": true,
   "event_duration_hours": 36,
   "supervisors": 3,
   "development": {
     "surface": "claude-code-terminal",
     "coordinator_model": "opus",
-    "max_parallel_builders": 3,
+    "max_parallel_builders": 4,
     "allow_local_implementation": true
   },
   "targets": {
@@ -16,19 +16,24 @@
     "n8n_version": null,
     "supabase_project_ref": null,
     "vercel_project": null,
-    "github_repo": null,
+    "github_repo": "mrwh1th3/hackthonsearchv1-2026",
     "github_repo_hint": "hackthonmty2026",
-    "existing_actions_repo": null
+    "existing_actions_repo": "mrwh1th3/eximapp (ai-loop.yml/change-loop.yml auditados solo lectura 2026-09-11; no reutilizado)",
+    "n8n_project_id": "n0vtYcnvIW4LpWOE",
+    "n8n_workflow_prefix": "FORENSE_",
+    "supabase_org_id": "nkirnwgqrjvicdniszlk",
+    "vercel_team_id": "team_btOOK1ypsV2lyPljQaC0r3Ui"
   },
   "reported_connections": {
     "n8n_mcp": true,
     "supabase_mcp": true,
     "vercel": true,
     "elevenlabs": true,
-    "verified": false
+    "verified": true,
+    "verified_note": "Lecturas MCP 2026-09-11: Supabase (2 proyectos de clientes, sin forense), n8n (proyecto personal, 55 workflows de clientes, credencial Anthropic existente sin saldo verificado), Vercel (equipo hobby, sin forense), ElevenLabs (2 agentes de clientes, 0 números salientes)"
   },
   "runtime": {
-    "provider": "pending",
+    "provider": "messages_api",
     "api_model_id": null,
     "api_budget_usd": null,
     "github_auth_method": null,
@@ -44,11 +49,19 @@
       "redactor": "sonnet",
       "editor": "sonnet",
       "mapper": "sonnet"
-    }
+    },
+    "provider_fallback": "claude_code_actions (patrón eximapp ai-loop; no cumple concurrencia 8 ni observabilidad por request)"
   },
   "authorizations": {
-    "remote_writes": false,
-    "outbound_phone_calls": false
+    "remote_writes": true,
+    "outbound_phone_calls": false,
+    "remote_writes_scope": "Alcance autorizado por “arranca YA todo el proyecto”: crear proyecto Supabase forense (costo 0), workflows FORENSE_* inactivos en n8n, proyecto Vercel forense, commits/push al repo origin. Nunca proyectos/recursos de clientes."
   },
-  "ui_h1_target": "Todas las rutas navegables con fixtures identificados; no backend completo"
+  "ui_h1_target": "Todas las rutas navegables con fixtures identificados; no backend completo",
+  "started_at": "2026-09-11T21:30:00-06:00",
+  "local": {
+    "postgres": "postgresql@17 via Homebrew, localhost:5432, db forense, usuario postgres (trust local)",
+    "python": "3.9.6 + faker + networkx + pandas",
+    "node": "22.19.0"
+  }
 }

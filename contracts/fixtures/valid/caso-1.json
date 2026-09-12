@@ -1,0 +1,18 @@
+{
+  "id": "00000000-0000-4000-8000-000000000101",
+  "corrida_id": "00000000-0000-4000-8000-000000000001",
+  "cluster_id": "00000000-0000-4000-8000-000000000201",
+  "rfc_principal": "DEMO:ENTIDAD-1",
+  "rfcs_satelite": [],
+  "estado": "dictaminado",
+  "nivel": "anomalia_explicada",
+  "tipologia": "no_concluyente",
+  "familias_confirmadas": [],
+  "monto_en_riesgo": "0.00",
+  "moneda": "MXN",
+  "cobertura_completa": true,
+  "n_reintentos": 0,
+  "presupuesto_agotado": false,
+  "creado": "2026-01-31T12:00:00Z",
+  "terminado": "2026-01-31T12:00:00Z"
+}

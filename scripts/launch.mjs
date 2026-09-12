@@ -47,7 +47,7 @@ export function main(args = process.argv.slice(2)) {
   let config;
   try { config = JSON.parse(fs.readFileSync(path.join(root, 'launch.config.json'), 'utf8')); }
   catch { console.error('launch.config.json ausente o inválido; no se mostrará su contenido.'); return 2; }
-  const kit = ['CLAUDE.md', 'ARRANQUE.md', 'launch.config.json', '.gitignore', 'scripts', '.claude/agents', '.claude/settings.json',
+  const kit = ['CLAUDE.md', 'ARRANQUE.md', 'launch.config.json', '.gitignore', 'scripts', 'contracts', '.claude/agents', '.claude/settings.json',
     ...fs.readdirSync(root).filter(n => /^\d\d-.*\.md$/.test(n))];
   const head = run('git', ['rev-parse', '--verify', 'HEAD']);
   const status = run('git', ['status', '--porcelain', '--untracked-files=all', '--', ...kit]);

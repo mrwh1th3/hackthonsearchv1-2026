@@ -1,0 +1,9 @@
+{
+  "id": "00000000-0000-4000-8000-000000000900",
+  "nombre": "Auditor Demo",
+  "organizacion": "Escenario sintético",
+  "timezone": "America/Monterrey",
+  "telefono_e164": null,
+  "llamadas_activadas": false,
+  "consentimiento_at": null
+}

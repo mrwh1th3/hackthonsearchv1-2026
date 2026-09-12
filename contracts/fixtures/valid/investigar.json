@@ -1,0 +1,20 @@
+{
+  "mensaje": "Investiga este escenario de demostración.",
+  "directriz_id": "seguir_dinero",
+  "directriz_version": 1,
+  "contexto": {
+    "corrida_id": "00000000-0000-4000-8000-000000000001",
+    "cluster_id": "00000000-0000-4000-8000-000000000200",
+    "rfcs": [
+      "DEMO:ENTIDAD-0"
+    ],
+    "evidencia_ids": [],
+    "periodo": {
+      "desde": "2026-01-01T00:00:00Z",
+      "hasta_exclusivo": "2026-02-01T00:00:00Z",
+      "timezone": "America/Monterrey"
+    }
+  },
+  "investigacion_padre_id": null,
+  "idempotency_key": "00000000-0000-4000-8000-000000000700"
+}

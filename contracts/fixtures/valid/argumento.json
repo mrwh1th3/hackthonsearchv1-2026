@@ -1,0 +1,12 @@
+{
+  "trampa_codigo": "margen_delgado",
+  "pista_objetivo": "501",
+  "evidencia_objetivo_ids": [
+    "701"
+  ],
+  "argumento": "Explicación de prueba para validar estructura.",
+  "ids": [
+    "CFDI:00000000-0000-4000-8000-000000000901"
+  ],
+  "resultado": "no_refuta"
+}

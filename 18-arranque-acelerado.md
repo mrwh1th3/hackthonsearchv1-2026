@@ -2,6 +2,8 @@
 
 ## Estado real
 
+El corte de contratos sí está materializado: `contracts/README.md`, schemas2020-12, fixtures de UI/protocolo y tests Ajv. El usuario autorizó este andamio previo; no es la aplicación ni una investigación funcionando. Consumidores reutilizan el release y solicitan cambios al coordinador.
+
 Este repositorio contiene especificaciones y un kit de arranque, no todavía la aplicación ni workflows de producción. Se detectó Node 22.19.0 y Claude Code 2.1.269 localmente; Git no tiene commit inicial ni remote. No se comprobaron credenciales externas. El kit no lanza agentes ni consume APIs por abrirlo.
 
 `node scripts/launch.mjs --check` revisa el arranque local sin red ni mostrar secretos. `--start` inicia una sesión interactiva de Claude Code con el prompt de `ARRANQUE.md`, solo cuando las condiciones de lanzamiento estén cubiertas. No configura otras cuentas ni compra capacidad.

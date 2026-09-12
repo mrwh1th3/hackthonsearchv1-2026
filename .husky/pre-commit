@@ -1,0 +1,6 @@
+# Husky pre-commit (regla 1): typecheck + lint en web, tests de contratos.
+if [ -d web/node_modules ]; then
+  npm --prefix web run typecheck --silent || exit 1
+  npm --prefix web run lint --silent || exit 1
+fi
+npm test --prefix contracts --silent >/dev/null || { echo "contracts tests failed"; exit 1; }

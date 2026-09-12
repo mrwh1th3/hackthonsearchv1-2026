@@ -1,0 +1,17 @@
+{
+  "schema_version": "evento.v1",
+  "event_id": "00000000-0000-4000-8000-000000000801",
+  "tipo_evento": "investigacion.completa",
+  "investigacion_id": "00000000-0000-4000-8000-000000000800",
+  "perfil_id": "00000000-0000-4000-8000-000000000900",
+  "ocurrido_at": "2026-01-31T12:00:00Z",
+  "reporte_manifest": [
+    {
+      "caso_id": "00000000-0000-4000-8000-000000000100",
+      "reporte_id": "901",
+      "version": 1,
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "telefono": "+10000000000"
+}

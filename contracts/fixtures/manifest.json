@@ -1,0 +1,347 @@
+{
+  "version": "1.0.0",
+  "purpose": "synthetic_contract_fixtures_not_evaluation",
+  "contains_real_personal_data": false,
+  "external_calls_allowed": false,
+  "hashes_are_placeholders": true,
+  "samples": [
+    {
+      "file": "valid/corrida.json",
+      "schema": "entities.corrida"
+    },
+    {
+      "file": "valid/caso-0.json",
+      "schema": "entities.caso"
+    },
+    {
+      "file": "valid/caso-1.json",
+      "schema": "entities.caso"
+    },
+    {
+      "file": "valid/caso-2.json",
+      "schema": "entities.caso"
+    },
+    {
+      "file": "valid/pista.json",
+      "schema": "entities.pista"
+    },
+    {
+      "file": "valid/tarea.json",
+      "schema": "entities.tarea"
+    },
+    {
+      "file": "valid/senal.json",
+      "schema": "entities.senal"
+    },
+    {
+      "file": "valid/evidencia-propuesta.json",
+      "schema": "entities.evidencia_propuesta"
+    },
+    {
+      "file": "valid/evidencia-validada.json",
+      "schema": "entities.evidencia_validada"
+    },
+    {
+      "file": "valid/dictamen.json",
+      "schema": "entities.dictamen"
+    },
+    {
+      "file": "valid/especialista.json",
+      "schema": "agents.especialista"
+    },
+    {
+      "file": "valid/auditor.json",
+      "schema": "agents.auditor"
+    },
+    {
+      "file": "valid/argumento.json",
+      "schema": "agents.argumento"
+    },
+    {
+      "file": "valid/defensor.json",
+      "schema": "agents.defensor"
+    },
+    {
+      "file": "valid/replica.json",
+      "schema": "agents.replica"
+    },
+    {
+      "file": "valid/redactor.json",
+      "schema": "agents.redactor"
+    },
+    {
+      "file": "valid/editor-pregunta.json",
+      "schema": "agents.editor"
+    },
+    {
+      "file": "valid/editor-fragmento.json",
+      "schema": "agents.editor"
+    },
+    {
+      "file": "valid/editor-documento.json",
+      "schema": "agents.editor"
+    },
+    {
+      "file": "valid/documento.json",
+      "schema": "editor.documento"
+    },
+    {
+      "file": "valid/reporte.json",
+      "schema": "editor.reporte"
+    },
+    {
+      "file": "valid/solicitud-edicion.json",
+      "schema": "editor.solicitud"
+    },
+    {
+      "file": "valid/solicitud-pregunta.json",
+      "schema": "editor.solicitud"
+    },
+    {
+      "file": "valid/propuesta.json",
+      "schema": "editor.propuesta"
+    },
+    {
+      "file": "valid/aplicar.json",
+      "schema": "editor.aplicar"
+    },
+    {
+      "file": "valid/tools-pagina.json",
+      "schema": "tools.envelope"
+    },
+    {
+      "file": "valid/tools-error.json",
+      "schema": "tools.envelope"
+    },
+    {
+      "file": "valid/tool-forense_perfil.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_facturas.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_conciliar.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_seguir_dinero.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_relacionados.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_ciclos.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_pares.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_listas.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_leer_senal.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_escribir_senal.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/tool-forense_registrar_evidencia.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "valid/contexto-r1.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/contexto-r2.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/contexto-auditor.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/contexto-defensor.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/contexto-replica.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/contexto-redactor.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/contexto-editor.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "valid/provider-request.json",
+      "schema": "runtime.provider_request"
+    },
+    {
+      "file": "valid/provider-accepted.json",
+      "schema": "runtime.provider_accepted"
+    },
+    {
+      "file": "valid/checkpoint.json",
+      "schema": "runtime.checkpoint"
+    },
+    {
+      "file": "valid/investigar.json",
+      "schema": "product.investigar"
+    },
+    {
+      "file": "valid/investigacion.json",
+      "schema": "product.investigacion"
+    },
+    {
+      "file": "valid/evento-completa.json",
+      "schema": "product.evento_completa"
+    },
+    {
+      "file": "valid/perfil.json",
+      "schema": "product.perfil"
+    },
+    {
+      "file": "valid/llamada.json",
+      "schema": "product.llamada"
+    },
+    {
+      "file": "valid/notificacion.json",
+      "schema": "product.notificacion"
+    },
+    {
+      "file": "valid/evento-forense.json",
+      "schema": "product.evento_forense"
+    },
+    {
+      "file": "valid/mapper.json",
+      "schema": "ingesta.mapper"
+    }
+  ],
+  "invalid": [
+    {
+      "file": "invalid/nivel-no-permitido.json",
+      "schema": "entities.caso"
+    },
+    {
+      "file": "invalid/reintentos-excedidos.json",
+      "schema": "entities.caso"
+    },
+    {
+      "file": "invalid/importe-flotante.json",
+      "schema": "entities.caso"
+    },
+    {
+      "file": "invalid/id-bigint-numero.json",
+      "schema": "entities.senal"
+    },
+    {
+      "file": "invalid/r1-senal-ajena.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "invalid/r1-pista-ajena.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "invalid/contexto-secret.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "invalid/identidad-editor.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "invalid/redactor-hipotesis.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "invalid/redactor-tools.json",
+      "schema": "runtime.contexto"
+    },
+    {
+      "file": "invalid/respuesta-con-edicion.json",
+      "schema": "agents.editor"
+    },
+    {
+      "file": "invalid/propuesta-sin-contenido.json",
+      "schema": "agents.editor"
+    },
+    {
+      "file": "invalid/aplicar-con-documento.json",
+      "schema": "editor.aplicar"
+    },
+    {
+      "file": "invalid/cursor-ausente.json",
+      "schema": "tools.envelope"
+    },
+    {
+      "file": "invalid/error-con-datos.json",
+      "schema": "tools.envelope"
+    },
+    {
+      "file": "invalid/exito-con-error.json",
+      "schema": "tools.envelope"
+    },
+    {
+      "file": "invalid/tool-de-sistema.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "invalid/tool-identidad-inyectada.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "invalid/tool-limite-excedido.json",
+      "schema": "tools.llamada"
+    },
+    {
+      "file": "invalid/familia-incompatible.json",
+      "schema": "entities.evidencia_propuesta"
+    },
+    {
+      "file": "invalid/refutada-y-valida.json",
+      "schema": "entities.evidencia_validada"
+    },
+    {
+      "file": "invalid/completa-sin-reporte.json",
+      "schema": "product.investigacion"
+    },
+    {
+      "file": "invalid/evento-con-telefono.json",
+      "schema": "product.evento_completa"
+    },
+    {
+      "file": "invalid/llamada-sin-consentimiento.json",
+      "schema": "product.perfil"
+    },
+    {
+      "file": "invalid/mapper-codigo.json",
+      "schema": "ingesta.mapper"
+    },
+    {
+      "file": "invalid/mapper-destino-desconocido.json",
+      "schema": "ingesta.mapper"
+    },
+    {
+      "file": "invalid/enlace-javascript.json",
+      "schema": "editor.documento"
+    },
+    {
+      "file": "invalid/nodo-html.json",
+      "schema": "editor.documento"
+    }
+  ]
+}

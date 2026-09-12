@@ -1,0 +1,8 @@
+{
+  "execution_id": "00000000-0000-4000-8000-000000000600",
+  "provider": "claude_code_actions",
+  "provider_job_id": "fixture-job-1",
+  "estado": "aceptada",
+  "budget_enforcement": "tools_and_turns",
+  "modelo_efectivo": "fixture-no-model-executed"
+}

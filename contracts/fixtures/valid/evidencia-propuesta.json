@@ -1,0 +1,20 @@
+{
+  "pista_id": "501",
+  "pista_codigo": "D2",
+  "familia": "D",
+  "tipo": "cfdi",
+  "ref_id": "00000000-0000-4000-8000-000000000901",
+  "referencias": [
+    "CFDI:00000000-0000-4000-8000-000000000901"
+  ],
+  "comprobacion": {
+    "codigo": "D2",
+    "referencias": [
+      "CFDI:00000000-0000-4000-8000-000000000901"
+    ]
+  },
+  "rfcs_afectados": [
+    "DEMO:ENTIDAD-0"
+  ],
+  "descripcion": "Propuesta sintética; no acredita D2."
+}

@@ -1,0 +1,21 @@
+{
+  "name": "forense",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/launch.mjs --check",
+    "test:contracts": "npm test --prefix contracts",
+    "test:scripts": "node --test scripts/",
+    "test:runtime": "node --test n8n/tests/",
+    "test:prompts": "node --test tests/prompts/",
+    "test:voice": "node --test tests/voice/",
+    "test:all": "npm run test:contracts && npm run test:scripts && npm run test:runtime && npm run test:prompts && npm run test:voice",
+    "web:typecheck": "npm --prefix web run typecheck",
+    "web:lint": "npm --prefix web run lint",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

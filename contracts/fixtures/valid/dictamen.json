@@ -1,0 +1,11 @@
+{
+  "nivel": "presuncion",
+  "familias": [
+    "D",
+    "F"
+  ],
+  "monto_en_riesgo_centavos": "100000",
+  "moneda": "MXN",
+  "regla": "Resultado predefinido de fixture; no ejecuta clasificador.",
+  "limitaciones": []
+}

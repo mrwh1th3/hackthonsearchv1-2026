@@ -1,0 +1,213 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-1",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "1. Resumen"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-1"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "javascript:alert(1)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-2",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "2. Contribuyente"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-2"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-3",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "3. Hipótesis"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-3"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-4",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "4. Pistas"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-4"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-5",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "5. Evidencia"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-5"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-6",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "6. Análisis del Defensor"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-6"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-7",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "7. Dictamen"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-7"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": {
+        "id": "section-8",
+        "level": 2
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "8. Anexo"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "attrs": {
+        "id": "body-8"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Documento sintético de contrato. No es un reporte real. [CFDI:00000000-0000-4000-8000-000000000901]"
+        }
+      ]
+    }
+  ]
+}

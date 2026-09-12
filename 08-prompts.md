@@ -2,6 +2,8 @@
 
 Viven en `/n8n/prompts/*.md`. `version_prompts` = hash corto del contenido de toda la carpeta; se guarda en `corridas` para comparar experimentos.
 
+Salidas y contextos materializados en `contracts/schemas/agents.schema.json` y `runtime.schema.json`; fixtures y validación en `contracts/README.md`. IDs BIGINT viajan como strings. El runner valida estos contratos antes de persistir; materializar prompts no requiere volver a inventar los schemas.
+
 El runner inyecta `corrida_id`, `caso_id`, `tarea_id`, `ronda`, `intento`, `version_contexto`, `fecha_corte`, cobertura disponible y presupuesto restante según `03`. Identidad, versión, permisos y límites no son argumentos que el modelo pueda elegir. Los formatos de salida se validan en código antes de persistirse; los prompts orientan, no sustituyen las reglas de DB.
 
 **Contratos de salida para implementar antes de conectar nodos:**

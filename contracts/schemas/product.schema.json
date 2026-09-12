@@ -1,0 +1,673 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forense.invalid/contracts/v1/product.schema.json",
+  "title": "Forense v1 — product",
+  "$defs": {
+    "investigar": {
+      "type": "object",
+      "properties": {
+        "mensaje": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "directriz_id": {
+          "type": "string",
+          "enum": [
+            "seguir_dinero",
+            "sin_pago",
+            "intentar_refutar",
+            "comparar_pares",
+            "explicar_cadena",
+            "resumen"
+          ]
+        },
+        "directriz_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "contexto": {
+          "type": "object",
+          "properties": {
+            "corrida_id": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            "cluster_id": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            "rfcs": {
+              "type": "array",
+              "items": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+              },
+              "maxItems": 40,
+              "minItems": 0,
+              "uniqueItems": true
+            },
+            "evidencia_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+              },
+              "maxItems": 40,
+              "minItems": 0,
+              "uniqueItems": true
+            },
+            "periodo": {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/periodo"
+            }
+          },
+          "required": [
+            "corrida_id",
+            "rfcs",
+            "evidencia_ids",
+            "periodo"
+          ],
+          "additionalProperties": false
+        },
+        "investigacion_padre_id": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        }
+      },
+      "required": [
+        "mensaje",
+        "directriz_id",
+        "directriz_version",
+        "contexto",
+        "investigacion_padre_id",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    "investigacion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "perfil_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "modo": {
+          "type": "string",
+          "enum": [
+            "caso",
+            "corrida"
+          ]
+        },
+        "corrida_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "caso_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+          },
+          "maxItems": 100,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "en_cola",
+            "investigando",
+            "generando_reporte",
+            "investigacion_completa",
+            "parcial",
+            "error",
+            "cancelada"
+          ]
+        },
+        "investigacion_padre_id": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "creado": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "completada_at": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reporte_manifest": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "caso_id": {
+                "anyOf": [
+                  {
+                    "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reporte_id": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "content_hash": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+              }
+            },
+            "required": [
+              "caso_id",
+              "reporte_id",
+              "version",
+              "content_hash"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 100,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "perfil_id",
+        "modo",
+        "corrida_id",
+        "caso_ids",
+        "estado",
+        "investigacion_padre_id",
+        "creado",
+        "completada_at",
+        "reporte_manifest"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "estado": {
+                "const": "investigacion_completa"
+              }
+            },
+            "required": [
+              "estado"
+            ]
+          },
+          "then": {
+            "properties": {
+              "completada_at": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+              },
+              "reporte_manifest": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evento_completa": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "evento.v1"
+        },
+        "event_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "tipo_evento": {
+          "const": "investigacion.completa"
+        },
+        "investigacion_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "perfil_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "ocurrido_at": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "reporte_manifest": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "caso_id": {
+                "anyOf": [
+                  {
+                    "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reporte_id": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "content_hash": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/hash"
+              }
+            },
+            "required": [
+              "caso_id",
+              "reporte_id",
+              "version",
+              "content_hash"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 100,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "event_id",
+        "tipo_evento",
+        "investigacion_id",
+        "perfil_id",
+        "ocurrido_at",
+        "reporte_manifest"
+      ],
+      "additionalProperties": false
+    },
+    "perfil": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "nombre": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "organizacion": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "telefono_e164": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\+[1-9][0-9]{7,14}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "llamadas_activadas": {
+          "type": "boolean"
+        },
+        "consentimiento_at": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "nombre",
+        "organizacion",
+        "timezone",
+        "telefono_e164",
+        "llamadas_activadas",
+        "consentimiento_at"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "llamadas_activadas": {
+                "const": true
+              }
+            },
+            "required": [
+              "llamadas_activadas"
+            ]
+          },
+          "then": {
+            "properties": {
+              "telefono_e164": {
+                "type": "string",
+                "pattern": "^\\+[1-9][0-9]{7,14}$"
+              },
+              "consentimiento_at": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "llamada": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "event_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "intento": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "estado": {
+          "type": "string",
+          "enum": [
+            "pendiente",
+            "solicitando",
+            "aceptada",
+            "en_curso",
+            "finalizada",
+            "fallida",
+            "sin_respuesta",
+            "omitida",
+            "resultado_desconocido"
+          ]
+        },
+        "destino_enmascarado": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\*{4,}[0-9]{0,4}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "aviso_entregado": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "event_id",
+        "intento",
+        "estado",
+        "destino_enmascarado",
+        "conversation_id",
+        "aviso_entregado",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "notificacion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "perfil_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "event_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "tipo": {
+          "type": "string",
+          "enum": [
+            "investigacion_completa",
+            "llamada_resultado",
+            "error"
+          ]
+        },
+        "titulo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "recurso": {
+          "type": "object",
+          "properties": {
+            "tipo": {
+              "type": "string",
+              "enum": [
+                "investigacion",
+                "reporte"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "tipo",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "leida_at": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "creado": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        }
+      },
+      "required": [
+        "id",
+        "perfil_id",
+        "event_id",
+        "tipo",
+        "titulo",
+        "recurso",
+        "leida_at",
+        "creado"
+      ],
+      "additionalProperties": false
+    },
+    "evento_forense": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "bitacora.v1"
+        },
+        "id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+        },
+        "corrida_id": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+        },
+        "caso_id": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tarea_id": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ts": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "tipo_evento": {
+          "type": "string",
+          "enum": [
+            "caso_creado",
+            "cluster_armado",
+            "pista_cargada",
+            "ronda_inicio",
+            "ronda_fin",
+            "razonamiento",
+            "tool_call",
+            "tool_result",
+            "senal_escrita",
+            "senal_leida",
+            "despertar",
+            "frontera_detectada",
+            "cluster_expandido",
+            "auditoria",
+            "defensa_inicio",
+            "defensa_argumento",
+            "replica",
+            "validacion",
+            "evidencia_descartada",
+            "dictamen",
+            "rechazo_auditor_final",
+            "reintento_inicio",
+            "redaccion_inicio",
+            "redaccion_fin",
+            "edicion",
+            "error",
+            "presupuesto_agotado"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "resumen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2400
+            },
+            "referencias": {
+              "type": "array",
+              "items": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+              },
+              "maxItems": 100,
+              "minItems": 0,
+              "uniqueItems": true
+            },
+            "operacion_id": {
+              "anyOf": [
+                {
+                  "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "resumen",
+            "referencias",
+            "operacion_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "corrida_id",
+        "caso_id",
+        "tarea_id",
+        "seq",
+        "ts",
+        "tipo_evento",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

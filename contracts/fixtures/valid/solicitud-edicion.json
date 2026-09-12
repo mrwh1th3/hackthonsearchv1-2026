@@ -1,0 +1,18 @@
+{
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "version_base": 1,
+  "modo": "propuesta",
+  "seleccion": {
+    "from": 1,
+    "to": 20,
+    "block_ids": [
+      "body-1"
+    ],
+    "texto_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "mensaje": "Haz más claro este párrafo.",
+  "evidencia_ids": [
+    "701"
+  ],
+  "idempotency_key": "00000000-0000-4000-8000-000000000401"
+}

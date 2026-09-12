@@ -4,6 +4,8 @@
 
 ## Parte A: el motor de pistas (`003_pistas.sql`)
 
+Inputs y envelope común ejecutables en `contracts/schemas/tools.schema.json` (v1). `p_hasta` de facturas es exclusivo. Identidad/fencing/operación se inyectan fuera de argumentos LLM. Resultados propios de cada RPC aún requieren schemas específicos al implementarlas; validar el envelope no demuestra el contenido de `data`.
+
 Cada pista es una función `forense.pista_XX(p_corrida uuid) returns int` que inserta filas en `forense.pistas` y devuelve cuántas insertó. Un orquestador las llama todas:
 
 ```sql

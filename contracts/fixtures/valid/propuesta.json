@@ -1,0 +1,28 @@
+{
+  "propuesta_id": "00000000-0000-4000-8000-000000000403",
+  "version_base": 1,
+  "mensaje": "Propuesta pendiente de aplicar.",
+  "patch": [
+    {
+      "op": "replace_block",
+      "block_id": "body-1",
+      "before_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "after": {
+        "type": "paragraph",
+        "attrs": {
+          "id": "body-1"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Texto de demostración revisado."
+          }
+        ]
+      }
+    }
+  ],
+  "diff": "- Texto anterior\n+ Texto revisado",
+  "citas": [
+    "CFDI:00000000-0000-4000-8000-000000000901"
+  ]
+}

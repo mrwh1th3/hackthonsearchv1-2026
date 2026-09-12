@@ -1,0 +1,8 @@
+{
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "version_base": 1,
+  "modo": "pregunta",
+  "mensaje": "¿Qué significa esta sección?",
+  "evidencia_ids": [],
+  "idempotency_key": "00000000-0000-4000-8000-000000000402"
+}

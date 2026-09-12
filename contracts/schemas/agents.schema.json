@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forense.invalid/contracts/v1/agents.schema.json",
+  "title": "Forense v1 — agents",
+  "$defs": {
+    "especialista": {
+      "type": "object",
+      "properties": {
+        "senal_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+          },
+          "maxItems": 16,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "resumen": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "limitaciones": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/limitacion"
+          },
+          "maxItems": 40,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "senal_ids",
+        "resumen",
+        "limitaciones"
+      ],
+      "additionalProperties": false
+    },
+    "auditor": {
+      "type": "object",
+      "properties": {
+        "rfc_principal": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+        },
+        "rfcs_satelite": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/entidad_id"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "tipologia": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/tipologia"
+        },
+        "hipotesis": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "evidencia": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/entities.schema.json#/$defs/evidencia_propuesta"
+          },
+          "maxItems": 40,
+          "minItems": 0
+        },
+        "limitaciones": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/limitacion"
+          },
+          "maxItems": 40,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "rfc_principal",
+        "rfcs_satelite",
+        "tipologia",
+        "hipotesis",
+        "evidencia",
+        "limitaciones"
+      ],
+      "additionalProperties": false
+    },
+    "argumento": {
+      "type": "object",
+      "properties": {
+        "trampa_codigo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "pista_objetivo": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+        },
+        "evidencia_objetivo_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+          },
+          "maxItems": 40,
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "argumento": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "resultado": {
+          "type": "string",
+          "enum": [
+            "refuta",
+            "parcial",
+            "no_refuta"
+          ]
+        }
+      },
+      "required": [
+        "trampa_codigo",
+        "pista_objetivo",
+        "evidencia_objetivo_ids",
+        "argumento",
+        "ids",
+        "resultado"
+      ],
+      "additionalProperties": false
+    },
+    "defensor": {
+      "type": "object",
+      "properties": {
+        "argumentos": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/agents.schema.json#/$defs/argumento"
+          },
+          "maxItems": 40,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "argumentos"
+      ],
+      "additionalProperties": false
+    },
+    "replica": {
+      "type": "object",
+      "properties": {
+        "resoluciones": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "defensa_id": {
+                "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/bigint"
+              },
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "acepta",
+                  "rechaza"
+                ]
+              },
+              "razon": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1200
+              }
+            },
+            "required": [
+              "defensa_id",
+              "decision",
+              "razon"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 40,
+          "minItems": 0
+        }
+      },
+      "required": [
+        "resoluciones"
+      ],
+      "additionalProperties": false
+    },
+    "redactor": {
+      "type": "object",
+      "properties": {
+        "markdown": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80000
+        }
+      },
+      "required": [
+        "markdown"
+      ],
+      "additionalProperties": false
+    },
+    "editor": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "modo": {
+              "const": "respuesta"
+            },
+            "mensaje": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "required": [
+            "modo",
+            "mensaje"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "modo": {
+              "type": "string",
+              "enum": [
+                "fragmento",
+                "documento"
+              ]
+            },
+            "mensaje": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "contenido": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80000
+            }
+          },
+          "required": [
+            "modo",
+            "mensaje",
+            "contenido"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "tarea_id": "00000000-0000-4000-8000-000000000300",
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "p_operacion": "00000000-0000-4000-8000-000000000501",
+  "fencing_token": "1",
+  "herramienta": "forense_escribir_senal",
+  "argumentos": {
+    "p_familia": "D",
+    "p_titular": "Escenario sintético D2, no hallazgo real",
+    "p_detalle": {
+      "pista_id": "501",
+      "descripcion": "Dato simulado para render y validación de forma."
+    },
+    "p_rfcs": [
+      "DEMO:ENTIDAD-0"
+    ],
+    "p_ids": [
+      "CFDI:00000000-0000-4000-8000-000000000901"
+    ],
+    "p_frontera": [],
+    "p_confianza": "media",
+    "p_refuta": false
+  }
+}

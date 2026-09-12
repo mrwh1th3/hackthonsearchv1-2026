@@ -1,0 +1,17 @@
+{
+  "schema_version": "bitacora.v1",
+  "id": "1001",
+  "corrida_id": "00000000-0000-4000-8000-000000000001",
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "tarea_id": "00000000-0000-4000-8000-000000000300",
+  "seq": 1,
+  "ts": "2026-01-31T12:00:00Z",
+  "tipo_evento": "senal_escrita",
+  "payload": {
+    "resumen": "Evento sintético de contrato.",
+    "referencias": [
+      "CFDI:00000000-0000-4000-8000-000000000901"
+    ],
+    "operacion_id": "00000000-0000-4000-8000-000000000501"
+  }
+}

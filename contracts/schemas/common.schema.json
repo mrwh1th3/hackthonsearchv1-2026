@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forense.invalid/contracts/v1/common.schema.json",
+  "title": "Forense v1 — common",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bigint": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,18}$"
+    },
+    "entidad_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9_:.-]+$"
+    },
+    "fecha": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "familia": {
+      "type": "string",
+      "enum": [
+        "D",
+        "F",
+        "R",
+        "T",
+        "E"
+      ]
+    },
+    "pista_codigo": {
+      "type": "string",
+      "enum": [
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "R1",
+        "R2",
+        "R3",
+        "T1",
+        "T2",
+        "E1"
+      ]
+    },
+    "rol": {
+      "type": "string",
+      "enum": [
+        "documental",
+        "financiero",
+        "relacional",
+        "temporal",
+        "externo",
+        "auditor",
+        "defensor",
+        "replica",
+        "redactor",
+        "editor"
+      ]
+    },
+    "nivel": {
+      "type": "string",
+      "enum": [
+        "sin_hallazgos",
+        "anomalia_explicada",
+        "no_concluyente",
+        "presuncion",
+        "presuncion_alta"
+      ]
+    },
+    "tipologia": {
+      "type": "string",
+      "enum": [
+        "efos_sin_sustancia",
+        "retorno",
+        "carrusel",
+        "capas",
+        "cluster_prestanombres",
+        "no_concluyente"
+      ]
+    },
+    "referencia": {
+      "type": "string",
+      "pattern": "^(CFDI|MOV|ATR|LISTA|CICLO|PAR):[^\\s]+$",
+      "maxLength": 512
+    },
+    "importe": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]{0,11})\\.[0-9]{2}$"
+    },
+    "moneda": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "periodo": {
+      "type": "object",
+      "properties": {
+        "desde": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "hasta_exclusivo": {
+          "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/fecha"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "desde",
+        "hasta_exclusivo",
+        "timezone"
+      ],
+      "additionalProperties": false
+    },
+    "limitacion": {
+      "type": "object",
+      "properties": {
+        "codigo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "descripcion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "referencias": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/referencia"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "codigo",
+        "descripcion",
+        "referencias"
+      ],
+      "additionalProperties": false
+    },
+    "cobertura": {
+      "type": "object",
+      "properties": {
+        "completa": {
+          "type": "boolean"
+        },
+        "periodo": {
+          "anyOf": [
+            {
+              "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/periodo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "familias_evaluables": {
+          "type": "array",
+          "items": {
+            "$ref": "https://forense.invalid/contracts/v1/common.schema.json#/$defs/familia"
+          },
+          "maxItems": 5,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "datos_ausentes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "completa",
+        "periodo",
+        "familias_evaluables",
+        "datos_ausentes"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "codigo": {
+          "type": "string",
+          "enum": [
+            "presupuesto_agotado",
+            "lease_vencido",
+            "contexto_invalido",
+            "argumento_invalido",
+            "no_evaluable",
+            "fallo_transitorio",
+            "conflicto_version",
+            "salida_invalida",
+            "no_autorizado"
+          ]
+        },
+        "mensaje": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "reintentable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "codigo",
+        "mensaje",
+        "reintentable"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

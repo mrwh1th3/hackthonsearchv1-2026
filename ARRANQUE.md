@@ -18,7 +18,7 @@ No descargar estos documentos enteros al contexto de cada investigador: son espe
 
 1. Confirmar inicio, destinos y permisos. Inventariar repo, MCPs y versión real de n8n mediante lecturas; no exponer claves.
 2. Hay Claude Code local. Usar la terminal de Cursor; no invertir tiempo migrando a Antigravity. Confirmar modelo efectivo y autenticación de la sesión.
-3. Congelar contratos mínimos de entidades, envelope de tools, eventos, contextos, salida de roles, editor y adapter de proveedor. Crear scaffold y comandos de tests, con archivos de ownership reservados.
+3. Leer contratos ya materializados en contracts/README.md y release.json. Instalar dependencias con npm ci --prefix contracts --ignore-scripts y ejecutar npm test --prefix contracts. Usar esos schemas/fixtures de entidades, tools, eventos, contextos, roles, editor y proveedor. Extender resultados específicos de RPC cuando se implementen; registrar cualquier cambio de contrato antes de delegar consumidores. No recrear contratos desde cero. Crear scaffold de producto con ownership reservado después del gate de inicio.
 4. Verificar baseline Git. Si no hay commit, pedir/obtener autorización para el snapshot local revisado y preparar archivos explícitos sin secretos; no hacer add ciego. Worktrees requieren docs/contratos comprometidos en HEAD. No publicar sin permiso.
 5. Un único dueño de package manifests/lockfiles/config raíz/contracts y montaje de rutas: tú. Workers piden dependencias; tú las integras.
 6. Registrar estado en reports/handoff/ESTADO.md: gate, dueño, resultado, evidencia de test, bloqueos y siguiente entrega. No hay un agente dedicado a vigilar eternamente.

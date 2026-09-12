@@ -1,14 +1,16 @@
 # CLAUDE.md — Agente Forense de Facturación Falsa
 
-Proyecto de hackathon (reto Infosys, 36 h). Este archivo se lee al inicio de cada sesión. Los documentos `00`–`20` están actualmente en la raíz; `/docs` es la ubicación prevista del repositorio de implementación. Hasta trasladarlos juntos, resolver las referencias `docs/...` contra la raíz, sin duplicar versiones. El plan vigente es `12-plan-36h.md`; 17 precisa runtime, 18 delegación, 19 ingesta y 20 proveedor. El orden de migraciones y contratos de datos se define en `05-esquema-db.md`.
+Proyecto de hackathon (reto Infosys, 36 h). Este archivo se lee al inicio de cada sesión. Los documentos `00`–`20` están actualmente en la raíz; `/docs` es la ubicación prevista del repositorio de implementación. Hasta trasladarlos juntos, resolver las referencias `docs/...` contra la raíz, sin duplicar versiones. El plan vigente es `12-plan-36h.md`; 17 precisa runtime, 18 delegación, 19 ingesta y 20 proveedor. **21 es normativo sobre lo que dijo el juez y la inyección en vivo; donde discrepe con 00–20, prevalece 21.** El orden de migraciones y contratos de datos se define en `05-esquema-db.md`.
 
 ## Arranque con una instrucción
 
+**Contratos ya materializados:** leer `contracts/README.md` y `contracts/release.json`; ejecutar `npm ci --prefix contracts --ignore-scripts` y `npm test --prefix contracts`. Reutilizar schemas/fixtures v1, no redefinirlos por agente. El usuario autorizó este andamio de contratos antes del inicio; no autoriza adelantar la lógica de investigación, UI o despliegues. El coordinador conserva ownership exclusivo de `contracts/` y su lockfile.
+
 “Lee CLAUDE.md y ejecuta ARRANQUE.md con los subagentes definidos, respetando el gate de inicio y los permisos”. Alternativa desde terminal: `node scripts/launch.mjs --check`, y cuando pase, `node scripts/launch.mjs --start`.
 
-El usuario confirmó que todavía faltaban unos 90 minutos para el evento: no escribir lógica antes de confirmar inicio. Hay tres personas, Claude Code en terminal, MCPs declarados pero aún no verificados aquí. Cuenta n8n `victorinbm2006`; repo probable `hackthonmty2026`, pendiente de resolver. El login de servicios lo hace el usuario si se necesita. Nunca elegir un proyecto de clientes por aproximación.
+**Inicio confirmado el 2026-09-11 (“arranca YA todo el proyecto”); `hackathon_started=true`. Proveedor decidido: `messages_api` (ver 21 §5); fallback documentado Claude Code/Actions, no construido.** Hay tres personas y Claude Code en terminal. Destinos resueltos por lectura MCP el 2026-09-11 (21 §5 y `launch.config.json`): repo `mrwh1th3/hackthonsearchv1-2026`, n8n proyecto personal con prefijo `FORENSE_`, Supabase proyecto `forense`, Vercel equipo hobby. `hackthonmty2026` está vacío. El login de servicios lo hace el usuario si se necesita. Nunca elegir un proyecto de clientes por aproximación.
 
-Delegación obligatoria de desarrollo: coordinador **opus**, máximo tres workers iniciales en worktrees. **opus**: forense-db, forense-runtime, forense-prompts, forense-editor, forense-qa. **sonnet**: forense-webapp y forense-voice. **haiku**: forense-docs. Son alias de Claude Code, no modelos de la API forense. Ownership y oleadas en 18; definiciones cargables en `.claude/agents/`. Coordinador posee contratos, raíz, lockfiles, integración y permisos remotos. Un baseline Git revisado debe existir antes de abrir worktrees; las tres cuentas no se reparten automáticamente.
+Delegación obligatoria de desarrollo: coordinador **opus**, cuatro workers en oleada 1 (decisión H0, ver 21 §5; reversible a tres). **opus**: forense-db, forense-runtime, forense-prompts, forense-editor, forense-qa. **sonnet**: forense-webapp y forense-voice. **haiku**: forense-docs. Son alias de Claude Code, no modelos de la API forense. Ownership y oleadas en 18; definiciones cargables en `.claude/agents/`. Coordinador posee contratos, raíz, lockfiles, integración y permisos remotos. Un baseline Git revisado debe existir antes de abrir worktrees; las tres cuentas no se reparten automáticamente.
 
 ## Qué se construye
 
@@ -27,6 +29,7 @@ Un sistema multi-agente que investiga registros financieros (CFDI, movimientos b
 9. **Alcance completo, integración temprana.** Seguir `12-plan-36h.md`: expediente real H8–10, funcionalidades integradas H24–26, evaluación hasta H32. Las entregas incrementales no autorizan eliminar funciones. Si un gate falla, diagnosticar y reasignar; comunicar retrasos medidos.
 10. **Corridas aisladas.** Cargar o clonar un snapshot, validar y marcarlo `lista` antes de ejecutar pistas. No mezclar datos de otras corridas ni sobreescribir sus resultados. Evidencia insuficiente queda `no_concluyente`; agotar reintentos nunca aumenta el nivel.
 11. **Producto y trazabilidad:** diseño 15 y notificaciones 16 son normativos. `investigacion_completa` exige reportes validados y persistidos; emite outbox una vez por solicitud, no por cluster. Voz requiere consentimiento y perfil; el fallo de llamada no invalida el reporte. Chat propone y Aplicar versiona; preguntas y propuestas no alteran el documento.
+12. **Inyección en vivo (21).** Los jueces inyectarán datos sintéticos con el sistema corriendo. Una inyección nunca muta un snapshot: crea corrida nueva clonada con `corrida_origen_id`, recalcula pistas/clusters, despacha primero los clusters con RFC inyectados y muestra la reacción como timeline persistido y diff antes/después. Cada expediente incluye las secciones **Trayectoria** y **Cadena de explicación**; cada caso dictaminado ofrece **Contraste** (“por qué esta sí y aquella no”). Sin evento persistido no hay animación.
 
 ## Estructura del repo
 
@@ -69,3 +72,4 @@ Un sistema multi-agente que investiga registros financieros (CFDI, movimientos b
 | `docs/18-arranque-acelerado.md` | Subagentes Claude, modelos, ownership, oleadas y preflight |
 | `docs/19-ingesta-datasets.md` | Mapper IA, staging, validación, adaptadores y migración 008 |
 | `docs/20-proveedor-github-actions.md` | Auditoría del sistema existente, OAuth oficial, despacho y diferencias frente a API |
+| `docs/21-criterios-juez-e-inyeccion-en-vivo.md` | Transcripción del juez principal (2026-09-11), prueba de inyección en vivo, sección Trayectoria/Contraste/Cadena de explicación y decisiones H0 (proveedor, destinos) |

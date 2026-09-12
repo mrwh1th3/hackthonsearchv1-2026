@@ -1,0 +1,13 @@
+{
+  "id": "00000000-0000-4000-8000-000000000803",
+  "perfil_id": "00000000-0000-4000-8000-000000000900",
+  "event_id": "00000000-0000-4000-8000-000000000801",
+  "tipo": "investigacion_completa",
+  "titulo": "Reporte de demostración disponible",
+  "recurso": {
+    "tipo": "investigacion",
+    "id": "00000000-0000-4000-8000-000000000800"
+  },
+  "leida_at": null,
+  "creado": "2026-01-31T12:00:00Z"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "601",
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "cluster_id": "00000000-0000-4000-8000-000000000200",
+  "tarea_id": "00000000-0000-4000-8000-000000000300",
+  "ronda": 1,
+  "intento": 0,
+  "version_contexto": 1,
+  "familia": "D",
+  "agente": "documental",
+  "titular": "Escenario sintético D2, no hallazgo real",
+  "detalle": {
+    "pista_id": "501",
+    "descripcion": "Dato simulado para render y validación de forma."
+  },
+  "rfcs": [
+    "DEMO:ENTIDAD-0"
+  ],
+  "ids": [
+    "CFDI:00000000-0000-4000-8000-000000000901"
+  ],
+  "frontera": [],
+  "confianza": "media",
+  "refuta": false
+}

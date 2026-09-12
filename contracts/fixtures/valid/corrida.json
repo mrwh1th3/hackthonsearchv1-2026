@@ -1,0 +1,21 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "nombre": "Demo contractual, no evaluación",
+  "dataset": "fixture-contract-v1",
+  "dataset_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "fecha_corte": "2026-01-31T12:00:00Z",
+  "corrida_origen_id": null,
+  "estado": "completada",
+  "version_prompts": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "version_reglas": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "modo": "fixture",
+  "familias_evaluables": [
+    "D",
+    "F",
+    "R",
+    "T",
+    "E"
+  ],
+  "inicio": "2026-01-31T12:00:00Z",
+  "fin": "2026-01-31T12:00:00Z"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "00000000-0000-4000-8000-000000000100",
+  "corrida_id": "00000000-0000-4000-8000-000000000001",
+  "cluster_id": "00000000-0000-4000-8000-000000000200",
+  "rfc_principal": "DEMO:ENTIDAD-0",
+  "rfcs_satelite": [],
+  "estado": "dictaminado",
+  "nivel": "presuncion",
+  "tipologia": "retorno",
+  "familias_confirmadas": [
+    "D",
+    "F"
+  ],
+  "monto_en_riesgo": "1000.00",
+  "moneda": "MXN",
+  "cobertura_completa": true,
+  "n_reintentos": 3,
+  "presupuesto_agotado": false,
+  "creado": "2026-01-31T12:00:00Z",
+  "terminado": "2026-01-31T12:00:00Z"
+}

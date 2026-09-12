@@ -1,0 +1,15 @@
+{
+  "tarea_id": "00000000-0000-4000-8000-000000000300",
+  "caso_id": "00000000-0000-4000-8000-000000000100",
+  "p_operacion": "00000000-0000-4000-8000-000000000501",
+  "fencing_token": "1",
+  "herramienta": "forense_facturas",
+  "argumentos": {
+    "p_rfc": "DEMO:ENTIDAD-0",
+    "p_rol": "emisor",
+    "p_desde": "2026-01-01T00:00:00Z",
+    "p_hasta": "2026-02-01T00:00:00Z",
+    "p_limite": 51,
+    "p_cursor": null
+  }
+}

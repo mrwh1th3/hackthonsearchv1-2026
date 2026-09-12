@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "data": {
+    "items": [
+      {
+        "uuid": "00000000-0000-4000-8000-000000000901",
+        "total": "1000.00",
+        "moneda": "MXN",
+        "fecha": "2026-01-31T12:00:00Z"
+      }
+    ]
+  },
+  "referencias": [
+    "CFDI:00000000-0000-4000-8000-000000000901"
+  ],
+  "cobertura": {
+    "completa": true,
+    "periodo": {
+      "desde": "2026-01-01T00:00:00Z",
+      "hasta_exclusivo": "2026-02-01T00:00:00Z",
+      "timezone": "America/Monterrey"
+    },
+    "familias_evaluables": [
+      "D",
+      "F",
+      "R",
+      "T",
+      "E"
+    ],
+    "datos_ausentes": []
+  },
+  "truncado": true,
+  "has_more": true,
+  "next_cursor": "fixture-cursor-no-utilizable-en-backend",
+  "error": {
+    "codigo": "fallo_transitorio",
+    "mensaje": "No válido",
+    "reintentable": true
+  }
+}

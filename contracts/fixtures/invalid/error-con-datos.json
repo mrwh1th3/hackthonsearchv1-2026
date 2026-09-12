@@ -1,0 +1,33 @@
+{
+  "ok": false,
+  "data": {
+    "items": []
+  },
+  "referencias": [],
+  "cobertura": {
+    "completa": false,
+    "periodo": {
+      "desde": "2026-01-01T00:00:00Z",
+      "hasta_exclusivo": "2026-02-01T00:00:00Z",
+      "timezone": "America/Monterrey"
+    },
+    "familias_evaluables": [
+      "D",
+      "F",
+      "R",
+      "T",
+      "E"
+    ],
+    "datos_ausentes": [
+      "resultado"
+    ]
+  },
+  "truncado": false,
+  "has_more": false,
+  "next_cursor": null,
+  "error": {
+    "codigo": "presupuesto_agotado",
+    "mensaje": "Límite sintético de prueba.",
+    "reintentable": false
+  }
+}
