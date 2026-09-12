@@ -4,6 +4,7 @@ import { getDataSource } from "@/lib/data";
 import { RawLog } from "./raw-log";
 
 export const metadata = { title: "Forense · Bitácora cruda" };
+export const dynamic = "force-dynamic";
 
 export default async function CorridaRawPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

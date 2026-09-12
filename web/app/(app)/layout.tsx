@@ -1,6 +1,8 @@
 import { AppShell } from "@/components/shared/app-shell";
 import { getDataSource } from "@/lib/data";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Envuelve toda ruta autenticada (todo excepto /login) con el shell de
  * 15 §3. `middleware.ts` ya garantiza sesión válida antes de llegar aquí;

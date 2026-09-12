@@ -10,6 +10,7 @@ import { CasoPanels } from "./caso-panels";
 import { CasoTimeline } from "./caso-timeline";
 
 export const metadata = { title: "Forense · Caso" };
+export const dynamic = "force-dynamic";
 
 export default async function CasoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,10 +20,10 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
   const { caso } = detalle;
 
   const [entidad, bitacora, grafo, trayectoria, contraste] = await Promise.all([
-    ds.getEntidad(caso.rfc_principal),
+    ds.getEntidad(caso.rfc_principal, caso.corrida_id),
     ds.getBitacoraCaso(id),
     ds.getClusterGrafo(caso.cluster_id),
-    ds.getTrayectoria(caso.rfc_principal),
+    ds.getTrayectoria(caso.rfc_principal, caso.corrida_id),
     ds.getContraste(id),
   ]);
 

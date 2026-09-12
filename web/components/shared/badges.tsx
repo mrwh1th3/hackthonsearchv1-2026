@@ -24,7 +24,16 @@ const NIVEL_LABEL: Record<Nivel, string> = {
   presuncion_alta: "Presunción alta",
 };
 
-export function NivelBadge({ nivel, motivo, className }: { nivel: Nivel; motivo?: string; className?: string }) {
+export function NivelBadge({ nivel, motivo, className }: { nivel: Nivel | null; motivo?: string; className?: string }) {
+  if (nivel === null) {
+    // Caso todavía en curso: el contrato permite `nivel: null` (aún no
+    // dictaminado). Nunca se muestra un nivel inventado mientras tanto.
+    return (
+      <span className={cn("inline-flex items-center rounded-full border border-dashed border-border px-2 py-0.5 text-xs font-medium text-text-subtle", className)}>
+        En curso
+      </span>
+    );
+  }
   return (
     <span
       title={nivel === "no_concluyente" ? motivo : undefined}

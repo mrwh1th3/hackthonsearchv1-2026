@@ -5,6 +5,7 @@ import type { Nivel } from "@/lib/data";
 import { QueueTable, type FilaCola } from "./queue-table";
 
 export const metadata = { title: "Forense · Cola de casos" };
+export const dynamic = "force-dynamic";
 
 const NIVELES: Nivel[] = ["presuncion_alta", "presuncion", "no_concluyente", "anomalia_explicada", "sin_hallazgos"];
 
@@ -16,7 +17,7 @@ export default async function InicioPage() {
 
   const filas: FilaCola[] = await Promise.all(
     casos.map(async (caso) => {
-      const entidad = await ds.getEntidad(caso.rfc_principal);
+      const entidad = await ds.getEntidad(caso.rfc_principal, caso.corrida_id);
       return { caso, razonSocialUntrusted: entidad?.razon_social_untrusted ?? null };
     }),
   );

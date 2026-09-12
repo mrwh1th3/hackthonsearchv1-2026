@@ -3,6 +3,7 @@ import { NotificationCenter } from "@/components/shared/notification-center";
 import { getDataSource } from "@/lib/data";
 
 export const metadata = { title: "Forense · Notificaciones" };
+export const dynamic = "force-dynamic";
 
 export default async function NotificacionesPage() {
   const ds = getDataSource();

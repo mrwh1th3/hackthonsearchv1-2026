@@ -6,6 +6,7 @@ import { AtributosCompartidosTable, FacturasTable, ParesPanel } from "./entidad-
 import { EntidadGrafo } from "./entidad-grafo";
 
 export const metadata = { title: "Forense · Entidad" };
+export const dynamic = "force-dynamic";
 
 /**
  * 09 §4: el RFC puede aparecer en distintos snapshots — `?corrida_id=`
@@ -24,7 +25,11 @@ export default async function EntidadPage({
   const rfc = decodeURIComponent(rfcParam);
 
   const ds = getDataSource();
-  const [entidad, pares, trayectoria] = await Promise.all([ds.getEntidad(rfc), ds.getPares(rfc), ds.getTrayectoria(rfc)]);
+  const [entidad, pares, trayectoria] = await Promise.all([
+    ds.getEntidad(rfc, corridaId),
+    ds.getPares(rfc, corridaId),
+    ds.getTrayectoria(rfc, corridaId),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">

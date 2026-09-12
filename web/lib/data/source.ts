@@ -5,7 +5,6 @@ import type {
   ContrasteCaso,
   Corrida,
   Dictamen,
-  EmbudoEtapa,
   EventoForense,
   EvidenciaValidada,
   GrafoCluster,
@@ -34,13 +33,71 @@ export interface EntidadPerfil {
   casos_previos: string[];
 }
 
+/**
+ * Forma real de `forense.v_metricas_corrida(uuid)` (docs/10, db/002_views.sql
+ * §8, "IMPLEMENTACIÓN PARCIAL"). No hay codegen: se mantiene a mano contra el
+ * jsonb observado (`psql -c "select forense.v_metricas_corrida(...)"`) igual
+ * que el resto de tipos "fixture local de UI" de este archivo — ver
+ * types.ts. `parcial: true` es una respuesta válida y esperada, no un error:
+ * la UI debe mostrarlo (CLAUDE.md regla 10, corte 2 punto 1), nunca
+ * completar con un número inventado lo que la vista declara `no_implementado`.
+ */
 export interface EstadisticasCorrida {
-  embudo: EmbudoEtapa[];
-  confusion: Array<{ real: "positivo" | "negativo"; predicho: "positivo" | "negativo"; cantidad: number }>;
-  fpr_trampas: { numerador: number; denominador: number };
-  por_tipologia: Array<{ tipologia: string; cantidad: number; monto_en_riesgo: string }>;
-  costo: { tokens_totales: number; duracion_ms_total: number; llamadas_totales: number; tasa_acierto_cache: number };
-  rondas: { pct_ronda_2: number; pct_frontera_expandida: number; pct_reintento: number };
+  corrida_id: string;
+  dataset: string;
+  dataset_hash: string;
+  fecha_corte: string;
+  modo: string;
+  estado_corrida: string;
+  version_reglas: string | null;
+  version_prompts: string | null;
+  corrida_origen_id: string | null;
+  parcial: boolean;
+  terminal: boolean;
+  no_implementado: string[];
+  acierto_tipologia: number | null;
+  cohorte: {
+    total_ground_truth: number;
+    total_fraude: number;
+    total_trampas: number;
+    sin_conclusion: number;
+  };
+  cobertura: {
+    ratio: number | null;
+    concluyentes: number;
+    trampas_investigadas: number;
+  };
+  operacion: {
+    casos: number;
+    reintentos: number;
+    tool_calls: number;
+    tokens_total: number;
+    casos_por_nivel: Record<string, number>;
+    duracion_ms_p50: number | null;
+    duracion_ms_p95: number | null;
+    presupuesto_agotado: number;
+  };
+  selectivas: {
+    tp: number;
+    fp: number;
+    tn: number;
+    fn_selectivo: number;
+    precision: number | null;
+    recall: number | null;
+    f1: number | null;
+  };
+  fpr_trampas: {
+    n: number;
+    fp: number;
+    texto: string;
+    rango_min: number;
+    rango_max: number;
+    concluyentes: number;
+    sin_conclusion: number;
+    fpr_concluyentes: number | null;
+  };
+  extremo_a_extremo: { fn_conservador: number; recall_conservador: number | null };
+  recall_por_tipologia: Record<string, { tp: number; total: number; recall: number | null }>;
 }
 
 export interface CasoDetalle {
@@ -62,6 +119,16 @@ export interface CasoDetalle {
  */
 export interface DataSource {
   readonly label: "fixture" | "supabase";
+  /**
+   * Nombres de métodos de esta instancia que hoy no pueden responder con
+   * datos reales (p.ej. una tabla de una migración futura que aún no
+   * existe). Vacío en FixtureDataSource. El método correspondiente sigue
+   * cumpliendo su firma (devuelve `[]`/`null`), nunca lanza ni finge un
+   * resultado — esto es lo que una página lee para distinguir "no hay
+   * resultados" de "esta fuente no puede responder esto todavía" y mostrar
+   * un estado "no disponible" explícito en vez de una lista vacía muda.
+   */
+  readonly noDisponibles: ReadonlySet<string>;
 
   listCorridas(): Promise<Corrida[]>;
   getCorrida(id: string): Promise<Corrida | null>;
@@ -78,10 +145,10 @@ export interface DataSource {
   getBitacoraCorrida(corridaId: string): Promise<EventoForense[]>;
   getBitacoraCaso(casoId: string): Promise<EventoForense[]>;
 
-  getEntidad(rfc: string): Promise<EntidadPerfil | null>;
-  getTrayectoria(rfc: string): Promise<TrayectoriaPunto[]>;
+  getEntidad(rfc: string, corridaId?: string): Promise<EntidadPerfil | null>;
+  getTrayectoria(rfc: string, corridaId?: string): Promise<TrayectoriaPunto[]>;
   getContraste(casoId: string): Promise<ContrasteCaso | null>;
-  getPares(rfc: string): Promise<ParComparacion[]>;
+  getPares(rfc: string, corridaId?: string): Promise<ParComparacion[]>;
 
   getEstadisticas(corridaId: string): Promise<EstadisticasCorrida | null>;
 

@@ -3,6 +3,7 @@ import { getDataSource } from "@/lib/data";
 import { DatosTabs } from "./datos-tabs";
 
 export const metadata = { title: "Forense · Datos" };
+export const dynamic = "force-dynamic";
 
 /**
  * 19 / 21 §3.1: uploader → perfil → mapping → cobertura → confirmación, y

@@ -3,6 +3,7 @@ import { ProfileSettings } from "@/components/shared/profile-settings";
 import { getDataSource } from "@/lib/data";
 
 export const metadata = { title: "Forense · Perfil" };
+export const dynamic = "force-dynamic";
 
 export default async function PerfilPage() {
   const ds = getDataSource();

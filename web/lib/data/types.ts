@@ -108,8 +108,10 @@ export interface Caso {
   rfc_principal: string;
   rfcs_satelite: string[];
   estado: string;
-  nivel: Nivel;
-  tipologia: Tipologia;
+  // Contrato entities.caso: nivel/tipologia son anyOf[<enum>, null] — un caso
+  // en curso (en_cola/ronda1/...) todavía no tiene ninguno de los dos.
+  nivel: Nivel | null;
+  tipologia: Tipologia | null;
   familias_confirmadas: Familia[];
   monto_en_riesgo: string;
   moneda: string;
@@ -161,10 +163,20 @@ export interface Pista {
   familia: Familia;
   rfc: string;
   score: number;
-  estado: "disparada" | "confirmada" | "refutada" | "no_evaluable";
+  /** Contrato `entities.pista`: solo dos valores. Confirmada/refutada NO es un estado de la pista, ver `evaluacion_caso`. */
+  estado: "disparada" | "no_evaluable";
   resumen: string;
   referencias: string[];
+  // Campos de presentación añadidos por la UI (no en el contrato):
   motivo_no_evaluable?: string;
+  /**
+   * `forense.casos.evaluacion_pistas[pista.id]` (jsonb): el veredicto de
+   * ESTA pista dentro de ESTE caso — una misma pista disparada puede estar
+   * confirmada en un caso y no citada en otro. `estado` aquí es libre
+   * ("confirmada" | "confirmada_parcial" | "refutada", visto en datos
+   * reales) porque no hay contrato v1 para este overlay todavía.
+   */
+  evaluacion_caso?: { estado: string; motivo: string; evidencia_ids: string[] } | null;
 }
 
 export interface EvidenciaValidada {
@@ -202,7 +214,7 @@ export interface Argumento {
   evidencia_objetivo_ids: string[];
   argumento: string;
   ids: string[];
-  resultado: "refuta" | "no_refuta";
+  resultado: "refuta" | "parcial" | "no_refuta";
 }
 
 export interface Replica {
@@ -377,6 +389,9 @@ export interface GrafoNodo {
   es_semilla: boolean;
   en_lista_sat: boolean;
   frontera: boolean;
+  /** Solo con SupabaseDataSource (forense.v_grafo): texto libre, _untrusted. */
+  razon_social_untrusted?: string | null;
+  giro?: string | null;
 }
 
 export interface GrafoArista {
@@ -385,8 +400,18 @@ export interface GrafoArista {
   destino: string;
   tipo: "factura" | "movimiento";
   monto: string;
-  fecha: string;
-  ref_id: string;
+  /**
+   * fecha/ref_id son opcionales porque `forense.v_grafo` (real) agrega
+   * aristas por par de RFC/cuentas (no arista = 1 documento): no hay una
+   * fecha ni un ref_id individual que citar. FixtureDataSource sigue
+   * poblando ambos con un CFDI/movimiento concreto. Nunca se inventa un
+   * ref_id para una arista agregada (CLAUDE.md regla 6).
+   */
+  fecha?: string;
+  ref_id?: string;
+  /** Solo con datos agregados (SupabaseDataSource): cuántos documentos componen la arista. */
+  n_registros?: number;
+  moneda?: string;
 }
 
 export interface GrafoCluster {
@@ -394,9 +419,17 @@ export interface GrafoCluster {
   aristas: GrafoArista[];
 }
 
+export type TrayectoriaEvento = "alta" | "primer_cfdi" | "pico" | "silencio" | "publicacion_69b";
+
 export interface TrayectoriaPunto {
   periodo: string;
-  evento: "alta" | "primer_cfdi" | "pico" | "silencio" | "publicacion_69b" | null;
+  /**
+   * `forense.v_trayectoria_rfc` (real) devuelve `serie[]` y `eventos[]` como
+   * arreglos separados y un mes puede llevar más de uno (alta + primer_cfdi
+   * coinciden seguido; publicación 69-B también). Arreglo, no escalar: no se
+   * descarta ningún evento por mes.
+   */
+  eventos: TrayectoriaEvento[];
   monto_emitido: string;
   monto_recibido: string;
   n_cfdi: number;
@@ -425,12 +458,6 @@ export interface EmbudoEtapa {
   etapa: string;
   cantidad: number;
   denominador: number;
-}
-
-export interface ConfusionCelda {
-  real: "positivo" | "negativo";
-  predicho: "positivo" | "negativo";
-  cantidad: number;
 }
 
 export interface InyeccionResumen {
