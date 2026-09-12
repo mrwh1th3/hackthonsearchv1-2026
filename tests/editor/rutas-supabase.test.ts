@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import redactorFixture from "@contracts/fixtures/valid/redactor.json";
+import propuestos from "@/lib/document/contratos-propuestos.json";
 import { signSession } from "@/lib/auth/session";
 import { guardarBorrador, reiniciarAlmacen, sembrarCaso } from "@/lib/document/almacen-demo";
 import { aMarkdown } from "@/lib/document/markdown";
@@ -154,6 +155,17 @@ describe("BFF del editor en modo supabase (repositorio inyectado)", () => {
     const cuerpo = await res.json();
     expect(cuerpo.origen).toBe("supabase");
     expect(cuerpo.estado).toBe("descartada");
+
+    // El schema propuesto para 1.3.0 es `additionalProperties:false`: si la
+    // ruta gana o pierde un campo y el JSON no lo refleja, el coordinador
+    // publicaría un contrato que esta misma ruta viola. Se comparan las dos
+    // direcciones.
+    const esquema = propuestos["editor.descartado"] as unknown as {
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    expect(Object.keys(cuerpo).sort()).toEqual(Object.keys(esquema.properties).sort());
+    expect(esquema.required.filter((clave) => !(clave in cuerpo))).toEqual([]);
     expect(db.propuestas_edicion[0].estado).toBe("descartada");
     expect(db.expedientes).toHaveLength(1);
 
