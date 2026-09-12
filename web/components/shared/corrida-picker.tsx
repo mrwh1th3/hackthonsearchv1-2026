@@ -45,7 +45,7 @@ export function CorridaPicker({ corridas, onSelect }: CorridaPickerProps) {
   }, [corridas, query, estadoFiltro, orden]);
 
   return (
-    <div className="flex w-full flex-col items-center gap-8 py-6">
+    <div className="flex w-full flex-col items-center gap-[30px]">
       <h1 className="max-w-[640px] text-balance text-center text-[28px] font-medium leading-tight tracking-tight text-text-muted sm:text-[34px]">
         ¿Qué corrida quieres inspeccionar?
       </h1>

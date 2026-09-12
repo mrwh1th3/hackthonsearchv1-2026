@@ -33,16 +33,22 @@ export function InspectorHome({ corridas, corridaSeleccionada, clusterId, rfcsDi
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
-  if (!corridaSeleccionada) {
-    return <CorridaPicker corridas={corridas} onSelect={(id) => conCorrida(id)} />;
-  }
-
+  // Contenedor raíz del diseño (`design-ref/Agents.dc.html` línea 22):
+  // `min-height:100vh`, centrado en los dos ejes, `gap:30px`,
+  // `padding:56px 24px`. Va aquí una sola vez para que los dos estados —picker
+  // y composer— queden centrados igual, como en el original.
   return (
-    <InvestigationComposer
-      corrida={corridaSeleccionada}
-      clusterId={clusterId}
-      rfcsDisponibles={rfcsDisponibles}
-      onChangeDataset={() => conCorrida(null)}
-    />
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-[30px] px-6 py-14">
+      {!corridaSeleccionada ? (
+        <CorridaPicker corridas={corridas} onSelect={(id) => conCorrida(id)} />
+      ) : (
+        <InvestigationComposer
+          corrida={corridaSeleccionada}
+          clusterId={clusterId}
+          rfcsDisponibles={rfcsDisponibles}
+          onChangeDataset={() => conCorrida(null)}
+        />
+      )}
+    </div>
   );
 }

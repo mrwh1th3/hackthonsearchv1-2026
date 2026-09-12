@@ -1,6 +1,6 @@
 {
   "base": "https://n8n.srv1550651.hstgr.cloud",
-  "actualizado": "2026-09-12T17:41:36.869Z",
+  "actualizado": "2026-09-12T17:45:34.912Z",
   "ids": {
     "FORENSE_ejecutar_agente": "haHlIxNpUFEHEio8",
     "FORENSE_reintento": "RpWmAx4dkJSeVIBC",
@@ -28,7 +28,7 @@
       "nodos": 16,
       "sinResolver": [],
       "estado": "actualizado",
-      "active": false
+      "active": true
     },
     {
       "nombre": "FORENSE_editar_expediente",
@@ -36,7 +36,7 @@
       "nodos": 10,
       "sinResolver": [],
       "estado": "actualizado",
-      "active": false
+      "active": true
     },
     {
       "nombre": "FORENSE_investigar_cluster",
@@ -44,7 +44,7 @@
       "nodos": 38,
       "sinResolver": [],
       "estado": "actualizado",
-      "active": false
+      "active": true
     },
     {
       "nombre": "FORENSE_corrida",
@@ -52,7 +52,7 @@
       "nodos": 22,
       "sinResolver": [],
       "estado": "actualizado",
-      "active": false
+      "active": true
     },
     {
       "nombre": "FORENSE_inyectar",
@@ -60,7 +60,7 @@
       "nodos": 14,
       "sinResolver": [],
       "estado": "actualizado",
-      "active": false
+      "active": true
     },
     {
       "nombre": "FORENSE_notificar_completada",

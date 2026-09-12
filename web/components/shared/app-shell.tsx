@@ -102,9 +102,9 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
           type="button"
           onClick={() => setPanelOpen((v) => !v)}
           aria-label="Abrir navegación"
-          className="absolute left-[22px] top-[20px] z-[3] flex h-[38px] items-center border-none bg-transparent p-0"
+          className="absolute left-[22px] top-[20px] z-[3] flex h-[52px] items-center border-none bg-transparent p-0"
         >
-          <Wordmark className="h-[22px]" />
+          <Wordmark className="h-[52px]" />
         </button>
       )}
 
@@ -123,7 +123,7 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
         }}
       >
         <div className="flex items-center justify-between gap-2.5 border-b border-[#f0eee9] px-4 pb-3.5 pt-4">
-          <Wordmark className="h-[19px]" />
+          <Wordmark className="h-[34px]" />
           <button
             type="button"
             onClick={() => setPanelOpen(false)}
@@ -200,17 +200,16 @@ export function AppShell({ children, perfilNombre, investigaciones }: AppShellPr
 }
 
 /**
- * El wordmark del original es un PNG con la palabra rasterizada
- * (`assets/inspector-wordmark.png`, 1250×217). Se compone como texto en
- * Instrument Sans al mismo alto: nítido a cualquier densidad y traducible.
- * Ver la desviación declarada en `docs/22-frontend-inspector.md`.
+ * Marca. El original usa un PNG con la palabra rasterizada
+ * (`assets/inspector-wordmark.png`); aquí va **sólo el logo**, sin texto al
+ * lado y a mayor tamaño, a pedido del usuario (2026-09-12: "elimina el forense
+ * y haz mas grande el logo").
  */
 function Wordmark({ className }: { className?: string }) {
   return (
     <span className={`flex items-center ${className ?? ""}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/inspector-logo.png" alt="" aria-hidden className="mr-2 h-full w-auto" />
-      <span className="text-[17px] font-semibold leading-none tracking-[-0.02em] text-text">Forense</span>
+      <img src="/inspector-logo.png" alt="Forense" className="h-full w-auto" />
     </span>
   );
 }

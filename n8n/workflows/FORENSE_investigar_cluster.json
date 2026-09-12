@@ -177,9 +177,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.\nINSERT INTO forense.pasos_pipeline\n       (caso_id, paso, revision, tareas_esperadas, snapshot_senales, estado, deadline)\nVALUES ($1::uuid, 'ronda1', 1, $2::uuid[], $3::bigint[], 'abierto', $4::timestamptz)\nRETURNING *",
+        "query": "-- La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.\nINSERT INTO forense.pasos_pipeline\n       (caso_id, paso, revision, tareas_esperadas, snapshot_senales, estado, deadline)\nVALUES ($1::uuid, 'ronda1', 1,\n        coalesce((select array_agg(x::uuid) from jsonb_array_elements_text($2::jsonb) x), '{}'::uuid[]),\n        coalesce((select array_agg(x::bigint) from jsonb_array_elements_text($3::jsonb) x), '{}'::bigint[]),\n        'abierto', $4::timestamptz)\nRETURNING *",
         "options": {
-          "queryReplacement": "={{ $json.caso_id }}, ={{ '{' + ($json.tarea_ids ?? []).join(',') + '}' }}, ={{ '{' + ($json.snapshot_senales ?? []).join(',') + '}' }}, ={{ $json.deadline }}"
+          "queryReplacement": "={{ $json.caso_id }}, ={{ JSON.stringify($json.tarea_ids ?? []) }}, ={{ JSON.stringify($json.snapshot_senales ?? []) }}, ={{ $json.deadline }}"
         }
       },
       "type": "n8n-nodes-base.postgres",

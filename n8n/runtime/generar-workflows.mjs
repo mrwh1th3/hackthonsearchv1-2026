@@ -1428,8 +1428,11 @@ export function editarExpediente() {
   fila = 1; columna = 7;
   add(sql(
     'Guardar propuesta',
-    'SELECT * FROM forense.guardar_propuesta_edicion($1::uuid, $2::int, $3::jsonb, $4::jsonb, $5::text[])',
-    `={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ '{' + ($json.citas ?? []).join(',') + '}' }}`,
+    [
+      'SELECT * FROM forense.guardar_propuesta_edicion($1::uuid, $2::int, $3::jsonb, $4::jsonb,',
+      "  coalesce((select array_agg(x) from jsonb_array_elements_text($5::jsonb) x), '{}'::text[]))",
+    ].join('\n'),
+    `={{ $json.caso_id }}, ={{ $json.version_base }}, ={{ JSON.stringify($json.patch) }}, ={{ JSON.stringify($json.diff) }}, ={{ JSON.stringify($json.citas ?? []) }}`,
     'Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).',
   ));
 
