@@ -1,5 +1,7 @@
 import { FixtureDataSource } from "./fixture";
 import {
+  borrarVistaPrivada as borrarVistaPrivadaSupabase,
+  guardarVistaPrivada as guardarVistaPrivadaSupabase,
   isPrivadoSupabaseConfigured,
   leerInvestigacionesPrivadas,
   leerInvestigacionPrivada,
@@ -7,8 +9,9 @@ import {
   leerInyeccionPrivada,
   leerNotificacionesPrivadas,
   leerPerfilPrivado,
+  leerVistasGuardadasPrivadas,
 } from "./privado-supabase";
-import type { Investigacion, InyeccionResumen, Notificacion, Perfil } from "./types";
+import type { Investigacion, InyeccionResumen, Notificacion, Perfil, VistaGuardada } from "./types";
 
 /**
  * Datos privados por perfil: perfil, teléfono, investigaciones, notificaciones
@@ -67,4 +70,28 @@ export async function obtenerInyeccionesPrivadas(): Promise<InyeccionResumen[]> 
 
 export async function obtenerInyeccionPrivada(id: string): Promise<InyeccionResumen | null> {
   return usaSupabase ? leerInyeccionPrivada(id) : fuentePrivada.getInyeccion(id);
+}
+
+/**
+ * Vistas guardadas (15 §9, `forense.vistas_guardadas` — 006 §3). Sin
+ * `SupabaseDataSource` (nunca hubo tabla pública para esto: siempre fueron
+ * privadas por perfil) ni fixture propio — `null`/`false` aquí es la señal
+ * que usa `/api/vistas` para responder 503 `backend_no_configurado`, y el
+ * cliente cae a `localStorage` (`web/lib/data/vistas-guardadas.ts`), igual
+ * que ya hace el wizard de `/datos` con `product.inyectar`.
+ */
+export async function obtenerVistasGuardadasPrivadas(perfilId: string, ruta: string): Promise<VistaGuardada[] | null> {
+  if (!usaSupabase) return null;
+  return leerVistasGuardadasPrivadas(perfilId, ruta);
+}
+
+export async function guardarVistaGuardadaPrivada(input: { perfilId: string; nombre: string; ruta: string; filtros: Record<string, unknown> }): Promise<VistaGuardada | null> {
+  if (!usaSupabase) return null;
+  return guardarVistaPrivadaSupabase(input);
+}
+
+export async function borrarVistaGuardadaPrivada(perfilId: string, id: string): Promise<boolean> {
+  if (!usaSupabase) return false;
+  await borrarVistaPrivadaSupabase(perfilId, id);
+  return true;
 }

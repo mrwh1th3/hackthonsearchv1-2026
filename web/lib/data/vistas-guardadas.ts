@@ -50,3 +50,45 @@ export function guardarVista(input: { nombre: string; ruta: string; filtros: Rec
 export function borrarVista(id: string): boolean {
   return escribirAlmacen(leerAlmacen().filter((v) => v.id !== id));
 }
+
+// ---------------------------------------------------------------------------
+// BFF (006 §3, `forense.vistas_guardadas`) con caída a localStorage — mismo
+// patrón que el wizard de `/datos` con `product.inyectar`: sin sesión válida
+// o sin `SUPABASE_SERVICE_ROLE_KEY` de servidor, `/api/vistas` responde
+// 401/503 y aquí se cae a lo de arriba, nunca se rompe la UI por eso.
+// ---------------------------------------------------------------------------
+
+export type FuenteVistas = "servidor" | "local";
+
+export async function listarVistasConFallback(ruta: string): Promise<{ vistas: VistaGuardada[]; fuente: FuenteVistas }> {
+  try {
+    const res = await fetch(`/api/vistas?ruta=${encodeURIComponent(ruta)}`);
+    if (res.ok) {
+      const body = (await res.json()) as { vistas: VistaGuardada[] };
+      return { vistas: body.vistas, fuente: "servidor" };
+    }
+  } catch {
+    // sin red: cae a local, silencioso a propósito (no es un error del usuario)
+  }
+  return { vistas: leerVistasGuardadas().filter((v) => v.ruta === ruta), fuente: "local" };
+}
+
+export async function guardarVistaConFallback(input: { nombre: string; ruta: string; filtros: Record<string, unknown> }): Promise<{ ok: boolean; fuente: FuenteVistas }> {
+  try {
+    const res = await fetch("/api/vistas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+    if (res.ok) return { ok: true, fuente: "servidor" };
+  } catch {
+    // sin red: cae a local
+  }
+  return { ok: guardarVista(input), fuente: "local" };
+}
+
+export async function borrarVistaConFallback(id: string): Promise<{ ok: boolean; fuente: FuenteVistas }> {
+  try {
+    const res = await fetch(`/api/vistas?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (res.ok) return { ok: true, fuente: "servidor" };
+  } catch {
+    // sin red: cae a local
+  }
+  return { ok: borrarVista(id), fuente: "local" };
+}

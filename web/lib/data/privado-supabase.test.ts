@@ -11,16 +11,20 @@ process.env.SUPABASE_URL = "https://example.invalid";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "clave-de-prueba-no-real";
 
 const {
+  borrarVistaPrivada,
   buscarCasoPorRfc,
   codigosPorRfc,
+  guardarVistaPrivada,
   isPrivadoSupabaseConfigured,
   leerInvestigacionPrivada,
   leerInyeccionPrivada,
   leerPerfilPrivado,
+  leerVistasGuardadasPrivadas,
   mapInvestigacion,
   mapInyeccionResumen,
   mapNotificacion,
   mapPerfil,
+  mapVista,
   mensajeDiagnostico,
   normalizarTipoNotificacion,
   recursoDesdeRuta,
@@ -243,7 +247,10 @@ function clienteFalso(respuestas: Record<string, { data: unknown; error: { messa
       eq: () => chain,
       in: () => chain,
       limit: () => chain,
+      upsert: () => chain,
+      delete: () => chain,
       maybeSingle: async () => resultado,
+      single: async () => resultado,
       then: (resolve: (v: unknown) => unknown) => resolve(resultado),
     };
     return chain;
@@ -341,5 +348,37 @@ describe("leerInyeccionPrivada", () => {
     expect(iny?.diff).toEqual([
       { rfc: "DEMO:A", nivel_anterior: "presuncion_alta", nivel_nuevo: "presuncion_alta", pistas_nuevas: [], caso_id: "caso-nueva-1" },
     ]);
+  });
+});
+
+describe("vistas guardadas (forense.vistas_guardadas, 006 §3)", () => {
+  beforeEach(() => _resetClientePrivadoParaTests());
+
+  it("mapVista rellena filtros null como {} (la columna nunca debería serlo, pero nunca revienta la página por eso)", () => {
+    expect(mapVista({ id: "v1", nombre: "Mi vista", ruta: "/", filtros: null })).toEqual({ id: "v1", nombre: "Mi vista", ruta: "/", filtros: {} });
+  });
+
+  it("leerVistasGuardadasPrivadas mapea las filas del perfil+ruta", async () => {
+    _inyectarClienteParaTests(
+      clienteFalso({ vistas_guardadas: { data: [{ id: "v1", nombre: "Alta prioridad", ruta: "/", filtros: { nivel: "presuncion_alta" } }], error: null } }),
+    );
+    const vistas = await leerVistasGuardadasPrivadas("perfil-1", "/");
+    expect(vistas).toEqual([{ id: "v1", nombre: "Alta prioridad", ruta: "/", filtros: { nivel: "presuncion_alta" } }]);
+  });
+
+  it("guardarVistaPrivada hace upsert (unique(perfil_id,nombre): guardar dos veces el mismo nombre actualiza, no duplica) y devuelve la fila mapeada", async () => {
+    _inyectarClienteParaTests(clienteFalso({ vistas_guardadas: { data: { id: "v1", nombre: "Mi vista", ruta: "/", filtros: { nivel: "presuncion" } }, error: null } }));
+    const vista = await guardarVistaPrivada({ perfilId: "perfil-1", nombre: "Mi vista", ruta: "/", filtros: { nivel: "presuncion" } });
+    expect(vista).toEqual({ id: "v1", nombre: "Mi vista", ruta: "/", filtros: { nivel: "presuncion" } });
+  });
+
+  it("guardarVistaPrivada propaga un error real de Postgres (p.ej. FK a un perfil_id inexistente) en vez de fingir éxito", async () => {
+    _inyectarClienteParaTests(clienteFalso({ vistas_guardadas: { data: null, error: { message: "violates foreign key constraint" } } }));
+    await expect(guardarVistaPrivada({ perfilId: "perfil-fantasma", nombre: "x", ruta: "/", filtros: {} })).rejects.toThrow(/foreign key/);
+  });
+
+  it("borrarVistaPrivada no lanza cuando el borrado no encuentra filas (id de otro perfil o ya borrado): delete es idempotente", async () => {
+    _inyectarClienteParaTests(clienteFalso({ vistas_guardadas: { data: null, error: null } }));
+    await expect(borrarVistaPrivada("perfil-1", "v-no-existe")).resolves.toBeUndefined();
   });
 });

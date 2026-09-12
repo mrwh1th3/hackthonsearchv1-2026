@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Investigacion, InyeccionResumen, Notificacion, Perfil, PistaCodigo, Nivel } from "./types";
+import type { Investigacion, InyeccionResumen, Notificacion, Perfil, PistaCodigo, Nivel, VistaGuardada } from "./types";
 
 /**
  * Fuente PRIVILEGIADA para perfil/investigaciones/notificaciones/inyecciones
@@ -392,6 +392,59 @@ export async function leerInyeccionPrivada(id: string): Promise<InyeccionResumen
     timeline: timelineDesdeEventos(estado.timeline ?? []),
     diff,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Vistas guardadas (15 §9, `forense.vistas_guardadas` — 006 §3). Únicas del
+// perfil (unique(perfil_id, nombre)): guardar dos veces el mismo nombre
+// actualiza la vista existente, nunca duplica. Siempre acotadas a
+// `perfilId` explícito (el que resolvió la sesión en la ruta API, nunca uno
+// que mande el cliente) porque service_role bypasea RLS por completo.
+// ---------------------------------------------------------------------------
+
+interface FilaVista {
+  id: string;
+  nombre: string;
+  ruta: string;
+  filtros: Record<string, unknown> | null;
+}
+
+export function mapVista(f: FilaVista): VistaGuardada {
+  return { id: f.id, nombre: f.nombre, ruta: f.ruta, filtros: f.filtros ?? {} };
+}
+
+export async function leerVistasGuardadasPrivadas(perfilId: string, ruta: string): Promise<VistaGuardada[]> {
+  const client = clientePrivilegiado();
+  const { data, error } = await client
+    .from("vistas_guardadas")
+    .select("id,nombre,ruta,filtros")
+    .eq("perfil_id", perfilId)
+    .eq("ruta", ruta)
+    .order("creado", { ascending: true });
+  if (error) throw new Error(`leerVistasGuardadasPrivadas: ${error.message}`);
+  return (data ?? []).map((f) => mapVista(f as FilaVista));
+}
+
+export async function guardarVistaPrivada(input: { perfilId: string; nombre: string; ruta: string; filtros: Record<string, unknown> }): Promise<VistaGuardada> {
+  const client = clientePrivilegiado();
+  const { data, error } = await client
+    .from("vistas_guardadas")
+    .upsert(
+      { perfil_id: input.perfilId, nombre: input.nombre, ruta: input.ruta, filtros: input.filtros, actualizado: new Date().toISOString() },
+      { onConflict: "perfil_id,nombre" },
+    )
+    .select("id,nombre,ruta,filtros")
+    .single();
+  if (error) throw new Error(`guardarVistaPrivada: ${error.message}`);
+  return mapVista(data as FilaVista);
+}
+
+export async function borrarVistaPrivada(perfilId: string, id: string): Promise<void> {
+  const client = clientePrivilegiado();
+  // `.eq("perfil_id", perfilId)` es lo que impide borrar la vista de otro
+  // perfil: service_role no tiene RLS que lo haga por nosotros.
+  const { error } = await client.from("vistas_guardadas").delete().eq("id", id).eq("perfil_id", perfilId);
+  if (error) throw new Error(`borrarVistaPrivada: ${error.message}`);
 }
 
 /** Solo para tests: fuerza a recrear el cliente cacheado tras cambiar env vars. */

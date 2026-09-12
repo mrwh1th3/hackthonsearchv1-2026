@@ -9,8 +9,8 @@ import { FilterBar, type FilterChip } from "@/components/shared/filter-bar";
 import { EstadoCasoBadge, FamiliaChip, NivelBadge } from "@/components/shared/badges";
 import { DownloadMenu } from "@/components/shared/download-menu";
 import { construirManifiestoDescarga, filasACsv } from "@/lib/data/descargas";
-import { leerVistasGuardadas, guardarVista } from "@/lib/data/vistas-guardadas";
-import type { Caso, Nivel } from "@/lib/data";
+import { guardarVistaConFallback, listarVistasConFallback, type FuenteVistas } from "@/lib/data/vistas-guardadas";
+import type { Caso, Nivel, VistaGuardada } from "@/lib/data";
 
 export interface FilaCola extends Record<string, unknown> {
   caso: Caso;
@@ -101,12 +101,18 @@ export function QueueTable({ filas }: { filas: FilaCola[] }) {
     if (key === "presupuesto") actualizar({ soloPresupuestoAgotado: false });
   }
 
-  function guardarVistaActual() {
+  const [vistasVersion, setVistasVersion] = useState(0);
+
+  async function guardarVistaActual() {
     const nombre = window.prompt("Nombre de la vista", `Cola · ${nivel === "todos" ? "todos los niveles" : nivel}`);
     if (!nombre) return;
-    const ok = guardarVista({ nombre, ruta: RUTA_VISTA, filtros: filtros as unknown as Record<string, unknown> });
-    if (ok) toast.success(`Vista "${nombre}" guardada en este navegador.`);
-    else toast.error("No se pudo guardar la vista (localStorage no disponible).", { duration: Infinity });
+    const { ok, fuente } = await guardarVistaConFallback({ nombre, ruta: RUTA_VISTA, filtros: filtros as unknown as Record<string, unknown> });
+    if (ok) {
+      toast.success(fuente === "servidor" ? `Vista "${nombre}" guardada en tu cuenta.` : `Vista "${nombre}" guardada en este navegador (sin backend de vistas en este entorno).`);
+      setVistasVersion((v) => v + 1);
+    } else {
+      toast.error("No se pudo guardar la vista.", { duration: Infinity });
+    }
   }
 
   const columns: Array<DataTableColumn<FilaCola>> = [
@@ -160,7 +166,7 @@ export function QueueTable({ filas }: { filas: FilaCola[] }) {
           <input type="checkbox" checked={soloPresupuestoAgotado} onChange={(e) => actualizar({ soloPresupuestoAgotado: e.target.checked })} />
           Solo presupuesto agotado
         </label>
-        <VistasGuardadasMenu onAplicar={(f) => actualizar(f)} />
+        <VistasGuardadasMenu onAplicar={(f) => actualizar(f)} version={vistasVersion} />
         <DownloadMenu
           options={[
             {
@@ -195,8 +201,29 @@ export function QueueTable({ filas }: { filas: FilaCola[] }) {
   );
 }
 
-function VistasGuardadasMenu({ onAplicar }: { onAplicar: (f: FiltrosCola) => void }) {
-  const vistas = leerVistasGuardadas().filter((v) => v.ruta === RUTA_VISTA);
+/**
+ * Lista vistas guardadas (`/api/vistas`, 006 §3; cae a localStorage sin
+ * backend — ver `lib/data/vistas-guardadas.ts`). `version` fuerza una
+ * relectura tras `guardarVistaActual()`: el fetch no se repite solo porque
+ * el padre recalculó `filtros`.
+ */
+function VistasGuardadasMenu({ onAplicar, version }: { onAplicar: (f: FiltrosCola) => void; version: number }) {
+  const [vistas, setVistas] = useState<VistaGuardada[]>([]);
+  const [fuente, setFuente] = useState<FuenteVistas>("local");
+
+  useEffect(() => {
+    let cancelado = false;
+    listarVistasConFallback(RUTA_VISTA).then((r) => {
+      if (!cancelado) {
+        setVistas(r.vistas);
+        setFuente(r.fuente);
+      }
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [version]);
+
   if (vistas.length === 0) return null;
   return (
     <select
@@ -208,6 +235,7 @@ function VistasGuardadasMenu({ onAplicar }: { onAplicar: (f: FiltrosCola) => voi
       }}
       className="h-8 rounded-[var(--radius-input)] border border-border bg-surface px-2 text-xs"
       aria-label="Vistas guardadas"
+      title={fuente === "servidor" ? "Vistas de tu cuenta" : "Vistas guardadas en este navegador (sin backend de vistas en este entorno)"}
     >
       <option value="" disabled>
         Vistas guardadas…
