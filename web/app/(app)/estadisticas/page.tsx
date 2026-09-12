@@ -1,6 +1,7 @@
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
 import { CoberturaPanel, RecallPorTipologiaPanel } from "./estadisticas-charts";
+import { soloFecha } from "@/lib/date/formato";
 
 export const metadata = { title: "Forense · Estadísticas" };
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export default async function EstadisticasPage() {
         <div>
           <h1 className="text-2xl font-semibold text-text">Estadísticas</h1>
           <p className="text-xs text-text-subtle">
-            {corrida.nombre} · dataset {stats.dataset} · corte {new Date(stats.fecha_corte).toLocaleDateString("es-MX")}
+            {corrida.nombre} · dataset {stats.dataset} · corte {soloFecha(stats.fecha_corte)}
           </p>
         </div>
         <FixtureBadge />

@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { EventoForense } from "@/lib/data";
+import { fechaHora } from "@/lib/date/formato";
 
 /**
  * Drawer de detalle de un evento de `forense.bitacora` (CLAUDE.md regla 2:
@@ -29,7 +30,7 @@ export function TraceDrawer({ evento, onOpenChange }: { evento: EventoForense | 
               <dl className="mb-3 space-y-1">
                 <Row label="ID" value={evento.id} />
                 <Row label="Secuencia" value={String(evento.seq ?? "—")} />
-                <Row label="Timestamp" value={new Date(evento.ts).toLocaleString("es-MX")} />
+                <Row label="Timestamp" value={fechaHora(evento.ts)} />
                 <Row label="Corrida" value={evento.corrida_id} />
                 <Row label="Caso" value={evento.caso_id ?? "—"} />
                 <Row label="Tarea" value={evento.tarea_id ?? "—"} />

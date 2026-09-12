@@ -4,6 +4,7 @@ import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { EstadoInyeccionBadge, INYECCION_ESTADOS_TERMINALES_DE_FALLO, NivelBadge } from "@/components/shared/badges";
 import { fuentePrivadaActual, obtenerInyeccionPrivada } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
+import { soloHora } from "@/lib/date/formato";
 
 export const metadata = { title: "Forense · Inyección" };
 export const dynamic = "force-dynamic";
@@ -102,7 +103,7 @@ export default async function InyeccionPage({ params }: { params: Promise<{ id: 
                   <span className={`h-px flex-1 ${i === PASOS_ORDEN.length - 1 ? "opacity-0" : ts ? "bg-primary" : "bg-border"}`} />
                 </div>
                 <p className="mt-1 text-[11px] font-medium text-text">{PASO_LABEL[paso]}</p>
-                <p className="text-[10px] text-text-subtle">{ts ? new Date(ts).toLocaleTimeString("es-MX") : fallida ? "no ejecutado" : "pendiente"}</p>
+                <p className="text-[10px] text-text-subtle">{ts ? soloHora(ts) : fallida ? "no ejecutado" : "pendiente"}</p>
               </li>
             );
           })}

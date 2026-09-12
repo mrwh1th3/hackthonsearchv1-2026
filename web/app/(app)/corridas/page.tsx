@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
+import { fechaHora } from "@/lib/date/formato";
 
 export const metadata = { title: "Forense · Corridas" };
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function CorridasPage() {
               <Link href={`/corridas/${c.id}`} className="block rounded-[var(--radius-card)] border border-border bg-surface p-4 hover:bg-surface-hover">
                 <p className="font-medium text-text">{c.nombre}</p>
                 <p className="mt-1 text-xs text-text-subtle">Dataset: {c.dataset}</p>
-                <p className="text-xs text-text-subtle">Corte: {new Date(c.fecha_corte).toLocaleString("es-MX")}</p>
+                <p className="text-xs text-text-subtle">Corte: {fechaHora(c.fecha_corte)}</p>
                 <p className="mt-2 text-xs">
                   Estado: <span className="font-medium text-text">{c.estado}</span>
                 </p>

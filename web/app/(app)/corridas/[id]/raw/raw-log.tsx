@@ -6,6 +6,7 @@ import { DownloadMenu } from "@/components/shared/download-menu";
 import { FilterBar, type FilterChip } from "@/components/shared/filter-bar";
 import { TraceDrawer } from "@/components/shared/trace-drawer";
 import type { EventoForense } from "@/lib/data";
+import { fechaHora } from "@/lib/date/formato";
 
 /**
  * 09 §6: "ver TODO" literal — tabla plana de toda la bitácora de la
@@ -31,7 +32,7 @@ export function RawLog({ eventos }: { eventos: EventoForense[] }) {
 
   const columns: Array<DataTableColumn<EventoForense>> = [
     { key: "seq", header: "#", align: "right", render: (e) => e.seq ?? "—" },
-    { key: "ts", header: "Timestamp", render: (e) => new Date(e.ts).toLocaleString("es-MX") },
+    { key: "ts", header: "Timestamp", render: (e) => fechaHora(e.ts) },
     { key: "caso_id", header: "Caso", render: (e) => (e.caso_id ? e.caso_id.slice(0, 8) + "…" : "—") },
     { key: "tarea_id", header: "Tarea", render: (e) => (e.tarea_id ? e.tarea_id.slice(0, 8) + "…" : "—") },
     { key: "tipo_evento", header: "Evento" },

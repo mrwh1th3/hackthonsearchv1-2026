@@ -10,7 +10,7 @@ Actualizado: 2026-09-11 H0 (≈21:45, America/Monterrey). Dueño: coordinador (o
 | Destino | Estado |
 |---|---|
 | GitHub | origin `mrwh1th3/hackthonsearchv1-2026`, **privado** desde 2026-09-11 (petición del usuario). |
-| Supabase | proyecto `hackthon2026` (ref `wplsldwzpyocmwzeyarj`). **Aplicadas 001_schema, 002_views, 003_pistas (versiones 20260912050501/050846/051124) y seed_fake** (corrida fixture con 3 casos, 30 eventos). RLS 29/29, 22 policies de lectura, 7 tablas privadas sin policy (diseño), realtime en bitacora/casos/clusters/expedientes/pistas/senales. Advisors: solo INFO/WARN de plataforma. **Aplicadas también 014–018 el 2026-09-12, verificadas cuerpo a cuerpo** (018: `md5(prosrc)` `cf534c8a…`, 5 332 caracteres, idéntico al archivo; `security invoker` como su hermana `v_trayectoria_rfc`; ACL `{postgres, service_role, anon, authenticated}` sin PUBLIC). **Pendiente del usuario: exponer el schema `forense` en Project Settings → API → Exposed schemas.** |
+| Supabase | proyecto `hackthon2026` (ref `wplsldwzpyocmwzeyarj`). **Aplicadas 001_schema, 002_views, 003_pistas (versiones 20260912050501/050846/051124) y seed_fake** (corrida fixture con 3 casos, 30 eventos). RLS 29/29, 22 policies de lectura, 7 tablas privadas sin policy (diseño), realtime en bitacora/casos/clusters/expedientes/pistas/senales. Advisors: solo INFO/WARN de plataforma. **Aplicadas 019 y 020 el 2026-09-12** (versiones 20260912160948/161051), verificadas por md5: `pista_t2` `ca9a2790…` (10 557, y cambió desde el `454f6019…` de 003), `v_contraste_caso` `17eda3f6…` (9 497, cambió desde el `cf534c8a…` de 018). Firma de la vista intacta con sus siete columnas, ACL sin PUBLIC, asesores sin cambios. Prueba funcional: los tres casos del fixture devuelven cero filas sin error, y se comprobó que el cero no es vacuo (los tres giros existen y son distintos, así que llegan a comparar de verdad). **Aplicadas también 014–018 el 2026-09-12, verificadas cuerpo a cuerpo** (018: `md5(prosrc)` `cf534c8a…`, 5 332 caracteres, idéntico al archivo; `security invoker` como su hermana `v_trayectoria_rfc`; ACL `{postgres, service_role, anon, authenticated}` sin PUBLIC). **Pendiente del usuario: exponer el schema `forense` en Project Settings → API → Exposed schemas.** |
 | n8n | proyecto personal `n0vtYcnvIW4LpWOE` en `n8n.srv1550651.hstgr.cloud`; prefijo `FORENSE_`; **n8n 2.33.7** confirmado por el usuario (instance id ce6b6b06…). **Smoke OK** `FORENSE_smoke_anthropic` (ejecución 283972): `claude-sonnet-5` → `tool_use` forense_perfil, 645/45 tokens, 1.1 s. |
 | Vercel | equipo `team_btOOK1ypsV2lyPljQaC0r3Ui` (hobby). **403 al crear el proyecto vía MCP** ("You don't have permission to create the project"): el usuario lo crea desde el dashboard importando `mrwh1th3/hackthonsearchv1-2026` con Root Directory `web`, o da permiso al MCP. Variables de entorno de 11 se cargan en el dashboard. |
 | ElevenLabs | 0 números salientes al leer la cuenta; el usuario indica que el número se configura desde la UI de ElevenLabs. Hasta que exista, el adaptador se entrega con tests y la UI muestra `omitida` con motivo; ninguna llamada real sin número y consentimiento. |
@@ -270,6 +270,29 @@ con contenido. Si sale el mensaje de "no se encontró ninguno", el rastreo no
 los incluyó y hay que pasar a plan B (generar un módulo con los tres
 documentos en tiempo de build e importarlo, que garantiza el empaquetado a
 costa de duplicar el texto).
+
+### Hallazgo H11-g: en producción el corte del snapshot se vería un día después
+Catorce sitios de la UI formateaban fechas con `new Date(x).toLocaleString("es-MX")`
+**sin** `timeZone`, y eso formatea en la zona del PROCESO. En local es
+America/Mexico_City y todo cuadra; una Vercel Function corre en **UTC**. El caso
+que lo vuelve grave: `corridas.fecha_corte` vale `2026-01-31 23:59:59-06`, que
+en UTC es `2026-02-01 05:59:59`, así que la pantalla habría enseñado el corte
+como **1 de febrero** en un sistema fiscal cuyo propio manifiesto dice 31 de
+enero. Un juez con dominio del problema lo nota.
+
+Arreglado con `web/lib/date/formato.ts`, que pasa `timeZone` explícito y usa la
+misma zona por omisión que el selector de rangos (`America/Monterrey`) — dos
+zonas por omisión distintas en la misma UI serían peor que el bug. No es una
+decisión nueva: `web/lib/date/range.ts` ya la había tomado para la aritmética de
+rangos, con el análisis de por qué `Intl.DateTimeFormat` con zona explícita no
+depende del reloj del proceso; esto la extiende al formato de presentación.
+
+Verificado con la condición de producción: la suite de web pasa **281/281 con
+`TZ=UTC`**, y hay una prueba que fija que el corte sigue saliendo 31/1/2026 con
+el proceso en UTC y en Asia/Tokyo.
+
+Queda a propósito sin tocar un sitio: el indicador de "guardado" del editor usa
+el reloj del visitante, que ahí es lo correcto.
 
 ## Abierto
 - ~~Aplicar 014–017 a Supabase~~ **hecho** (2026-09-12 14:32–14:35, versiones 20260912143247/143340/143417/143459). Verificado en remoto, no por el "ok" del aplicador: las cinco funciones tocadas con `md5(prosrc)` idéntico al cuerpo del archivo que las define en último lugar (`cobertura_caso` contra 016; `paquete_auditor_final` y `guardar_dictamen` contra 017); `proacl` de las cinco sin ninguna entrada de PUBLIC (`{postgres=X/postgres, service_role=X/postgres}`); `max_expansiones_caso=1`; `evaluacion_pistas->(p.id::text)` presente y `->p.codigo` ausente; asesores idénticos a la línea base tomada antes de aplicar (22 INFO + 2 WARN preexistentes, ningún ERROR nuevo). Prueba funcional sobre el remoto, en un bloque revertido por excepción: sin frontera pedida `true`, con la lista de candidatos poblada `true`, con una señal que pide frontera `false`; cero residuos.

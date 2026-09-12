@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Investigacion } from "@/lib/data";
+import { fechaHora } from "@/lib/date/formato";
 
 const ESTADO_LABEL: Record<Investigacion["estado"], string> = {
   en_cola: "En cola",
@@ -84,8 +85,8 @@ function ExecutionRow({ row }: { row: ExecutionHistoryRow }) {
             {investigacion.titulo ?? investigacion.mensaje ?? "Investigación"}
           </Link>
           <p className="text-xs text-text-subtle">
-            {new Date(investigacion.creado).toLocaleString("es-MX")}
-            {investigacion.completada_at ? ` → ${new Date(investigacion.completada_at).toLocaleString("es-MX")}` : ""}
+            {fechaHora(investigacion.creado)}
+            {investigacion.completada_at ? ` → ${fechaHora(investigacion.completada_at)}` : ""}
           </p>
         </div>
 

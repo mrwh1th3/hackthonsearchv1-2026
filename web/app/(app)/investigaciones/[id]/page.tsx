@@ -5,6 +5,7 @@ import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { getDataSource } from "@/lib/data";
 import { fuentePrivadaActual, obtenerInvestigacionPrivada } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
+import { fechaHora, soloHora } from "@/lib/date/formato";
 
 export const metadata = { title: "Forense · Investigación" };
 export const dynamic = "force-dynamic";
@@ -43,7 +44,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
         <span>·</span>
         <span>Directriz: {inv.directriz_id ?? "—"}</span>
         <span>·</span>
-        <span>Creada: {new Date(inv.creado).toLocaleString("es-MX")}</span>
+        <span>Creada: {fechaHora(inv.creado)}</span>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -77,7 +78,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
             <Info label="Corrida" value={inv.corrida_id.slice(0, 8) + "…"} />
             <Info label="Casos" value={String(inv.caso_ids.length)} />
             <Info label="Padre" value={inv.investigacion_padre_id ?? "Ninguna (raíz)"} />
-            <Info label="Completada" value={inv.completada_at ? new Date(inv.completada_at).toLocaleString("es-MX") : "—"} />
+            <Info label="Completada" value={fechaHora(inv.completada_at)} />
           </dl>
         </Tabs.Content>
 
@@ -128,7 +129,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
             <ul className="space-y-1">
               {bitacoraCaso.map((e) => (
                 <li key={e.id} className="rounded border border-border p-2 text-xs">
-                  <span className="text-text-subtle">{new Date(e.ts).toLocaleTimeString("es-MX")}</span> · {e.tipo_evento} · {e.payload.resumen}
+                  <span className="text-text-subtle">{soloHora(e.ts)}</span> · {e.tipo_evento} · {e.payload.resumen}
                 </li>
               ))}
             </ul>

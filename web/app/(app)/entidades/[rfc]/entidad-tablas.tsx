@@ -3,6 +3,7 @@
 import { ChartPanel } from "@/components/shared/chart-panel";
 import { DataTable } from "@/components/shared/data-table";
 import type { EntidadPerfil, ParComparacion } from "@/lib/data";
+import { soloFecha } from "@/lib/date/formato";
 
 /**
  * Igual que TrayectoriaPanel: DataTable/ChartPanel son Client Components,
@@ -31,7 +32,7 @@ export function FacturasTable({ facturas }: { facturas: EntidadPerfil["facturas"
         { key: "direccion", header: "Dirección" },
         { key: "contraparte", header: "Contraparte", render: (f) => <span className="font-mono text-xs">{f.contraparte}</span> },
         { key: "monto", header: "Monto", align: "right" },
-        { key: "fecha", header: "Fecha", render: (f) => new Date(f.fecha).toLocaleDateString("es-MX") },
+        { key: "fecha", header: "Fecha", render: (f) => soloFecha(f.fecha) },
       ]}
       rows={facturas}
       getRowKey={(f) => f.id}

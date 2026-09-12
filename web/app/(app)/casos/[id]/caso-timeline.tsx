@@ -5,6 +5,7 @@ import { TraceDrawer } from "@/components/shared/trace-drawer";
 import type { EventoForense } from "@/lib/data";
 import { mapEventoBitacora } from "@/lib/data/supabase";
 import { useCanalForense } from "@/lib/realtime/usar-canal";
+import { soloHora } from "@/lib/date/formato";
 
 /**
  * 09 §3, izquierda: timeline de bitácora agrupado por ronda. No hay campo
@@ -60,7 +61,7 @@ export function CasoTimeline({ eventos, casoId }: { eventos: EventoForense[]; ca
               onClick={() => setSeleccionado(e)}
               className="flex w-full items-start gap-2 rounded-md p-1.5 text-left text-xs hover:bg-surface-hover"
             >
-              <span className="mt-0.5 w-14 shrink-0 tabular-nums text-text-subtle">{new Date(e.ts).toLocaleTimeString("es-MX")}</span>
+              <span className="mt-0.5 w-14 shrink-0 tabular-nums text-text-subtle">{soloHora(e.ts)}</span>
               <span className="shrink-0 rounded-full border border-border px-1.5 text-[10px] text-text-muted">{e.tipo_evento}</span>
               <span className="line-clamp-1 flex-1 text-text">{e.payload.resumen}</span>
             </button>

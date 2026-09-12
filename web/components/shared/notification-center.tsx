@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { Notificacion } from "@/lib/data";
+import { fechaHora } from "@/lib/date/formato";
 
 const TIPO_LABEL: Record<Notificacion["tipo"], string> = {
   investigacion_completa: "Investigación completa",
@@ -30,7 +31,7 @@ export function NotificationCenter({ notificaciones }: { notificaciones: Notific
               <span className="flex-1">
                 <span className="block text-xs text-text-subtle">{TIPO_LABEL[n.tipo]}</span>
                 <span className="block text-sm text-text">{n.titulo}</span>
-                <span className="block text-xs text-text-subtle">{new Date(n.creado).toLocaleString("es-MX")}</span>
+                <span className="block text-xs text-text-subtle">{fechaHora(n.creado)}</span>
               </span>
             </Link>
           </li>

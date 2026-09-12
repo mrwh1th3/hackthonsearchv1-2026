@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { FixtureBadge } from "@/components/shared/fixture-badge";
 import { NivelBadge } from "@/components/shared/badges";
 import { getDataSource } from "@/lib/data";
+import { fechaHora } from "@/lib/date/formato";
 
 export const metadata = { title: "Forense · Mapa de clusters" };
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export default async function CorridaClustersPage({ params }: { params: Promise<
         <div>
           <h1 className="text-2xl font-semibold text-text">{corrida.nombre}</h1>
           <p className="text-xs text-text-subtle">
-            Dataset {corrida.dataset} · corte {new Date(corrida.fecha_corte).toLocaleString("es-MX")}
+            Dataset {corrida.dataset} · corte {fechaHora(corrida.fecha_corte)}
           </p>
         </div>
         <div className="flex items-center gap-2">
