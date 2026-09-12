@@ -109,12 +109,19 @@ const CASOS = {
   // ----------------------------------------------------------------- editor
   'FORENSE_editar_expediente/Cargar versión base': [ctx.caso_id, ctx.version_expediente ?? 1],
   // ---------------------------------------------------------------- corrida
+  // Todo corre dentro de BEGIN … ROLLBACK: `Validar e idempotencia` abre una
+  // corrida nueva y `Cerrar corrida` escribe estado y métricas, y ninguna de
+  // las dos sobrevive a la transacción.
+  'FORENSE_corrida/Validar e idempotencia': ['probe-forma', `probe-forma-${Date.now()}`, ctx.corrida_id],
+  'FORENSE_corrida/Cargar o clonar snapshot': [ctx.corrida_id, null],
   'FORENSE_corrida/Verificar integridad': [ctx.corrida_id],
   'FORENSE_corrida/Correr pistas': [ctx.corrida_id],
   'FORENSE_corrida/Armar clusters': [ctx.corrida_id],
   'FORENSE_corrida/Clusters por score': [ctx.corrida_id, ctx.investigacion_id ?? ctx.caso_id, 5],
   'FORENSE_corrida/Esperar y reconciliar': [ctx.corrida_id],
+  'FORENSE_corrida/Cola y slots': [ctx.corrida_id],
   'FORENSE_corrida/Métricas': [ctx.corrida_id],
+  'FORENSE_corrida/Cerrar corrida': [ctx.corrida_id, 'completada', '{"probe":"forma"}'],
   // --------------------------------------------------------------- inyectar
   ...(ctx.inyeccion_id ? {
     'FORENSE_inyectar/Validar filas': [ctx.inyeccion_id],

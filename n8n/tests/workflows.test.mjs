@@ -164,7 +164,10 @@ test('worker: la reserva del request precede al HTTP del proveedor (17 §5.3)', 
   const entradasHttp = Object.entries(wf.connections)
     .filter(([, s]) => s.main.flat().some((d) => d.node === 'POST /v1/messages'))
     .map(([origen]) => origen).sort();
-  assert.deepEqual(entradasHttp, ['Construir cuerpo Messages']);
+  // Desde H11 la única entrada es el registro del aviso de reintento, que a su
+  // vez sólo recibe del constructor del cuerpo: la cadena sigue siendo lineal.
+  assert.deepEqual(entradasHttp, ['Registrar aviso de reintento']);
+  assert.equal(alcanza(wf, 'Construir cuerpo Messages', 'POST /v1/messages'), true, 'cuerpo → HTTP');
   // El único camino de vuelta desde el HTTP a la reserva es el backoff, y
   // reservar otra vez con el MISMO request_id es lo que pide 17 §4 («cada HTTP
   // nuevo es un intento registrado, aunque sea retry»): incrementa
@@ -250,4 +253,117 @@ test('investigación: sin ronda 2 se pasa directo a Auditoría', () => {
   const decision = wf.connections['¿Hay ronda 2?'];
   const ramaFalsa = decision.main[1].map((d) => d.node);
   assert.deepEqual(ramaFalsa, ['Auditoría'], 'conjunto vacío de despertados → Auditoría (07 §2.7)');
+});
+
+// ───────────────────────────────────────── H11: el bucle de despacho de corrida
+
+test('corrida: el bucle redespacha mientras quede cola y sólo cierra con terminada=true', () => {
+  const wf = cargar('FORENSE_corrida.json');
+  // 1. La rama de espera vuelve a mirar la cola y puede despachar: no es un
+  //    simple sleep que reconsulta el estado.
+  assert.equal(alcanza(wf, 'Espera corrida', 'Despachar pendiente'), true,
+    'la rama de espera tiene que poder despachar lo que quedó en cola');
+  assert.equal(alcanza(wf, 'Despachar pendiente', 'Esperar y reconciliar'), true,
+    'lo redespachado vuelve al reconciliador');
+  // 2. El bucle se cierra sobre sí mismo por las DOS ramas del IF de pendientes:
+  //    sin cola que despachar la vuelta también regresa (si no, el bucle muere).
+  for (const salida of [0, 1]) {
+    const destinos = wf.connections['¿Hay pendientes?'].main[salida].map((d) => d.node);
+    assert.equal(destinos.length, 1);
+    assert.equal(alcanza(wf, destinos[0], 'Esperar y reconciliar'), true,
+      `la salida ${salida} de ¿Hay pendientes? tiene que volver al reconciliador`);
+  }
+  // 3. Métricas y cierre cuelgan SÓLO de la rama verdadera del IF de término.
+  assert.deepEqual(wf.connections['¿Corrida terminada?'].main[0].map((d) => d.node), ['Métricas']);
+  assert.deepEqual(wf.connections['¿Corrida terminada?'].main[1].map((d) => d.node), ['Espera corrida']);
+  assert.equal(alcanza(wf, 'Despachar hasta 4', 'Métricas'), true);
+});
+
+test('corrida: el reconciliador recibe UN ítem por vuelta, no uno por cluster', () => {
+  const wf = cargar('FORENSE_corrida.json');
+  const entradas = Object.entries(wf.connections)
+    .filter(([, s]) => s.main.flat().some((d) => d.node === 'Esperar y reconciliar'))
+    .map(([origen]) => origen);
+  assert.deepEqual(entradas, ['Ciclo de corrida'],
+    'todo el bucle converge en el colapsador; si no, estado_corrida corre N veces por vuelta');
+  const ciclo = wf.nodes.find((n) => n.name === 'Ciclo de corrida');
+  assert.match(ciclo.parameters.jsCode, /return \[\{ json:/, 'el colapsador devuelve exactamente un ítem');
+});
+
+test('corrida: la cola que se cuenta y la que se despacha usan el MISMO predicado', () => {
+  const wf = cargar('FORENSE_corrida.json');
+  const predicado = /estado = 'pendiente'[\s\S]*NOT EXISTS \(SELECT 1 FROM forense\.casos/;
+  for (const nombre of ['Clusters por score', 'Cola y slots']) {
+    const n = wf.nodes.find((x) => x.name === nombre);
+    assert.match(n.parameters.query, predicado, `${nombre} no replica el predicado de forense.cola_corrida`);
+  }
+  const cola = wf.nodes.find((n) => n.name === 'Cola y slots');
+  assert.match(cola.parameters.query, /forense\.cola_corrida\(\$1::uuid\)/);
+});
+
+test('corrida: ningún despacho sale sin cluster_id (el IF decide, no la lista vacía)', () => {
+  const wf = cargar('FORENSE_corrida.json');
+  for (const [decision, destino] of [['¿Hay admitidos?', 'Despachar cluster'],
+    ['¿Hay pendientes?', 'Despachar pendiente']]) {
+    assert.deepEqual(wf.connections[decision].main[0].map((d) => d.node), [destino]);
+    const nodo = wf.nodes.find((n) => n.name === decision);
+    assert.equal(nodo.parameters.conditions.conditions[0].leftValue, '={{ $json.despachar }}');
+  }
+  // El SELECT de clusters emite ítem aunque no haya ninguno: una corrida vacía
+  // llega al bucle en vez de detener la rama en el primer nodo.
+  const select = wf.nodes.find((n) => n.name === 'Clusters por score');
+  assert.equal(select.alwaysOutputData, true);
+});
+
+test('corrida: una corrida SIN clusters cierra — `terminada` sola la dejaría girando', () => {
+  const wf = cargar('FORENSE_corrida.json');
+  // forense.estado_corrida (012) exige `total > 0` para declarar `terminada`,
+  // así que con cero clusters devuelve terminada=false y estado_final
+  // 'sin_clusters' PARA SIEMPRE. El IF no puede leer `terminada` a secas.
+  const reconciliar = wf.nodes.find((n) => n.name === 'Esperar y reconciliar');
+  assert.match(reconciliar.parameters.query, /'sin_clusters'\) AS cerrable/);
+  const decision = wf.nodes.find((n) => n.name === '¿Corrida terminada?');
+  assert.equal(decision.parameters.conditions.conditions[0].leftValue, '={{ $json.cerrable }}');
+  // Y lo que se persiste tiene que caber en el CHECK de corridas.estado
+  // (preparando|lista|procesando|completada|error): 'sin_clusters' no cabe.
+  const metricas = wf.nodes.find((n) => n.name === 'Métricas');
+  assert.match(metricas.parameters.query, /AS estado_cierre/);
+  assert.match(metricas.parameters.query, /estado_final_calculado/);
+  const cerrar = wf.nodes.find((n) => n.name === 'Cerrar corrida');
+  assert.match(cerrar.parameters.options.queryReplacement, /\$json\.estado_cierre/);
+  assert.equal(/\$json\.estado_final/.test(cerrar.parameters.options.queryReplacement), false,
+    'estado_final puede valer sin_clusters y rompería el CHECK de corridas.estado');
+});
+
+test('corrida: el estado con el que se cierra se relee, no se toma de una vuelta del bucle', () => {
+  const wf = cargar('FORENSE_corrida.json');
+  const cerrar = wf.nodes.find((n) => n.name === 'Cerrar corrida');
+  const reemplazos = cerrar.parameters.options.queryReplacement;
+  assert.equal(/Esperar y reconciliar/.test(reemplazos), false,
+    'el nodo corre muchas veces: referenciar una de sus vueltas no es determinista');
+  assert.match(reemplazos, /\$json\.estado_cierre/);
+  const metricas = wf.nodes.find((n) => n.name === 'Métricas');
+  assert.match(metricas.parameters.query, /forense\.estado_corrida\(\$1::uuid\)/);
+  assert.match(metricas.parameters.query, /forense\.v_metricas_corrida\(\$1::uuid\)/);
+});
+
+test('worker: el aviso de reintento queda registrado ANTES del POST (regla 2)', () => {
+  const wf = cargar('FORENSE_ejecutar_agente.json');
+  const salidas = wf.connections['Registrar aviso de reintento'].main.flat().map((d) => d.node);
+  assert.deepEqual(salidas, ['POST /v1/messages'], 'el aviso precede a la llamada, no es rama hermana');
+  // Única entrada del POST ⇒ no hay camino al proveedor que se salte el
+  // registro, ni siquiera el de backoff (que re-entra por «Reservar request»).
+  const entradas = Object.entries(wf.connections)
+    .filter(([, s]) => s.main.flat().some((d) => d.node === 'POST /v1/messages'))
+    .map(([origen]) => origen);
+  assert.deepEqual(entradas, ['Registrar aviso de reintento']);
+  // La consulta devuelve SIEMPRE una fila (registrado=false sin aviso): si no,
+  // el POST se quedaría sin ítems de entrada cuando no hay reintento.
+  const nodo = wf.nodes.find((n) => n.name === 'Registrar aviso de reintento');
+  assert.match(nodo.parameters.query, /AS registrado/);
+  assert.match(nodo.parameters.query, /SELECT \$3::uuid AS caso_id/);
+  // El cuerpo del POST sigue saliendo del constructor por referencia de nodo,
+  // así que interponer el registro no cambia lo que se envía.
+  const post = wf.nodes.find((n) => n.name === 'POST /v1/messages');
+  assert.match(post.parameters.jsonBody, /\$\('Construir cuerpo Messages'\)/);
 });

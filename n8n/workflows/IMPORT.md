@@ -10,7 +10,7 @@ Postgres 17 con las migraciones 001–003:
 
 | Comando | Resultado |
 |---|---|
-| `node --test "n8n/tests/*.test.mjs"` | 326 pasan, 0 fallan |
+| `node --test "n8n/tests/*.test.mjs"` | **348 pasan, 0 fallan** (H11) |
 | `node n8n/runtime/generar-code-nodes.mjs --check` | sin deriva |
 | `node n8n/runtime/generar-workflows.mjs --check` | sin deriva |
 | `node n8n/tests/preparar-sql.mjs forense_runtime` | `ok=25 pendiente_004_005=48 falla=0` |
@@ -43,7 +43,7 @@ quedan en modo test hasta que el smoke pase.
 | 2 | `FORENSE_reintento.json` | 16 | Lo llama la investigación. |
 | 3 | `FORENSE_editar_expediente.json` | 10 | Solo depende del worker. |
 | 4 | `FORENSE_investigar_cluster.json` | 38 | Necesita 1 y 2. |
-| 5 | `FORENSE_corrida.json` | 16 | Necesita 4. |
+| 5 | `FORENSE_corrida.json` | 22 | Necesita 4. El bucle de despacho añadió seis nodos en H11 (ver §3.4). |
 | 6 | `FORENSE_inyectar.json` | 14 | 21 §3; necesita 4 y 5. Va **entre 5 y 6** del orden de 17, que es anterior a 21. |
 | 7 | `FORENSE_notificar_completada.json` | 10 | La llama 4 al cerrar el caso. |
 | 8 | `FORENSE_resultado_llamada.json` | 6 | Callback de 7. |
@@ -92,6 +92,7 @@ reales tras importar»).
 | `FORENSE_investigar_cluster` | `Llamar reintento` | `PENDIENTE_FORENSE_REINTENTO` | FORENSE_reintento |
 | `FORENSE_investigar_cluster` | `Avisar agregador` | `PENDIENTE_FORENSE_NOTIFICAR_COMPLETADA` | FORENSE_notificar_completada |
 | `FORENSE_corrida` | `Despachar cluster` | `PENDIENTE_FORENSE_INVESTIGAR_CLUSTER` | FORENSE_investigar_cluster |
+| `FORENSE_corrida` | `Despachar pendiente` | `PENDIENTE_FORENSE_INVESTIGAR_CLUSTER` | FORENSE_investigar_cluster |
 | `FORENSE_inyectar` | `Despachar afectados` | `PENDIENTE_FORENSE_INVESTIGAR_CLUSTER` | FORENSE_investigar_cluster |
 | `FORENSE_reconciliador` | `Redespachar pasos` | `PENDIENTE_FORENSE_EJECUTAR_AGENTE` | FORENSE_ejecutar_agente |
 | `FORENSE_reconciliador` | `Reenviar outbox` | `PENDIENTE_FORENSE_NOTIFICAR_COMPLETADA` | FORENSE_notificar_completada |
@@ -170,18 +171,58 @@ uno a uno; el resumen:
    cuando la función toma la **ingesta** y devuelve `jsonb` escalar (la columna
    `validada` volvía `undefined` y el IF se iba **siempre** por la rama de
    rechazo), y `Clonar corrida` leía `corrida_nueva_id` de una función que
-   devuelve `uuid` escalar. Los demás workflows siguen con nodos en la lista:
-   se resuelven igual, nombrando columnas y verificando con
-   `node n8n/tests/verificar-forma-nodos.mjs <base>`.
+   devuelve `uuid` escalar.
 
-   Medido en H10 sobre `forense_rt`: **ok=37, con_problema=3, sin_filas=1,
-   omitidos=34**. De los tres, `FORENSE_inyectar/Validar filas` devuelve
-   `validada` con valor y el resto de columnas en NULL **porque el verificador
-   le pasa una ingesta sin filas**: `validar_inyeccion` contesta
-   `{ok:false, error:'contexto_invalido'}`, que sólo trae esas dos claves. Con
-   una ingesta real (`node n8n/tests/e2e-inyeccion.mjs`) las ocho columnas
-   vuelven con valor. Los otros dos (`Cargar versión base` y `Cargar caso
-   vigente`, columna `nivel`) son de otros dueños.
+   **H11 — `FORMA_PENDIENTE.FORENSE_corrida` quedó vacío.** Los cuatro nodos que
+   quedaban se resolvieron uno a uno, no en bloque:
+
+   | Nodo | Antes | Ahora | Verificado |
+   |---|---|---|---|
+   | `Validar e idempotencia` | `SELECT * FROM forense.abrir_corrida(…)` | nombra las 7 columnas de la firma (`corrida_id, estado, idempotency_key, corrida_origen_id, investigacion_id, dataset, reutilizada`) | sí, con `corrida_origen_id` no nulo |
+   | `Cargar o clonar snapshot` | `SELECT *` | nombra `corrida_id, estado, filas_por_tabla, corrida_origen_id` | sí |
+   | `Verificar integridad` | `SELECT *` | nombra las 6 columnas (`… dataset_hash, fecha_corte, familias_evaluables, causa`) | sí |
+   | `Esperar y reconciliar` | `SELECT * FROM forense.estado_corrida(…)` | nombra las 6 columnas de 012 (`terminada, estado_final, completados, en_cola, errores`) | sí |
+
+   Los **dos nodos nuevos** del bucle (`Cola y slots`, `Redespachar pendientes`)
+   nacen con columnas nombradas y con caso declarado en el verificador, así que
+   no entran a la lista. `FORMA_PENDIENTE` restante:
+
+   | Workflow | Nodos pendientes | Por qué siguen ahí |
+   |---|---|---|
+   | `FORENSE_investigar_cluster` | `Aplicar resolución`, `Cerrar caso`, `Guardar dictamen`, `Ronda fin R1`, `Validar citas` | `SELECT *` sobre funciones cuya firma es de forense-db; se verifican ejecutándolos (`verificar-forma-nodos` los cubre con caso declarado) |
+   | `FORENSE_reintento` | `Crear tareas de revisión`, `Expandir para reintento`, `Revalidar si cambió evidencia`, `Seleccionar autores` | ídem |
+   | `FORENSE_editar_expediente` | `Cargar versión base`, `Guardar propuesta` | dueño forense-editor |
+   | `FORENSE_notificar_completada` | 6 nodos | dueño forense-voice |
+   | `FORENSE_resultado_llamada` | `Actualizar llamada`, `Deduplicar callback` | dueño forense-voice |
+   | `FORENSE_reconciliador` | `Barreras vencidas`, `Outbox pendiente` | `SELECT *` sobre vistas, no funciones |
+
+   Medido en **H11** con `node n8n/tests/verificar-forma-nodos.mjs forense_rt`
+   sobre **`forense_rt` con las migraciones 001–015 aplicadas y un caso ya
+   investigado** (el que deja `node n8n/tests/e2e-camino-worker.mjs forense_rt`;
+   en la medición, caso `aef9090f-5c4c-4838-b5a2-16843a2393fa`):
+   **ok=41, con_problema=3, sin_filas=1, omitidos=31**.
+   Histórico con la misma base pero 001–011 y sin los casos de corrida: H10 daba
+   **ok=37, con_problema=3, sin_filas=1, omitidos=34**.
+
+   Los **diez** nodos Postgres de `FORENSE_corrida` quedan verificados: los
+   cuatro que estaban omitidos por no tener caso declarado (`Validar e
+   idempotencia`, `Cargar o clonar snapshot`, `Cola y slots`, `Cerrar corrida`)
+   ya lo tienen, y corren dentro de `BEGIN … ROLLBACK` como el resto.
+
+   De los tres `con_problema`, ninguno es de este dueño ni indica cableado roto:
+   `FORENSE_inyectar/Validar filas` devuelve `validada` con valor y el resto en
+   NULL **porque el verificador le pasa una ingesta sin filas**
+   (`validar_inyeccion` contesta `{ok:false, error:'contexto_invalido'}`, que
+   sólo trae esas dos claves); con una ingesta real
+   (`node n8n/tests/e2e-inyeccion.mjs forense_rt`) las ocho columnas vuelven con
+   valor. `Cargar versión base` (forense-editor) y `Cargar caso vigente`
+   (columna `nivel`) son de otros dueños. El único `sin_filas` es
+   `FORENSE_reconciliador/Outbox pendiente`: la vista está vacía en esa base.
+
+   Los **31 omitidos** son nodos sin caso declarado en `CASOS`: casi todos del
+   worker (`FORENSE_ejecutar_agente`, 15) y de voz (8), que necesitan una
+   ejecución viva o un evento de outbox. El verificador los LISTA uno a uno en
+   su salida en vez de aprobarlos en silencio.
 
    **Aviso importante sobre `PREPARE`:** analiza tipos, no la forma de la
    salida. Casi todas las funciones de 004–008 devuelven **`jsonb` escalar**, así
@@ -193,6 +234,50 @@ uno a uno; el resumen:
    `node n8n/tests/verificar-forma-nodos.mjs <base>` (ejecuta la SQL de cada
    nodo recableado dentro de BEGIN/ROLLBACK y falla si una columna declarada en
    `CONTRATOS_NODOS` vuelve NULL) y `node n8n/tests/e2e-camino-worker.mjs <base>`.
+
+### 3.4.b El bucle de `FORENSE_corrida` (H11) — qué mirar al importar
+
+`FORENSE_corrida` pasó de 16 a 22 nodos. La forma del grafo es lo que hay que
+revisar en la instancia, porque de ella depende que la cola se drene:
+
+```
+Clusters por score → Despachar hasta 4 → ¿Hay admitidos? ─sí→ Despachar cluster ─┐
+                                                         └no→─────────────────────┤
+                                                                                  ↓
+  ┌──────────────────────────────────────────────────────────── Ciclo de corrida ─┘
+  ↓
+Esperar y reconciliar → ¿Corrida terminada? ─sí→ Métricas → Cerrar corrida
+                                            └no→ Espera corrida → Cola y slots
+                                                 → Redespachar pendientes
+                                                 → ¿Hay pendientes? ─sí→ Despachar pendiente ─┐
+                                                                    └no→──────────────────────┘
+                                                                         (vuelven a Ciclo de corrida)
+```
+
+Cuatro cosas que un cambio manual en la UI de n8n rompe en silencio:
+
+1. **`Ciclo de corrida` es el único que entra a `Esperar y reconciliar`.** Colapsa
+   la vuelta a un ítem. Si se conecta algo más directamente al reconciliador,
+   `estado_corrida` corre una vez por cluster y `Cerrar corrida` escribe N veces.
+2. **Las dos salidas de cada IF tienen que volver al bucle.** La rama «no» no es
+   un callejón: sin ella, una vuelta sin nada que despachar mata el bucle y la
+   corrida nunca cierra.
+3. **`MAX_ACTIVOS` es una constante inyectada** al principio del `jsCode` de
+   `Despachar hasta 4` y `Redespachar pendientes` (valor 4). Cambiarla en un solo
+   nodo descuadra el techo: se cambia en `generar-workflows.mjs` y se regenera.
+4. **`Clusters por score` lleva `alwaysOutputData: true`** y el IF lee
+   **`cerrable`, no `terminada`.** `forense.estado_corrida` (012) exige
+   `total > 0` para declarar `terminada`, así que una corrida **sin clusters**
+   devuelve `terminada=false` y `estado_final='sin_clusters'` indefinidamente:
+   con el IF leyendo `terminada` el bucle giraría cada 10 s para siempre.
+   `cerrable = terminada OR estado_final = 'sin_clusters'` lo cierra, y
+   `Métricas` traduce con `estado_cierre` porque `sin_clusters` **no cabe** en el
+   CHECK de `corridas.estado` (`preparando|lista|procesando|completada|error`);
+   el matiz viaja en `metricas.estado_final_calculado`.
+
+`Espera corrida` es un nodo `wait` de 10 000 ms: acota la vuelta sin hacer
+polling al proveedor. Las dos lecturas por vuelta son de Postgres
+(`estado_corrida` y `cola_corrida`), nunca del LLM.
 
 ### 3.5 Funciones que faltan (petición a forense-db) — **revisado H10**
 
@@ -232,7 +317,7 @@ bitácora, liberación de lease) ni sacar el dictamen determinista de la DB:
 | `forense.revalidar_caso(caso uuid)` | reintento / Revalidar si cambió evidencia | `limitaciones, evidencia_revalidada` |
 | `forense.cerrar_barreras_vencidas(now timestamptz)` | reconciliador / Barreras vencidas | `caso_id, paso, cerradas, limitaciones` |
 | `forense.eventos_salida_pendientes(limite int)` | reconciliador / Outbox pendiente | `evento_id, investigacion_id, intentos` |
-| `forense.abrir_corrida`, `cargar_o_clonar_snapshot`, `verificar_integridad_corrida`, `estado_corrida` | corrida (4 nodos) | ver `CONTRATOS_NODOS.FORENSE_corrida` |
+| `forense.abrir_corrida`, `cargar_o_clonar_snapshot`, `verificar_integridad_corrida`, `estado_corrida`, `cola_corrida` (012), `v_metricas_corrida` | corrida (10 nodos Postgres) | ver `CONTRATOS_NODOS.FORENSE_corrida` |
 | `forense.cargar_version_expediente(caso uuid, version int)`, `forense.guardar_propuesta_edicion(...)` | editar_expediente | ver `CONTRATOS_NODOS.FORENSE_editar_expediente` |
 
 **(b) Existen con otro nombre o firma: el recableado es del nodo, no de la DB.**
@@ -380,7 +465,7 @@ bash db/tests/cargar_gen.sh forense_rt
 
 node n8n/tests/preparar-sql.mjs forense_rt           # espera falla=0
 node n8n/tests/e2e-camino-worker.mjs forense_rt      # espera eventos>0 y un nivel
-node n8n/tests/verificar-forma-nodos.mjs forense_rt  # espera con_problema=0
+node n8n/tests/verificar-forma-nodos.mjs forense_rt  # H11: ok=41 con_problema=3 (los 3, de otros dueños; §3.4)
 ```
 
 Medido el 2026-09-12 (H8) con 001–010 + `gen-v1`:
@@ -389,7 +474,9 @@ Medido el 2026-09-12 (H8) con 001–010 + `gen-v1`:
 |---|---|
 | `preparar-sql.mjs` | `ok=73 pendiente_004_005=0 falla=0` — con 010 aplicada ya no queda función por publicar. |
 | `e2e-camino-worker.mjs` | 46 pasos, **47 eventos** en `forense.bitacora`, 5 443 ms de SQL, nivel `no_concluyente`. El nivel lo decide `n8n/runtime/auditor-final.mjs` y se persiste con `forense.guardar_dictamen` + `forense.cerrar_caso`: el e2e **no** hace `UPDATE` directo, y si `dictaminar()` lanza, falla (no hay fallback que invente niveles). |
-| `verificar-forma-nodos.mjs` | `ok=36 con_problema=0 sin_filas=2 omitidos=35` — recorre los diez workflows; lista uno a uno los nodos sin caso declarado en vez de aprobarlos en silencio. |
+| `verificar-forma-nodos.mjs` | **H11 sobre `forense_rt` con 001–015 y un caso investigado: `ok=41 con_problema=3 sin_filas=1 omitidos=31`** (H8 daba `ok=36 con_problema=0 sin_filas=2 omitidos=35` con 001–010 y otro conjunto de casos declarados). Recorre los diez workflows y lista uno a uno los nodos sin caso declarado en vez de aprobarlos en silencio; los tres `con_problema` están explicados en §3.4 y ninguno es de `FORENSE_corrida`. |
+| `e2e-corrida.mjs` | **H11 sobre `forense_rt`: 6 clusters, `MAX_ACTIVOS=2`, 7 vueltas, 4 redespachos, corrida `completada` con métricas de `v_metricas_corrida` persistidas, 10.7 s.** Prueba que el bucle drena la cola: sin redespacho, cuatro clusters no se investigarían. |
+| `e2e-inyeccion.mjs` | **H11 sobre `forense_rt` con 001–015: (a) carrusel → `presuncion` con `cobertura_completa=true`; (c) comercializadora → `no_concluyente` pero con cobertura incompleta (12 RFC de frontera sin explorar), así que se reporta `REQUIERE_API_REAL`, no CUMPLE.** |
 
 ```sh
 ```

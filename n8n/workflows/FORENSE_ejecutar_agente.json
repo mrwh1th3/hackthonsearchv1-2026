@@ -265,7 +265,7 @@
       "typeVersion": 2.7,
       "position": [
         1760,
-        140
+        0
       ],
       "name": "Registrar aviso de reintento",
       "credentials": {
@@ -305,7 +305,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1760,
+        1980,
         0
       ],
       "name": "POST /v1/messages",
@@ -323,7 +323,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1980,
+        2200,
         0
       ],
       "name": "Clasificar transporte"
@@ -433,7 +433,7 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        2200,
+        2420,
         0
       ],
       "name": "Ruta de transporte"
@@ -923,12 +923,18 @@
       "main": [
         [
           {
-            "node": "POST /v1/messages",
+            "node": "Registrar aviso de reintento",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Registrar aviso de reintento": {
+      "main": [
+        [
           {
-            "node": "Registrar aviso de reintento",
+            "node": "POST /v1/messages",
             "type": "main",
             "index": 0
           }

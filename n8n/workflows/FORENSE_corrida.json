@@ -25,7 +25,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Reutiliza la corrida `lista` con la misma idempotency_key o crea una `preparando`. `dataset` selecciona un ORIGEN AUTORIZADO, nunca una URL arbitraria. DEPENDE de forense-db.\nSELECT * FROM forense.abrir_corrida($1::text, $2::text, $3::uuid)",
+        "query": "-- Reutiliza la corrida `lista` con la misma idempotency_key o crea una `preparando`. `dataset` selecciona un ORIGEN AUTORIZADO, nunca una URL arbitraria. DEPENDE de forense-db.\nSELECT a.corrida_id, a.estado, a.idempotency_key, a.corrida_origen_id,\n       a.investigacion_id, a.dataset, a.reutilizada\n  FROM forense.abrir_corrida($1::text, $2::text, $3::uuid) a",
         "options": {
           "queryReplacement": "={{ $json.body.dataset }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.corrida_origen_id }}"
         }
@@ -62,7 +62,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Snapshot COMPLETO; con corrida_origen_id clona (regla 10: corridas aisladas). DEPENDE de forense-db.\nSELECT * FROM forense.cargar_o_clonar_snapshot($1::uuid, $2::uuid)",
+        "query": "-- Snapshot COMPLETO; con corrida_origen_id clona (regla 10: corridas aisladas). DEPENDE de forense-db.\nSELECT s.corrida_id, s.estado, s.filas_por_tabla, s.corrida_origen_id\n  FROM forense.cargar_o_clonar_snapshot($1::uuid, $2::uuid) s",
         "options": {
           "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Validar e idempotencia').first().json.corrida_origen_id }}"
         }
@@ -83,7 +83,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Conteos, dataset_hash, fecha_corte y familias_evaluables → `lista`; fallo → `error` con causa. Una corrida vacía no se investiga. DEPENDE de forense-db.\nSELECT * FROM forense.verificar_integridad_corrida($1::uuid)",
+        "query": "-- Conteos, dataset_hash, fecha_corte y familias_evaluables → `lista`; fallo → `error` con causa. Una corrida vacía no se investiga. DEPENDE de forense-db.\nSELECT v.corrida_id, v.estado, v.dataset_hash, v.fecha_corte,\n       v.familias_evaluables, v.causa\n  FROM forense.verificar_integridad_corrida($1::uuid) v",
         "options": {
           "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
         }
@@ -146,7 +146,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Cola COMPLETA ordenada por score; el límite de 4 activos lo impone el nodo siguiente, no este SELECT.\nSELECT k.id AS cluster_id, k.corrida_id, k.score, k.estado,\n       $2::uuid AS investigacion_id, $3::text AS idempotency_key\n  FROM forense.clusters k\n WHERE k.corrida_id = $1::uuid\n ORDER BY k.score DESC NULLS LAST, k.id",
+        "query": "-- Cola COMPLETA ordenada por score. El predicado es EL MISMO de forense.cola_corrida (012: pendiente y sin caso): si difiriera, `cola_restante` contaría clusters que el despacho nunca elige y el bucle no terminaría. El límite de activos lo impone el nodo siguiente, no este SELECT.\nSELECT k.id AS cluster_id, k.corrida_id, k.score, k.estado,\n       $2::uuid AS investigacion_id, $3::text AS idempotency_key\n  FROM forense.clusters k\n WHERE k.corrida_id = $1::uuid\n   AND k.estado = 'pendiente'\n   AND NOT EXISTS (SELECT 1 FROM forense.casos c WHERE c.cluster_id = k.id)\n ORDER BY k.score DESC NULLS LAST, k.id",
         "options": {
           "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Validar e idempotencia').first().json.investigacion_id }}, ={{ $('Validar e idempotencia').first().json.idempotency_key }}"
         }
@@ -162,11 +162,12 @@
         "postgres": {
           "name": "Forense Postgres"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "// 17 §2: el límite propio de DB controla ocho pasos y CUATRO clusters. Un\n// límite de n8n no sustituye ese control. Lo que no cabe queda EN COLA, no\n// fallido (regla 10: no se pierde la cola si se acaba el tiempo).\nconst MAX_ACTIVOS = 4;\nconst filas = $input.all().map((i) => i.json);\nconst admitidos = filas.slice(0, MAX_ACTIVOS);\nconst en_cola = filas.slice(MAX_ACTIVOS);\nreturn admitidos.map((f) => ({ json: {\n  cluster_id: f.cluster_id,\n  corrida_id: f.corrida_id,\n  investigacion_id: f.investigacion_id ?? null,\n  idempotency_key: `${f.idempotency_key}:${f.cluster_id}`,\n  admitidos: admitidos.length,\n  en_cola: en_cola.length,\n  cola_restante: en_cola.map((c) => c.cluster_id),\n} }));"
+        "jsCode": "// Constantes inyectadas por n8n/runtime/generar-workflows.mjs.\n// 17 §2: el límite propio de DB controla ocho pasos y CUATRO clusters. Un límite de n8n no sustituye ese control; lo que no cabe queda EN COLA, no fallido (regla 10).\nconst MAX_ACTIVOS = 4;\n\n// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/despachar-clusters.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Corrida: despacho inicial — admite hasta MAX_ACTIVOS clusters y deja el resto EN COLA (17 §2, regla 10).\n\nconst corrida = $('Validar e idempotencia').first().json;\nconst filas = $input.all().map((i) => i.json);\nconst x = {\n  corrida_id: corrida.corrida_id,\n  investigacion_id: corrida.investigacion_id ?? null,\n  idempotency_base: corrida.idempotency_key,\n  max_activos: MAX_ACTIVOS,\n  casos_activos: 0,\n  pendientes: filas.filter((f) => f && f.cluster_id)\n    .map((f) => ({ cluster_id: f.cluster_id, score: f.score })),\n};\nconst entero = (v, porDefecto) => {\n  const n = Number(v);\n  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : porDefecto;\n};\nconst max = entero(x.max_activos, 0);\nconst activos = entero(x.casos_activos, 0);\nconst libres = Math.max(0, max - activos);\n\n// `pendientes` viene del SELECT que replica el predicado de\n// `forense.cola_corrida`: cluster `pendiente` y SIN caso. El orden (score\n// desc, id) lo fija SQL; aquí no se reordena para que la cola despachada y\n// la cola contada sean la misma lista.\nconst pendientes = (Array.isArray(x.pendientes) ? x.pendientes : [])\n  .filter((p) => p && p.cluster_id);\nconst admitidos = pendientes.slice(0, libres);\nconst en_cola = pendientes.slice(admitidos.length);\n\nconst base = x.idempotency_base ?? '';\nconst comun = {\n  corrida_id: x.corrida_id ?? null,\n  investigacion_id: x.investigacion_id ?? null,\n  max_activos: max,\n  casos_activos: activos,\n  slots_libres: libres,\n  pendientes_totales: pendientes.length,\n  admitidos: admitidos.length,\n  en_cola: en_cola.length,\n  cola_restante: en_cola.map((c) => c.cluster_id),\n};\n\nconst salida = admitidos.length > 0\n  ? admitidos.map((c) => Object.assign({}, comun, {\n    despachar: true,\n    cluster_id: c.cluster_id,\n    // Una clave por (corrida, cluster): reintentar la vuelta no duplica casos.\n    idempotency_key: `${base}:${c.cluster_id}`,\n    motivo: 'slot libre',\n  }))\n  : [Object.assign({}, comun, {\n    despachar: false,\n    cluster_id: null,\n    idempotency_key: null,\n    motivo: pendientes.length === 0 ? 'cola vacia' : 'sin slot libre',\n  })];\nreturn salida.map((json) => ({ json }));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -175,6 +176,39 @@
         0
       ],
       "name": "Despachar hasta 4"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.despachar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        0
+      ],
+      "name": "¿Hay admitidos?"
     },
     {
       "parameters": {
@@ -201,15 +235,27 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1760,
+        1980,
         0
       ],
       "name": "Despachar cluster"
     },
     {
       "parameters": {
+        "jsCode": "const filas = $input.all().map((i) => i.json);\nconst despachados = filas.filter((f) => f && f.despachar === true);\nreturn [{ json: {\n  vuelta: true,\n  items_entrantes: filas.length,\n  despachados_en_vuelta: despachados.length,\n  clusters_en_vuelta: despachados.map((f) => f.cluster_id),\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        0
+      ],
+      "name": "Ciclo de corrida"
+    },
+    {
+      "parameters": {
         "operation": "executeQuery",
-        "query": "-- Espera SOLO los clusters admitidos y reconcilia errores, timeouts y leases. Terminar de despachar NO cierra la corrida. DEPENDE de forense-db.\nSELECT * FROM forense.estado_corrida($1::uuid)",
+        "query": "-- Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. `cerrable` añade el único caso en que `terminada` es false y aun así no hay nada que esperar: `sin_clusters` (estado_corrida exige total>0 para declarar terminada, así que una corrida sin clusters giraría para siempre). DEPENDE de forense-db.\nSELECT e.corrida_id, e.terminada, e.estado_final,\n       e.completados, e.en_cola, e.errores,\n       (e.terminada OR e.estado_final = 'sin_clusters') AS cerrable\n  FROM forense.estado_corrida($1::uuid) e",
         "options": {
           "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
         }
@@ -217,7 +263,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        1980,
+        2420,
         0
       ],
       "name": "Esperar y reconciliar",
@@ -239,7 +285,7 @@
           "conditions": [
             {
               "id": "c1",
-              "leftValue": "={{ $json.terminada }}",
+              "leftValue": "={{ $json.cerrable }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -255,7 +301,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2200,
+        2640,
         0
       ],
       "name": "¿Corrida terminada?"
@@ -269,7 +315,7 @@
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        2200,
+        2420,
         140
       ],
       "name": "Espera corrida"
@@ -277,7 +323,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb.\nSELECT forense.v_metricas_corrida($1::uuid) AS metricas",
+        "query": "-- Una fila SIEMPRE (cola_corrida devuelve una). `pendientes` usa EL MISMO predicado que cuenta `cola_restante`: los dos números tienen que hablar de los mismos clusters o el bucle gira sin despachar. DEPENDE de db/012.\nSELECT q.corrida_id, q.clusters_total, q.cola_restante, q.casos_activos,\n       COALESCE((SELECT jsonb_agg(jsonb_build_object(\n                          'cluster_id', k.id, 'score', k.score)\n                        ORDER BY k.score DESC NULLS LAST, k.id)\n                   FROM forense.clusters k\n                  WHERE k.corrida_id = $1::uuid\n                    AND k.estado = 'pendiente'\n                    AND NOT EXISTS (SELECT 1 FROM forense.casos c\n                                     WHERE c.cluster_id = k.id)),\n                '[]'::jsonb) AS pendientes\n  FROM forense.cola_corrida($1::uuid) q",
         "options": {
           "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
         }
@@ -285,7 +331,103 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        2200,
+        2640,
+        140
+      ],
+      "name": "Cola y slots",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Constantes inyectadas por n8n/runtime/generar-workflows.mjs.\n// El mismo techo del despacho inicial: los slots que libera un caso dictaminado se vuelven a llenar, nunca se superan.\nconst MAX_ACTIVOS = 4;\n\n// ARCHIVO GENERADO — no editar a mano.\n// Fuente: ../runtime/nodos/despachar-clusters.mjs (región CODE_NODE). Regenerar: node n8n/runtime/generar-code-nodes.mjs\n// Corrida: redespacho por vuelta — llena los slots que se liberaron mientras quede cola (hallazgo alto H11).\n\nconst corrida = $('Validar e idempotencia').first().json;\nconst cola = $input.first().json;\nconst x = {\n  corrida_id: corrida.corrida_id,\n  investigacion_id: corrida.investigacion_id ?? null,\n  idempotency_base: corrida.idempotency_key,\n  max_activos: MAX_ACTIVOS,\n  casos_activos: cola.casos_activos,\n  pendientes: cola.pendientes ?? [],\n};\nconst entero = (v, porDefecto) => {\n  const n = Number(v);\n  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : porDefecto;\n};\nconst max = entero(x.max_activos, 0);\nconst activos = entero(x.casos_activos, 0);\nconst libres = Math.max(0, max - activos);\n\n// `pendientes` viene del SELECT que replica el predicado de\n// `forense.cola_corrida`: cluster `pendiente` y SIN caso. El orden (score\n// desc, id) lo fija SQL; aquí no se reordena para que la cola despachada y\n// la cola contada sean la misma lista.\nconst pendientes = (Array.isArray(x.pendientes) ? x.pendientes : [])\n  .filter((p) => p && p.cluster_id);\nconst admitidos = pendientes.slice(0, libres);\nconst en_cola = pendientes.slice(admitidos.length);\n\nconst base = x.idempotency_base ?? '';\nconst comun = {\n  corrida_id: x.corrida_id ?? null,\n  investigacion_id: x.investigacion_id ?? null,\n  max_activos: max,\n  casos_activos: activos,\n  slots_libres: libres,\n  pendientes_totales: pendientes.length,\n  admitidos: admitidos.length,\n  en_cola: en_cola.length,\n  cola_restante: en_cola.map((c) => c.cluster_id),\n};\n\nconst salida = admitidos.length > 0\n  ? admitidos.map((c) => Object.assign({}, comun, {\n    despachar: true,\n    cluster_id: c.cluster_id,\n    // Una clave por (corrida, cluster): reintentar la vuelta no duplica casos.\n    idempotency_key: `${base}:${c.cluster_id}`,\n    motivo: 'slot libre',\n  }))\n  : [Object.assign({}, comun, {\n    despachar: false,\n    cluster_id: null,\n    idempotency_key: null,\n    motivo: pendientes.length === 0 ? 'cola vacia' : 'sin slot libre',\n  })];\nreturn salida.map((json) => ({ json }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        140
+      ],
+      "name": "Redespachar pendientes"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.despachar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3080,
+        140
+      ],
+      "name": "¿Hay pendientes?"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_INVESTIGAR_CLUSTER",
+          "cachedResultName": "FORENSE_investigar_cluster"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "cluster_id": "={{ $json.cluster_id }}",
+            "corrida_id": "={{ $json.corrida_id }}",
+            "investigacion_id": "={{ $json.investigacion_id }}",
+            "idempotency_key": "={{ $json.idempotency_key }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3300,
+        140
+      ],
+      "name": "Despachar pendiente"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista. `estado_cierre` lo traduce al dominio de `corridas.estado` (CHECK: preparando|lista|procesando|completada|error): `sin_clusters` NO es un estado persistible y escribirlo rompía la restricción; el matiz viaja en `metricas.estado_final_calculado`.\nSELECT forense.v_metricas_corrida($1::uuid)\n       || jsonb_build_object('estado_final_calculado', e.estado_final) AS metricas,\n       e.estado_final, e.terminada,\n       CASE WHEN e.estado_final = 'error' THEN 'error' ELSE 'completada' END AS estado_cierre\n  FROM forense.estado_corrida($1::uuid) e",
+        "options": {
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2420,
         0
       ],
       "name": "Métricas",
@@ -298,15 +440,15 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables.\nUPDATE forense.corridas\n   SET estado = $2::text, fin = now(), metricas = $3::jsonb\n WHERE id = $1::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
+        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.\nUPDATE forense.corridas\n   SET estado = $2::text, fin = now(), metricas = $3::jsonb\n WHERE id = $1::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
         "options": {
-          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $('Esperar y reconciliar').first().json.estado_final }}, ={{ JSON.stringify($json.metricas) }}"
+          "queryReplacement": "={{ $('Validar e idempotencia').first().json.corrida_id }}, ={{ $json.estado_cierre }}, ={{ JSON.stringify($json.metricas) }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        2420,
+        2640,
         0
       ],
       "name": "Cerrar corrida",
@@ -318,8 +460,8 @@
     },
     {
       "parameters": {
-        "content": "FORENSE_corrida (07 §1, 17 §2, regla 10).\n\nCuatro clusters activos como máximo; el resto queda EN COLA.\nUna corrida vacía no se investiga y terminar de despachar\nno es cerrar la corrida.",
-        "height": 220,
+        "content": "FORENSE_corrida (07 §1, 17 §2, regla 10).\n\nMAX_ACTIVOS clusters activos como máximo; el resto queda EN COLA\ny se despacha en la rama de espera conforme se liberan slots.\nUna corrida vacía no se investiga y terminar de despachar\nno es cerrar la corrida: cierra `estado_corrida`, que cuenta\ntambién la cola de clusters (012). Sin clusters, `terminada`\nes false por definición: lo cierra `cerrable`.",
+        "height": 240,
         "width": 400,
         "color": 4
       },
@@ -419,10 +561,45 @@
       "main": [
         [
           {
+            "node": "¿Hay admitidos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay admitidos?": {
+      "main": [
+        [
+          {
             "node": "Despachar cluster",
             "type": "main",
             "index": 0
-          },
+          }
+        ],
+        [
+          {
+            "node": "Ciclo de corrida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Despachar cluster": {
+      "main": [
+        [
+          {
+            "node": "Ciclo de corrida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ciclo de corrida": {
+      "main": [
+        [
           {
             "node": "Esperar y reconciliar",
             "type": "main",
@@ -464,7 +641,58 @@
       "main": [
         [
           {
-            "node": "Esperar y reconciliar",
+            "node": "Cola y slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cola y slots": {
+      "main": [
+        [
+          {
+            "node": "Redespachar pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redespachar pendientes": {
+      "main": [
+        [
+          {
+            "node": "¿Hay pendientes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay pendientes?": {
+      "main": [
+        [
+          {
+            "node": "Despachar pendiente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ciclo de corrida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Despachar pendiente": {
+      "main": [
+        [
+          {
+            "node": "Ciclo de corrida",
             "type": "main",
             "index": 0
           }

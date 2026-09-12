@@ -420,11 +420,14 @@ export function workerEjecutarAgente() {
     ['ROLES_FEWSHOT', Object.keys(FEWSHOT_POR_ROL),
       'Roles con ejemplo adversarial: fuera de esta lista `fewshot` no cambia la variante.'],
   ]));
-  // Rama hoja: el hueco declarado por el ensamblado deja evento ANTES de que la
-  // respuesta del modelo exista. Va aparte del camino principal para que un fallo
-  // de escritura del aviso no impida la llamada, pero el evento no es opcional
-  // (regla 2): sin él, la corrida no puede explicar por qué el prompt cambió.
-  fila = 1; columna = 8;
+  // EN LA CADENA, antes del POST (hallazgo medio H11). Estaba en rama hermana
+  // del POST y con `executionOrder: v1` n8n corre las ramas en orden de
+  // posición: el aviso se escribía DESPUÉS de la llamada, así que una caída
+  // entre ambas dejaba la llamada hecha y sin explicación de por qué el prompt
+  // cambió. Regla 2: sin evento no hubo paso, así que el orden correcto es
+  // registrar y luego llamar. Si la escritura falla, la llamada NO se hace —
+  // preferimos una ejecución en error a una llamada sin rastro.
+  fila = 0; columna = 8;
   add(sql(
     'Registrar aviso de reintento',
     [
@@ -449,7 +452,6 @@ export function workerEjecutarAgente() {
     "El enum de bitacora ya admite 'reintento_inicio', pero ese evento es del bucle de reintento (07 §3) y lo cuenta 10: reusarlo aquí inflaría los reintentos. El aviso viaja como 'razonamiento' con payload.evento_real='aviso_reintento'. La consulta devuelve SIEMPRE una fila: sin aviso, registrado=false.",
   ));
 
-  fila = 0; columna = 8;
   add(nodo(
     'POST /v1/messages',
     'n8n-nodes-base.httpRequest',
@@ -681,7 +683,8 @@ export function workerEjecutarAgente() {
     ['Ruta del paso', 'Expandir cola de tools', 1],
     ['Ruta del paso', 'Guardar checkpoint', 2],
     ['Reservar request', 'Construir cuerpo Messages'],
-    ['Construir cuerpo Messages', ['POST /v1/messages', 'Registrar aviso de reintento']],
+    ['Construir cuerpo Messages', 'Registrar aviso de reintento'],
+    ['Registrar aviso de reintento', 'POST /v1/messages'],
     ['POST /v1/messages', 'Clasificar transporte'],
     ['Clasificar transporte', 'Ruta de transporte'],
     ['Ruta de transporte', 'Interpretar respuesta', 0],
@@ -1470,7 +1473,11 @@ export function corrida() {
 
   add(sql(
     'Validar e idempotencia',
-    'SELECT * FROM forense.abrir_corrida($1::text, $2::text, $3::uuid)',
+    [
+      'SELECT a.corrida_id, a.estado, a.idempotency_key, a.corrida_origen_id,',
+      '       a.investigacion_id, a.dataset, a.reutilizada',
+      '  FROM forense.abrir_corrida($1::text, $2::text, $3::uuid) a',
+    ].join('\n'),
     '={{ $json.body.dataset }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.corrida_origen_id }}',
     'Reutiliza la corrida `lista` con la misma idempotency_key o crea una `preparando`. `dataset` selecciona un ORIGEN AUTORIZADO, nunca una URL arbitraria. DEPENDE de forense-db.',
   ));
@@ -1485,14 +1492,21 @@ export function corrida() {
   fila = 0; columna = 2;
   add(sql(
     'Cargar o clonar snapshot',
-    'SELECT * FROM forense.cargar_o_clonar_snapshot($1::uuid, $2::uuid)',
+    [
+      'SELECT s.corrida_id, s.estado, s.filas_por_tabla, s.corrida_origen_id',
+      '  FROM forense.cargar_o_clonar_snapshot($1::uuid, $2::uuid) s',
+    ].join('\n'),
     `${C('corrida_id')}, ${C('corrida_origen_id')}`,
     'Snapshot COMPLETO; con corrida_origen_id clona (regla 10: corridas aisladas). DEPENDE de forense-db.',
   ));
 
   add(sql(
     'Verificar integridad',
-    'SELECT * FROM forense.verificar_integridad_corrida($1::uuid)',
+    [
+      'SELECT v.corrida_id, v.estado, v.dataset_hash, v.fecha_corte,',
+      '       v.familias_evaluables, v.causa',
+      '  FROM forense.verificar_integridad_corrida($1::uuid) v',
+    ].join('\n'),
     C('corrida_id'),
     'Conteos, dataset_hash, fecha_corte y familias_evaluables → `lista`; fallo → `error` con causa. Una corrida vacía no se investiga. DEPENDE de forense-db.',
   ));
@@ -1511,37 +1525,29 @@ export function corrida() {
     'DEPENDE de 004 (forense-db).',
   ));
 
-  add(sql(
+  // `alwaysOutputData`: una corrida SIN clusters tiene que llegar igual al
+  // bucle. Sin esto el SELECT vacío detiene la rama y la corrida se queda
+  // `procesando` para siempre en vez de cerrar como `sin_clusters`.
+  add(Object.assign(sql(
     'Clusters por score',
     [
       'SELECT k.id AS cluster_id, k.corrida_id, k.score, k.estado,',
       "       $2::uuid AS investigacion_id, $3::text AS idempotency_key",
       '  FROM forense.clusters k',
       ' WHERE k.corrida_id = $1::uuid',
+      "   AND k.estado = 'pendiente'",
+      '   AND NOT EXISTS (SELECT 1 FROM forense.casos c WHERE c.cluster_id = k.id)',
       ' ORDER BY k.score DESC NULLS LAST, k.id',
     ].join('\n'),
     `${C('corrida_id')}, ${C('investigacion_id')}, ${C('idempotency_key')}`,
-    'Cola COMPLETA ordenada por score; el límite de 4 activos lo impone el nodo siguiente, no este SELECT.',
-  ));
+    'Cola COMPLETA ordenada por score. El predicado es EL MISMO de forense.cola_corrida (012: pendiente y sin caso): si difiriera, `cola_restante` contaría clusters que el despacho nunca elige y el bucle no terminaría. El límite de activos lo impone el nodo siguiente, no este SELECT.',
+  ), { alwaysOutputData: true }));
 
-  add(codeInline('Despachar hasta 4', [
-    '// 17 §2: el límite propio de DB controla ocho pasos y CUATRO clusters. Un',
-    '// límite de n8n no sustituye ese control. Lo que no cabe queda EN COLA, no',
-    '// fallido (regla 10: no se pierde la cola si se acaba el tiempo).',
-    'const MAX_ACTIVOS = 4;',
-    'const filas = $input.all().map((i) => i.json);',
-    'const admitidos = filas.slice(0, MAX_ACTIVOS);',
-    'const en_cola = filas.slice(MAX_ACTIVOS);',
-    'return admitidos.map((f) => ({ json: {',
-    '  cluster_id: f.cluster_id,',
-    '  corrida_id: f.corrida_id,',
-    '  investigacion_id: f.investigacion_id ?? null,',
-    '  idempotency_key: `${f.idempotency_key}:${f.cluster_id}`,',
-    '  admitidos: admitidos.length,',
-    '  en_cola: en_cola.length,',
-    '  cola_restante: en_cola.map((c) => c.cluster_id),',
-    '} }));',
-  ].join('\n')));
+  add(code('Despachar hasta 4', 'despachar-clusters-inicial', [
+    ['MAX_ACTIVOS', 4,
+      '17 §2: el límite propio de DB controla ocho pasos y CUATRO clusters. Un límite de n8n no sustituye ese control; lo que no cabe queda EN COLA, no fallido (regla 10).'],
+  ]));
+  add(si('¿Hay admitidos?', '={{ $json.despachar }}'));
 
   add(subworkflow('Despachar cluster', 'FORENSE_investigar_cluster', {
     cluster_id: '={{ $json.cluster_id }}',
@@ -1550,23 +1556,85 @@ export function corrida() {
     idempotency_key: '={{ $json.idempotency_key }}',
   }, { esperar: false, modo: 'each' }));
 
+  // Punto de convergencia del bucle. Colapsa a UN ítem: `estado_corrida` decide
+  // el cierre una vez por vuelta y no una vez por cluster despachado. Sin este
+  // nodo, «Esperar y reconciliar» corría N veces por vuelta y «Cerrar corrida»
+  // se abría en abanico con N escrituras sobre la misma corrida.
+  add(codeInline('Ciclo de corrida', [
+    'const filas = $input.all().map((i) => i.json);',
+    'const despachados = filas.filter((f) => f && f.despachar === true);',
+    'return [{ json: {',
+    '  vuelta: true,',
+    '  items_entrantes: filas.length,',
+    '  despachados_en_vuelta: despachados.length,',
+    '  clusters_en_vuelta: despachados.map((f) => f.cluster_id),',
+    '} }];',
+  ].join('\n')));
+
   add(sql(
     'Esperar y reconciliar',
-    'SELECT * FROM forense.estado_corrida($1::uuid)',
+    [
+      'SELECT e.corrida_id, e.terminada, e.estado_final,',
+      '       e.completados, e.en_cola, e.errores,',
+      "       (e.terminada OR e.estado_final = 'sin_clusters') AS cerrable",
+      '  FROM forense.estado_corrida($1::uuid) e',
+    ].join('\n'),
     C('corrida_id'),
-    'Espera SOLO los clusters admitidos y reconcilia errores, timeouts y leases. Terminar de despachar NO cierra la corrida. DEPENDE de forense-db.',
+    "Reconcilia errores, timeouts y leases, y cuenta TAMBIÉN la cola de clusters (012). Terminar de despachar NO cierra la corrida. `cerrable` añade el único caso en que `terminada` es false y aun así no hay nada que esperar: `sin_clusters` (estado_corrida exige total>0 para declarar terminada, así que una corrida sin clusters giraría para siempre). DEPENDE de forense-db.",
   ));
-  add(si('¿Corrida terminada?', '={{ $json.terminada }}'));
+  add(si('¿Corrida terminada?', '={{ $json.cerrable }}'));
 
-  fila = 1; columna = 10;
+  // Rama de espera: es la que drena la cola. Mientras `cola_restante > 0` se
+  // vuelve a mirar cuántos slots quedan libres y se despachan los clusters
+  // pendientes que quepan. No hay polling al LLM: sólo dos lecturas de DB por
+  // vuelta y una espera acotada.
+  fila = 1; columna = 11;
   add(esperar('Espera corrida', '={{ 10000 }}'));
 
-  fila = 0; columna = 10;
+  add(sql(
+    'Cola y slots',
+    [
+      'SELECT q.corrida_id, q.clusters_total, q.cola_restante, q.casos_activos,',
+      '       COALESCE((SELECT jsonb_agg(jsonb_build_object(',
+      "                          'cluster_id', k.id, 'score', k.score)",
+      '                        ORDER BY k.score DESC NULLS LAST, k.id)',
+      '                   FROM forense.clusters k',
+      '                  WHERE k.corrida_id = $1::uuid',
+      "                    AND k.estado = 'pendiente'",
+      '                    AND NOT EXISTS (SELECT 1 FROM forense.casos c',
+      '                                     WHERE c.cluster_id = k.id)),',
+      "                '[]'::jsonb) AS pendientes",
+      '  FROM forense.cola_corrida($1::uuid) q',
+    ].join('\n'),
+    C('corrida_id'),
+    'Una fila SIEMPRE (cola_corrida devuelve una). `pendientes` usa EL MISMO predicado que cuenta `cola_restante`: los dos números tienen que hablar de los mismos clusters o el bucle gira sin despachar. DEPENDE de db/012.',
+  ));
+
+  add(code('Redespachar pendientes', 'despachar-clusters-cola', [
+    ['MAX_ACTIVOS', 4,
+      'El mismo techo del despacho inicial: los slots que libera un caso dictaminado se vuelven a llenar, nunca se superan.'],
+  ]));
+  add(si('¿Hay pendientes?', '={{ $json.despachar }}'));
+
+  add(subworkflow('Despachar pendiente', 'FORENSE_investigar_cluster', {
+    cluster_id: '={{ $json.cluster_id }}',
+    corrida_id: '={{ $json.corrida_id }}',
+    investigacion_id: '={{ $json.investigacion_id }}',
+    idempotency_key: '={{ $json.idempotency_key }}',
+  }, { esperar: false, modo: 'each' }));
+
+  fila = 0; columna = 11;
   add(sql(
     'Métricas',
-    'SELECT forense.v_metricas_corrida($1::uuid) AS metricas',
+    [
+      'SELECT forense.v_metricas_corrida($1::uuid)',
+      "       || jsonb_build_object('estado_final_calculado', e.estado_final) AS metricas,",
+      '       e.estado_final, e.terminada,',
+      "       CASE WHEN e.estado_final = 'error' THEN 'error' ELSE 'completada' END AS estado_cierre",
+      '  FROM forense.estado_corrida($1::uuid) e',
+    ].join('\n'),
     C('corrida_id'),
-    'Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb.',
+    "Pese al prefijo v_, el contrato de 05/10 es una FUNCIÓN que devuelve jsonb. `estado_final` se relee aquí: «Esperar y reconciliar» corre muchas veces y una referencia cruzada a una de sus vueltas no es determinista. `estado_cierre` lo traduce al dominio de `corridas.estado` (CHECK: preparando|lista|procesando|completada|error): `sin_clusters` NO es un estado persistible y escribirlo rompía la restricción; el matiz viaja en `metricas.estado_final_calculado`.",
   ));
 
   add(sql(
@@ -1577,18 +1645,21 @@ export function corrida() {
       ' WHERE id = $1::uuid',
       'RETURNING id AS corrida_id, estado, fin, metricas',
     ].join('\n'),
-    `${C('corrida_id')}, ={{ $('Esperar y reconciliar').first().json.estado_final }}, ={{ JSON.stringify($json.metricas) }}`,
-    '`completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables.',
+    `${C('corrida_id')}, ={{ $json.estado_cierre }}, ={{ JSON.stringify($json.metricas) }}`,
+    '`completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.',
   ));
 
   fila = 3; columna = 0;
   add(nota('Nota corrida', [
     'FORENSE_corrida (07 §1, 17 §2, regla 10).',
     '',
-    'Cuatro clusters activos como máximo; el resto queda EN COLA.',
+    'MAX_ACTIVOS clusters activos como máximo; el resto queda EN COLA',
+    'y se despacha en la rama de espera conforme se liberan slots.',
     'Una corrida vacía no se investiga y terminar de despachar',
-    'no es cerrar la corrida.',
-  ].join('\n'), 220, 400));
+    'no es cerrar la corrida: cierra `estado_corrida`, que cuenta',
+    'también la cola de clusters (012). Sin clusters, `terminada`',
+    'es false por definición: lo cierra `cerrable`.',
+  ].join('\n'), 240, 400));
 
   const connections = conectar([
     ['Webhook corrida', 'Validar e idempotencia'],
@@ -1598,11 +1669,20 @@ export function corrida() {
     ['Correr pistas', 'Armar clusters'],
     ['Armar clusters', 'Clusters por score'],
     ['Clusters por score', 'Despachar hasta 4'],
-    ['Despachar hasta 4', ['Despachar cluster', 'Esperar y reconciliar']],
+    ['Despachar hasta 4', '¿Hay admitidos?'],
+    ['¿Hay admitidos?', 'Despachar cluster', 0],
+    ['¿Hay admitidos?', 'Ciclo de corrida', 1],
+    ['Despachar cluster', 'Ciclo de corrida'],
+    ['Ciclo de corrida', 'Esperar y reconciliar'],
     ['Esperar y reconciliar', '¿Corrida terminada?'],
     ['¿Corrida terminada?', 'Métricas', 0],
     ['¿Corrida terminada?', 'Espera corrida', 1],
-    ['Espera corrida', 'Esperar y reconciliar'],
+    ['Espera corrida', 'Cola y slots'],
+    ['Cola y slots', 'Redespachar pendientes'],
+    ['Redespachar pendientes', '¿Hay pendientes?'],
+    ['¿Hay pendientes?', 'Despachar pendiente', 0],
+    ['¿Hay pendientes?', 'Ciclo de corrida', 1],
+    ['Despachar pendiente', 'Ciclo de corrida'],
     ['Métricas', 'Cerrar corrida'],
   ]);
 
@@ -2366,11 +2446,18 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Clusters por score': ['cluster_id', 'corrida_id', 'score', 'estado',
       'investigacion_id', 'idempotency_key'],
     'Despachar hasta 4': ['cluster_id', 'corrida_id', 'investigacion_id', 'idempotency_key',
-      'admitidos', 'en_cola', 'cola_restante'],
+      'admitidos', 'en_cola', 'cola_restante', 'despachar', 'max_activos', 'casos_activos',
+      'slots_libres', 'pendientes_totales', 'motivo'],
     'Despachar cluster': [],
+    'Ciclo de corrida': ['vuelta', 'items_entrantes', 'despachados_en_vuelta', 'clusters_en_vuelta'],
     'Esperar y reconciliar': ['corrida_id', 'terminada', 'estado_final', 'completados',
-      'en_cola', 'errores'],
-    'Métricas': ['metricas'],
+      'en_cola', 'errores', 'cerrable'],
+    'Cola y slots': ['corrida_id', 'clusters_total', 'cola_restante', 'casos_activos', 'pendientes'],
+    'Redespachar pendientes': ['cluster_id', 'corrida_id', 'investigacion_id', 'idempotency_key',
+      'admitidos', 'en_cola', 'cola_restante', 'despachar', 'max_activos', 'casos_activos',
+      'slots_libres', 'pendientes_totales', 'motivo'],
+    'Despachar pendiente': [],
+    'Métricas': ['metricas', 'estado_final', 'terminada', 'estado_cierre'],
     'Cerrar corrida': ['corrida_id', 'estado', 'fin', 'metricas'],
   }),
   FORENSE_inyectar: Object.freeze({
@@ -2451,10 +2538,10 @@ export const FORMA_PENDIENTE = Object.freeze({
     'Revalidar si cambió evidencia', 'Seleccionar autores',
   ]),
   FORENSE_editar_expediente: Object.freeze(['Cargar versión base', 'Guardar propuesta']),
-  FORENSE_corrida: Object.freeze([
-    'Cargar o clonar snapshot', 'Esperar y reconciliar', 'Validar e idempotencia',
-    'Verificar integridad',
-  ]),
+  // Vacío en H11: las cuatro consultas dejaron de ser `SELECT *` y nombran las
+  // columnas de la firma real (verificadas con psql por
+  // n8n/tests/verificar-forma-nodos.mjs contra 001–015).
+  FORENSE_corrida: Object.freeze([]),
   // Vacío en H10: las cuatro consultas dejaron de ser `SELECT *` y nombran las
   // columnas que la firma real de 008/010 devuelve (dos de ellas leían columnas
   // que no existían: `validada` sobre un jsonb escalar y `corrida_nueva_id` sobre
