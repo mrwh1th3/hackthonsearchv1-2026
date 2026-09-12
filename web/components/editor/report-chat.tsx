@@ -1,7 +1,7 @@
 "use client";
 
 import * as Tabs from "@radix-ui/react-tabs";
-import { Loader2, Send, X } from "lucide-react";
+import { AlertTriangle, Loader2, Send, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -46,7 +46,15 @@ const SUGERENCIAS = [
 
 type Mensaje =
   | { id: string; autor: "humano"; texto: string; versionBase: number }
-  | { id: string; autor: "editor"; texto: string; versionBase: number; origen: string }
+  | {
+      id: string;
+      autor: "editor";
+      texto: string;
+      versionBase: number;
+      origen: string;
+      /** `false` explícito: el servidor no pudo comprobar la selección. */
+      seleccionVerificada?: boolean;
+    }
   | { id: string; autor: "sistema"; texto: string; tono: "aviso" | "error" }
   | {
       id: string;
@@ -57,7 +65,31 @@ type Mensaje =
       estado: "pendiente" | "aplicando" | "descartando" | "aplicada" | "descartada" | "conflicto";
       versionCreada?: number;
       origen: string;
+      seleccionVerificada?: boolean;
+      /** `false` explícito: aplicar/descartar no dejó evento en la bitácora. */
+      bitacora?: boolean;
     };
+
+/**
+ * `seleccion_verificada: false` (15 §10, 07 §4 nodo 6): el servidor NO pudo
+ * demostrar que el texto seleccionado siga en la versión base. No es un
+ * rechazo —un 409 falso bloquearía una propuesta legítima—, pero la persona
+ * que va a aplicar tiene derecho a saber contra qué se editó. Se pinta solo
+ * con el `false` explícito: `undefined` significa "no había selección".
+ */
+function AvisoSeleccion() {
+  return (
+    <p
+      className="mt-1 flex items-start gap-1 rounded-[var(--radius-input)] border border-warn/40 bg-warn/5 px-2 py-1 text-[11px] text-warn"
+      role="status"
+      data-testid="seleccion-no-verificada"
+    >
+      <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden />
+      Selección no verificada: el servidor no pudo comprobar que el texto sigue igual en esta versión. Revisa el diff
+      antes de aplicar.
+    </p>
+  );
+}
 
 export function ReportChat({
   casoId,
@@ -136,7 +168,14 @@ export function ReportChat({
       return;
     }
     if (resultado.datos.modo === "pregunta") {
-      agregar({ id: uuid(), autor: "editor", texto: resultado.datos.mensaje, versionBase: version, origen: resultado.datos.origen });
+      agregar({
+        id: uuid(),
+        autor: "editor",
+        texto: resultado.datos.mensaje,
+        versionBase: version,
+        origen: resultado.datos.origen,
+        seleccionVerificada: resultado.datos.seleccion_verificada,
+      });
       return;
     }
     agregar({
@@ -148,6 +187,7 @@ export function ReportChat({
       advertencias: resultado.datos.advertencias ?? [],
       estado: "pendiente",
       origen: resultado.datos.origen,
+      seleccionVerificada: resultado.datos.seleccion_verificada,
     });
   }
 
@@ -174,10 +214,24 @@ export function ReportChat({
       return;
     }
 
-    actualizarPropuesta(mensaje.id, { estado: "aplicada", versionCreada: resultado.datos.version });
+    actualizarPropuesta(mensaje.id, {
+      estado: "aplicada",
+      versionCreada: resultado.datos.version,
+      bitacora: resultado.datos.bitacora,
+    });
     onAplicado(resultado.datos.reporte, resultado.datos.revisar_citas);
     onLimpiarSeleccion();
     toast.success(`Versión ${resultado.datos.version} creada`);
+    // CLAUDE.md regla 2: si la escritura no dejó evento en `forense.bitacora`,
+    // la UI lo dice. Solo el `false` explícito; `undefined` es "no informado".
+    if (resultado.datos.bitacora === false) {
+      agregar({
+        id: uuid(),
+        autor: "sistema",
+        texto: `La versión ${resultado.datos.version} no dejó registro en la bitácora: este entorno no persiste trazabilidad, así que el cambio no es auditable.`,
+        tono: "aviso",
+      });
+    }
     if (resultado.datos.revisar_citas) {
       agregar({
         id: uuid(),
@@ -209,7 +263,7 @@ export function ReportChat({
       agregar({ id: uuid(), autor: "sistema", texto: describirError(resultado.error), tono: "error" });
       return;
     }
-    actualizarPropuesta(mensaje.id, { estado: "descartada" });
+    actualizarPropuesta(mensaje.id, { estado: "descartada", bitacora: resultado.datos.bitacora });
   }
 
   return (
@@ -258,6 +312,7 @@ export function ReportChat({
                       <span className="mt-1 block text-[10px] text-text-subtle">
                         Editor · {m.origen === "n8n" ? "agente" : "respuesta de demostración"} · no modifica el documento
                       </span>
+                      {m.seleccionVerificada === false && <AvisoSeleccion />}
                     </div>
                   )}
 
@@ -276,6 +331,7 @@ export function ReportChat({
                   {m.autor === "propuesta" && (
                     <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-border p-2">
                       <p className="text-sm text-text">{m.propuesta.mensaje}</p>
+                      {m.seleccionVerificada === false && <AvisoSeleccion />}
                       <VersionDiff diff={m.propuesta.diff} titulo={`Propuesta sobre la versión ${m.propuesta.version_base}`} maxAltura={200} />
 
                       {m.propuesta.citas.length > 0 && (
@@ -329,6 +385,11 @@ export function ReportChat({
                           {m.estado === "aplicada" && `Aplicada: versión ${m.versionCreada} creada.`}
                           {m.estado === "descartada" && "Descartada: el documento quedó sin cambios."}
                           {m.estado === "conflicto" && "En conflicto: el expediente avanzó de versión. Vuelve a pedir la propuesta."}
+                          {m.bitacora === false && (m.estado === "aplicada" || m.estado === "descartada") && (
+                            <span className="ml-1 text-warn" data-testid="sin-bitacora">
+                              Sin registro en la bitácora.
+                            </span>
+                          )}
                         </p>
                       )}
                     </div>

@@ -258,6 +258,80 @@ describe("ReportChat", () => {
     expect(llamadas).toEqual(["/api/reportes/propuestas"]);
   });
 
+  /**
+   * Regla 2 y 07 §4 nodo 6: la UI pinta lo que el BFF declara. Dos banderas,
+   * y las dos solo con `false` EXPLÍCITO: `undefined` (no había selección, o
+   * el campo no vino) no puede disparar una alarma en cada mensaje.
+   */
+  it("pinta 'selección no verificada' solo con el false explícito", async () => {
+    const usuario = userEvent.setup();
+    let verificada: boolean | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        respuestaJson({
+          origen: "fixture",
+          modo: "propuesta",
+          advertencias: [],
+          propuesta: propuestaFalsa,
+          seleccion_verificada: verificada,
+        }),
+      ),
+    );
+
+    verificada = true;
+    const vista = render(<ReportChat {...props} seleccion={seleccion} />);
+    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Hazlo más claro");
+    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
+    await screen.findByRole("button", { name: "Aplicar" });
+    expect(screen.queryByTestId("seleccion-no-verificada")).not.toBeInTheDocument();
+    vista.unmount();
+
+    verificada = false;
+    render(<ReportChat {...props} seleccion={seleccion} />);
+    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Hazlo más claro");
+    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
+    expect(await screen.findByTestId("seleccion-no-verificada")).toBeInTheDocument();
+  });
+
+  it("avisa cuando la versión aplicada no dejó registro en la bitácora", async () => {
+    const usuario = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/reportes/propuestas") {
+          return respuestaJson({ origen: "fixture", modo: "propuesta", advertencias: [], propuesta: propuestaFalsa });
+        }
+        return respuestaJson({
+          origen: "fixture",
+          bitacora: false,
+          repetido: false,
+          version: 2,
+          reporte: {
+            caso_id: CASO,
+            version: 2,
+            estado_revision: "borrador",
+            autor: "agente",
+            creado: "2026-09-11T23:00:00Z",
+            contenido_json: { type: "doc", content: [] },
+            markdown: "x",
+            content_hash: "b".repeat(64),
+          },
+          revisar_citas: false,
+          citas_invalidas: [],
+        });
+      }),
+    );
+
+    render(<ReportChat {...props} seleccion={seleccion} />);
+    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Hazlo más claro");
+    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
+    await usuario.click(await screen.findByRole("button", { name: "Aplicar" }));
+
+    expect(await screen.findByText(/no dejó registro en la bitácora/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("sin-bitacora")).toBeInTheDocument();
+  });
+
   it("doble click en Aplicar crea una sola versión", async () => {
     const usuario = userEvent.setup();
     const aplicaciones: unknown[] = [];

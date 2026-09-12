@@ -50,9 +50,22 @@ async function postear<T>(url: string, cuerpo: unknown): Promise<Resultado<T>> {
   return { ok: true, datos: json as T };
 }
 
+/**
+ * `seleccion_verificada` llega SOLO cuando la petición traía selección:
+ * `true` el servidor comprobó que el texto sigue ahí, `false` no pudo
+ * comprobarlo (presupuesto agotado), `undefined` no había nada que comprobar.
+ * Los tres casos son distintos y la UI no puede confundirlos: solo el `false`
+ * explícito se pinta.
+ */
 export type RespuestaPropuestas =
-  | { origen: string; modo: "pregunta"; mensaje: string; version_base: number }
-  | { origen: string; modo: "propuesta"; propuesta: Propuesta; advertencias: Advertencia[] };
+  | { origen: string; modo: "pregunta"; mensaje: string; version_base: number; seleccion_verificada?: boolean }
+  | {
+      origen: string;
+      modo: "propuesta";
+      propuesta: Propuesta;
+      advertencias: Advertencia[];
+      seleccion_verificada?: boolean;
+    };
 
 export function pedirEdicion(cuerpo: {
   caso_id: string;
@@ -81,6 +94,8 @@ export function pedirEdicion(cuerpo: {
 
 export interface RespuestaAplicar {
   origen: string;
+  /** `false` = esta escritura NO dejó evento en `forense.bitacora` (regla 2). */
+  bitacora?: boolean;
   repetido: boolean;
   version: number;
   reporte: Reporte;
@@ -99,7 +114,7 @@ export function descartarPropuesta(cuerpo: {
   caso_id: string;
   propuesta_id: string;
   idempotency_key: string;
-}): Promise<Resultado<{ origen: string; estado: string; version_actual: number }>> {
+}): Promise<Resultado<{ origen: string; bitacora?: boolean; estado: string; version_actual: number }>> {
   return postear("/api/reportes/descartar", cuerpo);
 }
 
@@ -108,7 +123,9 @@ export function revertirVersion(cuerpo: {
   version_objetivo: number;
   version_base: number;
   idempotency_key: string;
-}): Promise<Resultado<{ origen: string; version: number; reporte: Reporte; repetido: boolean }>> {
+}): Promise<
+  Resultado<{ origen: string; bitacora?: boolean; version: number; reporte: Reporte; repetido: boolean }>
+> {
   return postear("/api/reportes/revertir", { ...cuerpo, accion: "revertir" });
 }
 
