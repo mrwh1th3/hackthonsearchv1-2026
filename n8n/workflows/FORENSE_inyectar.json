@@ -25,7 +25,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. DEPENDE de 008 (forense-db).\nSELECT * FROM forense.registrar_inyeccion($1::uuid, $2::uuid, $3::text, $4::text)",
+        "query": "-- Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. Columnas nombradas: la firma de 010 es TABLE(...), no jsonb.\nSELECT r.inyeccion_id, r.estado, r.corrida_base_id, r.ingesta_id,\n       r.idempotency_key, r.prioridad\n  FROM forense.registrar_inyeccion($1::uuid, $2::uuid, $3::text, $4::text) AS r",
         "options": {
           "queryReplacement": "={{ $json.body.corrida_base_id }}, ={{ $json.body.ingesta_id }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.prioridad ?? 'inyectados' }}"
         }
@@ -62,9 +62,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. DEPENDE de 008.\nSELECT * FROM forense.validar_inyeccion($1::uuid)",
+        "query": "-- Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. La función toma la INGESTA y devuelve jsonb escalar: `SELECT *` dejaba `validada` en undefined y el IF se iba siempre por el falso.\nSELECT v.ok AS validada, v.inyeccion_id, v.ingesta_id, v.estado,\n       v.aceptadas, v.rechazadas, v.rfcs_afectados, v.diagnostico\n  FROM jsonb_to_record(forense.validar_inyeccion($1::uuid))\n    AS v(ok boolean, inyeccion_id uuid, ingesta_id uuid, estado text,\n         aceptadas int, rechazadas int, rfcs_afectados jsonb, diagnostico jsonb)",
         "options": {
-          "queryReplacement": "={{ $('Registrar inyección').first().json.inyeccion_id }}"
+          "queryReplacement": "={{ $('Registrar inyección').first().json.ingesta_id }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -137,7 +137,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). DEPENDE de 008.\nSELECT * FROM forense.clonar_corrida_con_inyeccion($1::uuid, $2::uuid)",
+        "query": "-- Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). La función devuelve un uuid escalar: sin el alias, la columna se llamaba `clonar_corrida_con_inyeccion` y el nodo siguiente leía undefined.\nSELECT forense.clonar_corrida_con_inyeccion($1::uuid, $2::uuid) AS corrida_nueva_id,\n       $1::uuid AS corrida_base_id, $2::uuid AS ingesta_id",
         "options": {
           "queryReplacement": "={{ $('Registrar inyección').first().json.corrida_base_id }}, ={{ $('Registrar inyección').first().json.ingesta_id }}"
         }
@@ -179,15 +179,36 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). DEPENDE de 008.\nSELECT * FROM forense.clusters_por_prioridad_inyeccion($1::uuid, $2::uuid)",
+        "query": "-- QA-004 (decisión H9 07:32): `armar_clusters` aplica el selector de dos familias y puede dejar FUERA a un RFC inyectado que no lo cruza — el juez inyecta y no ve nada. Esta función garantiza un cluster por RFC inyectado (creado=true si lo tuvo que armar, false si ya estaba cubierto) por la ruta de investigación manual `armar_cluster_para`. La entrega es db/012 de forense-db; el nodo está cableado a la firma acordada table(cluster_id, rfc, creado).\nSELECT a.cluster_id, a.rfc, a.creado\n  FROM forense.asegurar_clusters_inyectados($1::uuid, $2::uuid) AS a",
         "options": {
-          "queryReplacement": "={{ $json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
+          "queryReplacement": "={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
         1320,
+        0
+      ],
+      "name": "Asegurar clusters inyectados",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). Columnas nombradas contra la firma TABLE de 010.\nSELECT c.cluster_id, c.corrida_id, c.inyeccion_id, c.investigacion_id,\n       c.afectado, c.score\n  FROM forense.clusters_por_prioridad_inyeccion($1::uuid, $2::uuid) AS c",
+        "options": {
+          "queryReplacement": "={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}, ={{ $('Registrar inyección').first().json.inyeccion_id }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1540,
         0
       ],
       "name": "Clusters afectados primero",
@@ -199,12 +220,12 @@
     },
     {
       "parameters": {
-        "jsCode": "// 21 §3: los clusters con RFC inyectados se despachan PRIMERO; el resto\n// espera. El juez tiene que ver la reacción en segundos, sin perder la\n// corrida de referencia.\nconst MAX_ACTIVOS = 4;\nconst filas = $input.all().map((i) => i.json);\nconst afectados = filas.filter((f) => f.afectado === true);\nconst resto = filas.filter((f) => f.afectado !== true);\nconst admitidos = [...afectados, ...resto].slice(0, MAX_ACTIVOS);\nreturn admitidos.map((f) => ({ json: {\n  cluster_id: f.cluster_id,\n  corrida_id: f.corrida_id,\n  inyeccion_id: f.inyeccion_id ?? null,\n  investigacion_id: f.investigacion_id ?? null,\n  afectado: f.afectado === true,\n  idempotency_key: `inyeccion:${f.inyeccion_id}:${f.cluster_id}`,\n  afectados_total: afectados.length,\n  en_cola: Math.max(0, filas.length - admitidos.length),\n} }));"
+        "jsCode": "// 21 §3: los clusters con RFC inyectados se despachan PRIMERO; el resto\n// espera. El juez tiene que ver la reacción en segundos, sin perder la\n// corrida de referencia.\n//\n// QA-004: la lista por prioridad sale del selector de clusters, que puede no\n// contener al RFC inyectado. `Asegurar clusters inyectados` devuelve el\n// conjunto GARANTIZADO (uno por RFC inyectado). Se despacha primero lo que\n// esa función tuvo que crear (creado=true, el caso que antes desaparecía),\n// luego lo garantizado que ya existía, luego el resto de afectados, luego\n// lo demás. Un cluster garantizado que no venga en la lista por prioridad\n// se AÑADE: si no, el RFC inyectado se quedaba sin investigar.\nconst MAX_ACTIVOS = 4;\nconst filas = $input.all().map((i) => i.json);\nconst recalculo = $('Recalcular pistas y clusters').first().json;\nconst garantizados = $('Asegurar clusters inyectados').all().map((i) => i.json)\n  .filter((g) => g && g.cluster_id);\nconst creadoPorId = new Map(garantizados.map((g) => [g.cluster_id, g.creado === true]));\nconst rfcPorId = new Map(garantizados.map((g) => [g.cluster_id, g.rfc ?? null]));\n\nconst vistos = new Set(filas.map((f) => f.cluster_id));\nconst faltantes = garantizados\n  .filter((g) => !vistos.has(g.cluster_id))\n  .map((g) => ({\n    cluster_id: g.cluster_id,\n    corrida_id: recalculo.corrida_nueva_id,\n    inyeccion_id: recalculo.inyeccion_id,\n    investigacion_id: null,\n    afectado: true,\n  }));\nconst todas = [...filas, ...faltantes];\n\n// Rango: 0 = garantizado recién creado, 1 = garantizado preexistente,\n// 2 = afectado por el selector, 3 = resto. Orden estable dentro de cada rango.\nconst rango = (f) => {\n  if (creadoPorId.get(f.cluster_id) === true) return 0;\n  if (creadoPorId.has(f.cluster_id)) return 1;\n  return f.afectado === true ? 2 : 3;\n};\nconst ordenadas = todas\n  .map((f, i) => ({ f, i, r: rango(f) }))\n  .sort((a, b) => (a.r - b.r) || (a.i - b.i))\n  .map((e) => e.f);\nconst admitidos = ordenadas.slice(0, MAX_ACTIVOS);\nconst afectadosTotal = todas.filter((f) => f.afectado === true || creadoPorId.has(f.cluster_id)).length;\nreturn admitidos.map((f) => ({ json: {\n  cluster_id: f.cluster_id,\n  corrida_id: f.corrida_id ?? recalculo.corrida_nueva_id,\n  inyeccion_id: f.inyeccion_id ?? recalculo.inyeccion_id ?? null,\n  investigacion_id: f.investigacion_id ?? null,\n  afectado: f.afectado === true || creadoPorId.has(f.cluster_id),\n  garantizado: creadoPorId.has(f.cluster_id),\n  creado: creadoPorId.get(f.cluster_id) === true,\n  rfc_inyectado: rfcPorId.get(f.cluster_id) ?? null,\n  idempotency_key: `inyeccion:${f.inyeccion_id ?? recalculo.inyeccion_id}:${f.cluster_id}`,\n  afectados_total: afectadosTotal,\n  en_cola: Math.max(0, todas.length - admitidos.length),\n} }));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
+        1760,
         0
       ],
       "name": "Priorizar afectados"
@@ -234,7 +255,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1760,
+        1980,
         0
       ],
       "name": "Despachar afectados"
@@ -250,7 +271,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        1980,
+        2200,
         0
       ],
       "name": "Cerrar inyección",
@@ -345,6 +366,17 @@
       ]
     },
     "Recalcular pistas y clusters": {
+      "main": [
+        [
+          {
+            "node": "Asegurar clusters inyectados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asegurar clusters inyectados": {
       "main": [
         [
           {

@@ -25,26 +25,14 @@ const PSQL = process.env.PSQL ?? '/opt/homebrew/opt/postgresql@17/bin/psql';
 // Funciones que entrega forense-db en 004/005 (y el enum de bitácora que hay
 // que ampliar). Un fallo que las mencione es dependencia, no defecto.
 const PENDIENTES = [
-  // Ausentes de verdad en 001–008 (verificado con pg_proc el 2026-09-12 H5):
-  // escrituras transaccionales que pertenecen a forense-db. Ver IMPORT.md
-  // §«Funciones que faltan» y `solicitudes_coordinador` de la entrega.
-  'abrir_corrida', 'cargar_o_clonar_snapshot', 'verificar_integridad_corrida',
-  'estado_corrida', 'cerrar_ronda', 'aplicar_resolucion_replica',
-  'paquete_auditor_final', 'guardar_dictamen', 'validar_expediente', 'cerrar_caso',
-  'autores_reintento', 'expandir_cluster_reintento', 'crear_tareas_revision',
-  'revalidar_caso', 'cerrar_barreras_vencidas', 'eventos_salida_pendientes',
-  'cargar_version_expediente', 'guardar_propuesta_edicion',
-  // 007 — el nodo llama a un nombre que 007 no expone; la capacidad existe con
-  // otra firma (reclamar_evento_salida(owner,segundos), solicitar_llamada,
-  // resultado_llamada). Pendientes de recablear, NO de migración.
-  'leer_evento_salida', 'destinatario_aviso', 'omitir_llamada',
-  'crear_intento_llamada', 'guardar_aceptacion_llamada', 'reclamar_evento_salida',
-  'registrar_callback_llamada', 'actualizar_llamada',
-  // 008 — idem: existe clusters_afectados(p_inyeccion) y registrar_inyeccion
-  // con cinco argumentos.
-  'clusters_por_prioridad_inyeccion', 'registrar_inyeccion',
-  // enum de bitácora que 009 amplía
-  'ck_bitacora_tipo_evento', 'paso_en_cola', 'paso_checkpoint',
+  // Podado el 2026-09-12 H10 contra pg_proc de `forense_rt` (001–011 aplicadas):
+  // las ~25 entradas que esta lista arrastraba desde H5 (abrir_corrida,
+  // estado_corrida, cargar_o_clonar_snapshot, paquete_auditor_final, la familia
+  // de voz de 007 y clusters_por_prioridad_inyeccion) YA EXISTEN. Declararlas
+  // pendientes escondía fallos reales detrás de la etiqueta «dependencia».
+  //
+  // Queda una sola dependencia viva: db/012 de forense-db.
+  'asegurar_clusters_inyectados',
 ];
 
 const archivos = fs.readdirSync(path.join(RAIZ, 'workflows')).filter((f) => f.endsWith('.json'));
