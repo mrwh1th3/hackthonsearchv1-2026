@@ -471,6 +471,22 @@ Esto verifica que:
 
 **Prerequisito:** el usuario crea el proyecto desde el dashboard (el MCP no tiene permisos de creación).
 
+> **El orden importa: expón el schema ANTES de poner las variables.** Con
+> `SUPABASE_URL` puesta y el schema `forense` **sin exponer** en Supabase →
+> Project Settings → API → Exposed schemas, PostgREST rechaza cada consulta —
+> también las de `service_role`, porque la exposición es del schema, no de la
+> clave— y la aplicación no falla a fixtures: propaga el error a propósito
+> (regla 10). Medido en `next start` contra un backend inalcanzable: **el login
+> devolvía un 500 pelado** y no se podía ni entrar. Ya no: ahora devuelve 503
+> `fuente_de_datos_no_disponible` y la pantalla dice qué revisar, pero el
+> arreglo es de diagnóstico, no de función. Así que: **(1)** expón el schema,
+> **(2)** comprueba que PostgREST responde, **(3)** pon las variables.
+>
+> **Y toda variable `NEXT_PUBLIC_*` va ANTES del primer build.** Se incrusta en
+> el bundle al construir, no se lee en ejecución: si la cambias después,
+> guardarla no basta —hay que volver a desplegar—. Comprobado en este repo
+> reconstruyendo con otra URL pública y viéndola aparecer en `.next`.
+
 1. En Vercel dashboard: New Project → Import Git Repository → `mrwh1th3/hackthonsearchv1-2026`
 2. Framework: Next.js, Root Directory: `web`
 3. Agregar variables de entorno (Environment Variables):
@@ -491,14 +507,18 @@ Esto verifica que:
 
 4. Deploy: Vercel genera URL como `forense-fpo3j.vercel.app`
 
-**Verificación (los cuatro fallos que sólo aparecen en producción).** Ninguno se
+**Verificación (los cinco fallos que sólo aparecen en producción).** Ninguno se
 ve en local ni en las pruebas, así que hay que comprobarlos en el despliegue:
 
-1. `/login` muestra el formulario, y **entrar funciona**. Si dice "Sesión demo no
-   configurada en este entorno", falta `DEMO_PASSWORD` o `SESSION_SECRET`: el
-   código falla cerrado a propósito en producción en vez de usar el secreto de
-   desarrollo, y la UI distingue ese mensaje de "usuario o contraseña
-   incorrectos". No confundir los dos.
+1. `/login` muestra el formulario, y **entrar funciona**. Tres mensajes distintos,
+   tres causas distintas, y conviene no confundirlos:
+   - "Sesión demo no configurada en este entorno" → falta `DEMO_PASSWORD` o
+     `SESSION_SECRET`. El código falla cerrado a propósito en producción en vez
+     de usar el secreto de desarrollo.
+   - "Credenciales correctas, pero la base no respondió…" → la contraseña estaba
+     bien y lo que falló fue leer el perfil. Es el caso del schema sin exponer;
+     ve al aviso de orden al principio de este paso.
+   - "Usuario o contraseña incorrectos" → eso, y nada más.
 2. **`/metodo` muestra las tres secciones con contenido.** Lee `DECISIONES.md`,
    `ESTADO.md` y `RUNBOOK.md` de la raíz del repo en tiempo de petición, y esos
    archivos están FUERA de `web/`: viajan sólo porque `web/next.config.ts` los
@@ -511,6 +531,12 @@ ve en local ni en las pruebas, así que hay que comprobarlos en el despliegue:
    muestran fixture, falta `NEXT_PUBLIC_DATA_SOURCE=supabase` o las claves
    públicas; el selector es explícito a propósito (decisión H3) para que la mera
    presencia de variables no active un origen a medio implementar.
+5. **Ninguna ruta enseña "La capa de datos no respondió".** Esa pantalla es el
+   diagnóstico honesto de que la fuente real falló, no un estado normal: si sale,
+   trae la lista ordenada de qué revisar y, en producción, un identificador que
+   se cruza con el log de la función en Vercel. Lo que NO hace es caer a datos de
+   demostración: una pantalla vacía por configuración jamás se enseña como "sin
+   hallazgos".
 
 ## (d) Inyección en vivo (oleada 4 — QA-004)
 

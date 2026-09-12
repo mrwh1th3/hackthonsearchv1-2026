@@ -128,6 +128,12 @@ function mensajeError(status: number, codigo?: string): string {
   if (codigo === "credenciales_invalidas") return "Usuario o contraseña incorrectos.";
   if (codigo === "demasiados_intentos") return "Demasiados intentos. Espera un momento.";
   if (codigo === "sesion_no_configurada") return "Sesión demo no configurada en este entorno.";
+  // Las credenciales eran correctas: lo que falló fue leer el perfil. Lo más
+  // probable es que el schema `forense` no esté expuesto en PostgREST, así que
+  // el mensaje nombra eso en vez de dejar un "no se pudo" genérico.
+  if (codigo === "fuente_de_datos_no_disponible") {
+    return "Credenciales correctas, pero la base no respondió. Revisa que el schema forense esté expuesto en Supabase y que SUPABASE_URL apunte al proyecto con las migraciones aplicadas.";
+  }
   if (status === 403) return "Origen no permitido.";
   return "No se pudo iniciar sesión.";
 }

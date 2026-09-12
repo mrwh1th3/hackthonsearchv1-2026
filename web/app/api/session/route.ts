@@ -41,7 +41,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "credenciales_invalidas" }, { status: 401 });
   }
 
-  const perfil = await obtenerPerfilPrivado();
+  // La contraseña ya se validó; lo que queda es resolver el `perfil_id` que
+  // va firmado en la sesión. `obtenerPerfilPrivado` LANZA si Supabase privado
+  // está configurado pero no responde —schema `forense` sin exponer en
+  // PostgREST, URL mal puesta, migraciones sin aplicar—, y sin este catch ese
+  // throw sale como un 500 pelado: el demo no pasa de la pantalla de login y
+  // la pantalla no dice por qué. Medido en `next start` con la URL apuntando a
+  // un host inexistente: 500 y `leerPerfilPrivado: TypeError: fetch failed`
+  // sólo en el log del servidor.
+  //
+  // No se inventa un `perfil_id` de repuesto ni se cae al perfil de fixture:
+  // la sesión firmada es lo que filtra perfil, notificaciones e historial
+  // (regla 3, "nunca la primera fila"), así que un id inventado daría acceso
+  // a datos de otro perfil. Se falla, pero con un código que la UI traduce.
+  let perfil;
+  try {
+    perfil = await obtenerPerfilPrivado();
+  } catch (e) {
+    console.error("[forense-webapp] login: la fuente privada no respondió:", e);
+    return NextResponse.json({ error: "fuente_de_datos_no_disponible" }, { status: 503 });
+  }
   const token = await signSession({ sub: "auditor", perfil_id: perfil.id });
   if (!token) {
     return NextResponse.json({ error: "sesion_no_configurada" }, { status: 503 });

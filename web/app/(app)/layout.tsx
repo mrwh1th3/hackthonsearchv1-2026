@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/shared/app-shell";
+import { FalloDatos } from "@/components/shared/fallo-datos";
 import { obtenerNotificacionesPrivadas, obtenerPerfilPrivado } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
 
@@ -16,10 +17,32 @@ export const dynamic = "force-dynamic";
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requerirSesionServidor();
-  const [perfil, notificaciones] = await Promise.all([
-    obtenerPerfilPrivado(session.perfil_id),
-    obtenerNotificacionesPrivadas(session.perfil_id),
-  ]);
+
+  // El fallo se atrapa AQUÍ y no en una frontera `error.tsx`, por lo medido
+  // con `next start` y `SUPABASE_URL` apuntando a un host inexistente: un
+  // throw de Server Component durante el SSR hace que Next sirva su documento
+  // `__next_error__` con **500**, y la frontera no pinta hasta que el cliente
+  // hidrata. Con este `try` la misma ruta sale **200** con la pantalla ya
+  // renderizada en el servidor, que es lo que se quiere de un layout del que
+  // cuelga toda la aplicación. (Se probó también una frontera en
+  // `app/error.tsx`: no cambió el resultado, así que se quitó por redundante.)
+  //
+  // `obtenerPerfilPrivado`/`obtenerNotificacionesPrivadas` lanzan a propósito
+  // cuando Supabase privado está configurado pero no responde (schema
+  // `forense` sin exponer, URL mal puesta, migraciones sin aplicar). No se
+  // cae al perfil de fixture: eso pintaría el nombre de un auditor de demo
+  // sobre una instalación real a medias.
+  let perfil: Awaited<ReturnType<typeof obtenerPerfilPrivado>>;
+  let notificaciones: Awaited<ReturnType<typeof obtenerNotificacionesPrivadas>>;
+  try {
+    [perfil, notificaciones] = await Promise.all([
+      obtenerPerfilPrivado(session.perfil_id),
+      obtenerNotificacionesPrivadas(session.perfil_id),
+    ]);
+  } catch (e) {
+    console.error("[forense-webapp] layout: la fuente privada no respondió:", e);
+    return <FalloDatos error={e instanceof Error ? e : new Error(String(e))} alcance="app" />;
+  }
   const noLeidas = notificaciones.filter((n) => !n.leida_at).length;
 
   return (

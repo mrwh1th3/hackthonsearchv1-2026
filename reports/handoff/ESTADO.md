@@ -348,6 +348,60 @@ el proceso en UTC y en Asia/Tokyo.
 Queda a propósito sin tocar un sitio: el indicador de "guardado" del editor usa
 el reloj del visitante, que ahí es lo correcto.
 
+### Hallazgo H11-h: con el schema sin exponer, no se podía ni entrar al demo
+Tres fallos encadenados, encontrados levantando `next start` con la fuente de
+datos apuntando a un host inexistente — la condición exacta de "variables
+puestas, schema `forense` todavía sin exponer en PostgREST", que es el orden de
+instalación más probable porque las variables se ponen en Vercel y la
+exposición se hace en Supabase.
+
+La causa raíz no es un defecto: `SupabaseDataSource` y
+`lib/data/privado-supabase.ts` **propagan** el error de Postgres en vez de
+devolver lista vacía, y eso es lo correcto (regla 10: no mezclar una corrida
+real con datos de demo). Lo que faltaba era que alguien atrapara la
+propagación.
+
+| # | Síntoma medido | Estado |
+|---|---|---|
+| 1 | `POST /api/session` → **500 pelado**. El chequeo de contraseña pasaba y luego `obtenerPerfilPrivado()` lanzaba. `leerPerfilPrivado: TypeError: fetch failed` sólo en el log. **No se podía iniciar sesión.** | 503 `fuente_de_datos_no_disponible`, y la UI de login lo traduce nombrando el schema sin exponer |
+| 2 | Cualquier ruta autenticada → **500** con el documento `__next_error__` de Next. No caía una pantalla: caía la aplicación entera, porque el fallo estaba en `app/(app)/layout.tsx`, que envuelve toda ruta autenticada | **200** con la pantalla de diagnóstico, renderizada en el servidor |
+| 3 | No había **ni una** `error.tsx` en toda la aplicación | `app/(app)/error.tsx` + `components/shared/fallo-datos.tsx` (7 pruebas) |
+
+**Por qué el layout se atrapa a sí mismo con `try/catch` en vez de delegar en
+una frontera.** Medido: un throw de Server Component durante el SSR hace que
+Next sirva su documento `__next_error__` con **500**, y la frontera `error.tsx`
+no pinta hasta que el cliente hidrata. Para un layout del que cuelga toda la
+aplicación eso no sirve, así que se atrapa donde ocurre y la respuesta sale
+200 ya renderizada. Se probó además una frontera en `app/error.tsx`: **no
+cambió el resultado**, así que se quitó por redundante en vez de dejarla
+"por si acaso".
+
+**Lo que deliberadamente NO se hizo:** envolver las 12 páginas que consultan
+`getDataSource()` para que también salgan 200. En el fallo que importa —schema
+sin exponer— la exposición es del **schema**, no de la clave, así que el camino
+privado cae igual y el `try` del layout dispara primero: ninguna página llega a
+renderizarse. Los casos que quedan (clave anon mala con `service_role` buena,
+URL pública mal escrita con la de servidor bien) son estrechos, y ahí un humano
+en un navegador sí ve la pantalla tras hidratar. Doce ediciones mecánicas para
+cambiar un código de estado que nadie lee no valen la superficie.
+
+**La pantalla nunca cae a fixtures**, y hay una prueba que lo fija: un fallo de
+la fuente real disfrazado de "sin resultados" convertiría una instalación a
+medias en un dictamen vacío, que es exactamente lo que este sistema no debe
+hacer. Distingue además el alcance (layout = toda la app / página = el resto de
+la navegación sigue en pie) y, si el fallo empezó a media sesión, dice que la
+configuración no es la causa.
+
+**Riesgo que este hallazgo cierra sólo a medias.** El diagnóstico mejora; la
+función no. Con el schema sin exponer el sistema sigue sin poder leer nada. El
+RUNBOOK Paso 6 lleva ahora el orden obligatorio —expón el schema, comprueba
+que PostgREST responde, después pon las variables— y el aviso de que toda
+`NEXT_PUBLIC_*` va antes del primer build porque se incrusta al construir y
+cambiarla exige volver a desplegar, no sólo guardarla.
+
+Verificado: `npm run test` 288/288 (33 archivos), `npm run build` limpio con el
+entorno restaurado (la URL falsa de la prueba **no** quedó en `.next`), e2e 8/8.
+
 ## Abierto
 - ~~Aplicar 014–017 a Supabase~~ **hecho** (2026-09-12 14:32–14:35, versiones 20260912143247/143340/143417/143459). Verificado en remoto, no por el "ok" del aplicador: las cinco funciones tocadas con `md5(prosrc)` idéntico al cuerpo del archivo que las define en último lugar (`cobertura_caso` contra 016; `paquete_auditor_final` y `guardar_dictamen` contra 017); `proacl` de las cinco sin ninguna entrada de PUBLIC (`{postgres=X/postgres, service_role=X/postgres}`); `max_expansiones_caso=1`; `evaluacion_pistas->(p.id::text)` presente y `->p.codigo` ausente; asesores idénticos a la línea base tomada antes de aplicar (22 INFO + 2 WARN preexistentes, ningún ERROR nuevo). Prueba funcional sobre el remoto, en un bloque revertido por excepción: sin frontera pedida `true`, con la lista de candidatos poblada `true`, con una señal que pide frontera `false`; cero residuos.
 - ~~Deriva de `003_pistas_recalibrada_2b`~~ **resuelta por comprobación** (2026-09-12): el remoto registra esa migración sin archivo en `db/`, pero es solo historia del nombre con que se aplicó el 003 ya calibrado. Los cuerpos coinciden byte a byte: `pista_d3` `b69e55c8…` (6 354), `pista_f3` `28ab859a…` (5 325), `pista_t2` `454f6019…` (7 101), los tres idénticos a `db/003_pistas.sql`. `correr_pistas` difiere del 003 local a propósito: el remoto tiene `66f1be11…` (3 726), que es exactamente el cuerpo de `db/014_estadisticas.sql` (014 la redefine para meter el ANALYZE como primer paso). Una instalación limpia desde `db/` reproduce el mismo estado; no falta ningún archivo.
