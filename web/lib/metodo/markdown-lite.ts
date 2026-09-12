@@ -1,12 +1,18 @@
 /**
  * Renderizador de markdown mínimo para `/metodo` (21 §2: "estática, sin
  * backend"). No se agrega una librería de markdown solo para leer un
- * archivo: soporta encabezados `#`/`##`, tablas con pipes y párrafos, que
- * es exactamente lo que usa `reports/handoff/DECISIONES.md`.
+ * archivo: soporta encabezados `#`/`##`, tablas con pipes, bloques de
+ * código ``` (RUNBOOK.md trae ~40) y párrafos. Un bloque de código SIN
+ * soporte explícito caía en la rama de párrafo: la línea ``` no calza con
+ * encabezado ni tabla, así que se tragaba como texto normal, uniendo todas
+ * las líneas del bloque con un solo espacio (perdiendo saltos de línea e
+ * indentación) y encima cortando el párrafo antes de tiempo en cualquier
+ * línea de comentario de shell que empezara con "# " (Corte 3 hallazgo 6).
  */
 export type BloqueMd =
   | { tipo: "encabezado"; nivel: 1 | 2 | 3; texto: string }
   | { tipo: "tabla"; encabezados: string[]; filas: string[][] }
+  | { tipo: "codigo"; texto: string; lenguaje: string }
   | { tipo: "parrafo"; texto: string };
 
 function partirFila(linea: string): string[] {
@@ -42,6 +48,20 @@ export function parsearMarkdownLite(md: string): BloqueMd[] {
       continue;
     }
 
+    const fence = /^```\s*(\S*)\s*$/.exec(linea.trim());
+    if (fence) {
+      const lenguaje = fence[1] ?? "";
+      i++;
+      const contenido: string[] = [];
+      while (i < lineas.length && !/^```\s*$/.test(lineas[i].trim())) {
+        contenido.push(lineas[i]);
+        i++;
+      }
+      i++; // consume la cerradura ``` (o el fin de archivo, si el bloque quedó sin cerrar)
+      bloques.push({ tipo: "codigo", texto: contenido.join("\n"), lenguaje });
+      continue;
+    }
+
     if (linea.trim().startsWith("|") && i + 1 < lineas.length && esSeparadorTabla(lineas[i + 1])) {
       const encabezados = partirFila(linea);
       i += 2;
@@ -57,7 +77,13 @@ export function parsearMarkdownLite(md: string): BloqueMd[] {
     // Párrafo: junta líneas hasta el siguiente separador en blanco.
     const partes: string[] = [linea];
     i++;
-    while (i < lineas.length && lineas[i].trim() !== "" && !/^#{1,3}\s/.test(lineas[i]) && !lineas[i].trim().startsWith("|")) {
+    while (
+      i < lineas.length &&
+      lineas[i].trim() !== "" &&
+      !/^#{1,3}\s/.test(lineas[i]) &&
+      !lineas[i].trim().startsWith("|") &&
+      !/^```/.test(lineas[i].trim())
+    ) {
       partes.push(lineas[i]);
       i++;
     }
