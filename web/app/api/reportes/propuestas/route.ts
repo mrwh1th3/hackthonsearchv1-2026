@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { validateContract } from "@/lib/contracts/validate";
 import { borradorActual, registrarPropuesta } from "@/lib/document/almacen-demo";
 import { indexarBloques } from "@/lib/document/documento";
+import { verificarSeleccion } from "@/lib/document/seleccion";
 import { construirPropuesta, salidaEditorDemostracion } from "@/lib/document/propuesta";
 import {
   cargarCasoEditor,
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
 
   // La selección se verifica contra la versión base: si los bloques ya no
   // existen, se pide reconfirmar la selección actual (07 §4 paso 3).
+  let seleccionVerificada: boolean | undefined;
   if (solicitud.seleccion) {
     const indice = indexarBloques(documento);
     const faltantes = solicitud.seleccion.block_ids.filter((id) => !indice.has(id));
@@ -78,6 +80,23 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+    // Y el `texto_hash` se contrasta con el contenido real de esos bloques
+    // (07 §4 nodo 6). Solo se rechaza cuando el desplazamiento se PUEDE
+    // probar; si no cabe en el presupuesto o la selección toca contenedores,
+    // se sigue adelante declarando que no se verificó.
+    const verificacion = verificarSeleccion(documento, solicitud.seleccion);
+    if (verificacion.estado === "desplazada") {
+      return NextResponse.json(
+        {
+          error: "seleccion_desplazada",
+          motivo: "texto_hash",
+          bloques: solicitud.seleccion.block_ids,
+          version_actual: caso.versionActual.version,
+        },
+        { status: 409 },
+      );
+    }
+    seleccionVerificada = verificacion.estado === "verificada";
   }
 
   let salida: SalidaEditor;
@@ -125,6 +144,7 @@ export async function POST(req: Request) {
       modo: "pregunta",
       mensaje: salida.mensaje,
       version_base: solicitud.version_base,
+      seleccion_verificada: seleccionVerificada,
     });
   }
 
@@ -158,6 +178,7 @@ export async function POST(req: Request) {
     modo: "propuesta",
     propuesta: resultado.propuesta,
     advertencias: resultado.advertencias,
+    seleccion_verificada: seleccionVerificada,
   });
 }
 

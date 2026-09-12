@@ -8,6 +8,7 @@ import { reiniciarAlmacen } from "@/lib/document/almacen-demo";
 import { citasDeMarkdown } from "@/lib/document/citas";
 import { hashTexto } from "@/lib/document/documento";
 import { aMarkdown, desdeMarkdown } from "@/lib/document/markdown";
+import { rangoDeBloque, textoEntre } from "@/lib/document/seleccion";
 
 import { POST as postPropuestas } from "@/app/api/reportes/propuestas/route";
 import { POST as postAplicar } from "@/app/api/reportes/aplicar/route";
@@ -56,8 +57,21 @@ function uuid(sufijo: string): string {
   return `00000000-0000-4000-8000-${sufijo.padStart(12, "0")}`;
 }
 
-function seleccion(blockId = BLOQUE_CUERPO) {
-  return { from: 0, to: 40, block_ids: [blockId], texto_hash: hashTexto("fragmento seleccionado") };
+/**
+ * Selección REAL: posiciones ProseMirror del bloque y hash del texto que esas
+ * posiciones devuelven. Desde el hallazgo 2 el BFF contrasta `texto_hash` con
+ * el contenido del bloque, así que una selección inventada es 409 —lo prueba
+ * `seleccion.test.ts`.
+ */
+function seleccion(blockId = BLOQUE_CUERPO, documento = documentoBase) {
+  const rango = rangoDeBloque(documento, blockId);
+  if (!rango) throw new Error(`bloque ausente: ${blockId}`);
+  return {
+    from: rango.from,
+    to: rango.to,
+    block_ids: [blockId],
+    texto_hash: hashTexto(textoEntre(documento, rango.from, rango.to)),
+  };
 }
 
 async function pedirPropuesta(versionBase = 1, clave = uuid("401")) {
@@ -264,6 +278,33 @@ describe("BFF de reportes (editor)", () => {
     expect((await conflicto.json()).version_actual).toBe(1);
   });
 
+  it("un texto_hash que no corresponde al bloque es 409 seleccion_desplazada", async () => {
+    // El bloque existe, pero el texto seleccionado ya no está en él: el BFF lo
+    // PRUEBA contra el contenido y pide reconfirmar (07 §4 nodo 6).
+    const res = await postPropuestas(
+      await peticion("/api/reportes/propuestas", {
+        caso_id: CASO,
+        version_base: 1,
+        modo: "propuesta",
+        seleccion: { ...seleccion(), texto_hash: hashTexto("un fragmento que jamás estuvo en el expediente") },
+        mensaje: "Hazlo más claro.",
+        evidencia_ids: [],
+        idempotency_key: uuid("430"),
+      }),
+    );
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toBe("seleccion_desplazada");
+    expect(json.motivo).toBe("texto_hash");
+    expect(json.version_actual).toBe(1);
+  });
+
+  it("una selección real declara seleccion_verificada:true", async () => {
+    const { res, json } = await pedirPropuesta(1, uuid("431"));
+    expect(res.status).toBe(200);
+    expect(json.seleccion_verificada).toBe(true);
+  });
+
   it("la propuesta se calcula sobre el borrador: un bloque escrito en la sesión puede editarse y Aplicar no lo pierde", async () => {
     // El usuario escribe un párrafo nuevo; el autoguardado lo conserva.
     const conNota = {
@@ -285,7 +326,7 @@ describe("BFF de reportes (editor)", () => {
         caso_id: CASO,
         version_base: 1,
         modo: "propuesta",
-        seleccion: { from: 0, to: 20, block_ids: ["blk-nota-1"], texto_hash: hashTexto("Nota manual del auditor.") },
+        seleccion: seleccion("blk-nota-1", conNota as typeof documentoBase),
         mensaje: "Hazlo más claro.",
         evidencia_ids: [],
         idempotency_key: uuid("412"),
