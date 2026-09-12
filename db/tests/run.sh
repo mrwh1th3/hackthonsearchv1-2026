@@ -30,10 +30,16 @@ LOG="$TMP/psql.log"
 fallos=0
 
 limpiar() {
+  # Mata primero cualquier sesión propia que siga viva (un psql en
+  # background, un ANALYZE largo): sin esto `dropdb` falla y la base
+  # queda con backends huérfanos consumiendo la instancia local.
+  vivos="$(jobs -p 2>/dev/null)"
+  if [ -n "$vivos" ]; then kill $vivos 2>/dev/null; fi
   if [ "$KEEP" = "1" ]; then
     echo "base conservada: $DB"
   else
-    "$DROPDB" --if-exists "$DB" >/dev/null 2>&1
+    "$DROPDB" --if-exists --force "$DB" >/dev/null 2>&1 \
+      || "$DROPDB" --if-exists "$DB" >/dev/null 2>&1
   fi
   rm -rf "$TMP"
 }
@@ -78,6 +84,8 @@ aplicar "$DBDIR/010_runtime_funciones.sql" "010_runtime_funciones.sql"
 aplicar "$DBDIR/011_metricas_corrida.sql" "011_metricas_corrida.sql"
 aplicar "$DBDIR/012_inyeccion_clusters.sql" "012_inyeccion_clusters.sql"
 aplicar "$DBDIR/013_rendimiento.sql" "013_rendimiento.sql"
+aplicar "$DBDIR/014_estadisticas.sql" "014_estadisticas.sql"
+aplicar "$DBDIR/015_cobertura.sql" "015_cobertura.sql"
 aplicar "$DBDIR/seeds/seed_fake.sql" "seeds/seed_fake.sql"
 aplicar "$DBDIR/seeds/seed_producto.sql" "seeds/seed_producto.sql"
 aplicar "$HERE/helpers.sql" "tests/helpers.sql"
@@ -91,7 +99,8 @@ for f in "$DBDIR/001_schema.sql" "$DBDIR/002_views.sql" "$DBDIR/003_pistas.sql" 
          "$DBDIR/007_notificaciones_voz.sql" "$DBDIR/008_ingesta.sql" \
          "$DBDIR/009_runtime_eventos.sql" "$DBDIR/010_runtime_funciones.sql" \
          "$DBDIR/011_metricas_corrida.sql" "$DBDIR/012_inyeccion_clusters.sql" \
-         "$DBDIR/013_rendimiento.sql" \
+         "$DBDIR/013_rendimiento.sql" "$DBDIR/014_estadisticas.sql" \
+         "$DBDIR/015_cobertura.sql" \
          "$DBDIR/seeds/seed_fake.sql" "$DBDIR/seeds/seed_producto.sql"; do
   if "$PSQL" -d "$DB" -v ON_ERROR_STOP=1 -q -X -f "$f" >"$LOG" 2>&1; then
     echo "  ok    reaplicar $(basename "$f")"
@@ -115,23 +124,45 @@ aplicar "$HERE/assertions_009.sql" "tests/assertions_009.sql"
 aplicar "$HERE/assertions_010.sql" "tests/assertions_010.sql"
 aplicar "$HERE/assertions_012.sql" "tests/assertions_012.sql"
 aplicar "$HERE/assertions_013.sql" "tests/assertions_013.sql"
+aplicar "$HERE/assertions_014.sql" "tests/assertions_014.sql"
+aplicar "$HERE/assertions_015.sql" "tests/assertions_015.sql"
 
 echo "== paquetes de inyección (eval/inyecciones) =="
 bash "$HERE/cargar_paquetes.sh" "$DB" || fallos=$((fallos + 1))
 
 echo "== snapshot gen-v1 (opcional: GEN=0 lo omite) =="
 GEN="${GEN:-auto}"
+GEN_TIMEOUT="${GEN_TIMEOUT:-600s}"
+
+omitir_gen() { # $1 motivo — las comprobaciones que dependen de gen-v1 NO
+               # se cuentan como PASA cuando no se pudieron ejecutar.
+  for a in assertions_gen assertions_012_gen assertions_013_gen assertions_014_gen; do
+    "$PSQL" -d "$DB" -q -X -c \
+      "select pruebas.omitir('tests/$a.sql (datos reales)', '$1')" >/dev/null 2>&1
+  done
+}
+
 if [ "$GEN" = "0" ]; then
   echo "  omitido por GEN=0"
+  omitir_gen "GEN=0"
 else
   if bash "$HERE/cargar_gen.sh" "$DB"; then
+    # statement_timeout SOLO para este bloque: una consulta que se atasca
+    # sobre el snapshot real (era el caso de pista_f1 con estadísticas
+    # rancias) tiene que fallar con error, no colgar la corrida ni dejar
+    # el backend vivo. Se desexporta al salir del bloque para no
+    # contaminar el resto (concurrencia incluida).
+    export PGOPTIONS="-c statement_timeout=$GEN_TIMEOUT"
     aplicar "$HERE/assertions_gen.sql" "tests/assertions_gen.sql"
     aplicar "$HERE/assertions_012_gen.sql" "tests/assertions_012_gen.sql"
     aplicar "$HERE/assertions_013_gen.sql" "tests/assertions_013_gen.sql"
+    aplicar "$HERE/assertions_014_gen.sql" "tests/assertions_014_gen.sql"
+    unset PGOPTIONS
   else
     rc=$?
     if [ "$rc" = "3" ] && [ "$GEN" != "1" ]; then
       echo "  sin snapshot gen-v1 disponible: aserciones de datos reales omitidas"
+      omitir_gen "sin snapshot gen-v1 en la base origen"
     else
       echo "  FALLA carga de gen-v1"
       fallos=$((fallos + 1))
@@ -259,15 +290,17 @@ aplicar "$HERE/concurrencia_check.sql" "tests/concurrencia_check.sql"
 echo
 echo "== resultados =="
 "$PSQL" -d "$DB" -X -t -A -F '  ' -c \
-  "select case when ok then '  PASA' else '  FALLA' end, nombre,
-          case when ok then '' else '<- ' || coalesce(detalle,'') end
+  "select case when omitida then '  OMITIDA' when ok then '  PASA' else '  FALLA' end, nombre,
+          case when omitida then '<- ' || coalesce(detalle,'')
+               when ok then '' else '<- ' || coalesce(detalle,'') end
      from pruebas.resultado order by id"
 
-total=$("$PSQL" -d "$DB" -X -t -A -c "select count(*) from pruebas.resultado" | tr -d ' ')
-malas=$("$PSQL" -d "$DB" -X -t -A -c "select count(*) from pruebas.resultado where not ok" | tr -d ' ')
+total=$("$PSQL" -d "$DB" -X -t -A -c "select count(*) from pruebas.resultado where not omitida" | tr -d ' ')
+malas=$("$PSQL" -d "$DB" -X -t -A -c "select count(*) from pruebas.resultado where not ok and not omitida" | tr -d ' ')
+omitidas=$("$PSQL" -d "$DB" -X -t -A -c "select count(*) from pruebas.resultado where omitida" | tr -d ' ')
 
 echo
-echo "aserciones: $total | fallidas: $malas | errores de aplicación: $fallos"
+echo "aserciones: $total | fallidas: $malas | omitidas: $omitidas | errores de aplicación: $fallos"
 if [ "${malas:-1}" != "0" ] || [ "$fallos" != "0" ]; then
   echo "RESULTADO: FALLA"
   exit 1
