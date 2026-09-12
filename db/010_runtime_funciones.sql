@@ -916,8 +916,25 @@ begin
   v_seg := forense.config_int('deadline_revision_segundos', 900);
   v_res := forense.crear_tareas_ronda(p_caso, 2, p_autores, p_intento, v_seg);
 
+  -- forense.crear_tareas_ronda (005) publica la lista bajo la clave
+  -- `tareas`, no `tarea_ids`: leer la clave equivocada devolvería CERO
+  -- filas y el nodo «Despachar revisión» despacharía en silencio nada.
   select coalesce(array_agg((x)::uuid), '{}') into v_ids
-    from jsonb_array_elements_text(coalesce(v_res->'tarea_ids', '[]'::jsonb)) x;
+    from jsonb_array_elements_text(
+           coalesce(v_res->'tareas', v_res->'tarea_ids', '[]'::jsonb)) x;
+  -- Cero tareas no es un error: crear_tareas_ronda omite a los autores de
+  -- familias NO evaluables. Eso es una LIMITACIÓN que tiene que llegar al
+  -- dictamen (regla 10: evidencia insuficiente queda no_concluyente), no
+  -- una excepción que tumbe el reintento ni un silencio.
+  if cardinality(v_ids) = 0 then
+    update forense.casos
+       set pendientes = coalesce(pendientes, '[]'::jsonb) || jsonb_build_array(
+             jsonb_build_object('codigo', 'reintento_sin_autores_evaluables',
+               'autores', to_jsonb(p_autores),
+               'omitidos_no_evaluables', coalesce(v_res->'omitidos_no_evaluables', '[]'::jsonb))),
+           cobertura_completa = false
+     where id = p_caso;
+  end if;
 
   select max(t.lease_expires_at) into v_dead from forense.tareas_agente t
    where t.id = any(v_ids);

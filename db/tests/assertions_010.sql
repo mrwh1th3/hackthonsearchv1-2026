@@ -204,7 +204,7 @@ begin
   insert into forense.evidencia (caso_id, idempotency_key, tipo, ref_id, monto,
                                  pista_codigo, familia, agente, ronda,
                                  valida_tecnica, validada, descripcion)
-  values (v_caso, 'ev-010-1', 'cfdi', 'UUID-TEST-1', 1234.56, 'D2', 'D', 'documental', 1,
+  values (v_caso, 'ev-010-1', 'cfdi', '33333333-3333-4333-8333-333333333333', 1234.56, 'D2', 'D', 'documental', 1,
           true, true, 'texto libre del contribuyente')
   returning id into v_ev;
 
@@ -289,6 +289,47 @@ begin
   perform pruebas.assert('autores_reintento pide solo los roles de familias evaluables sin señal',
     not ('documental' = any(r.autores)), array_to_string(r.autores, ','));
 
+  -- B12b. Las tres funciones de reintento se EJECUTAN, no solo se tipan:
+  --       una función que devuelve cero filas pasa PREPARE y pasa el test
+  --       de forma, y el nodo despacharía en silencio nada.
+  -- Un autor de familia NO evaluable no produce tarea: es una limitación
+  -- que llega al dictamen, no una excepción ni un silencio.
+  update forense.corridas set familias_evaluables = '{}'::text[] where id = v_c1;
+  select count(*) into v_n from forense.crear_tareas_revision(v_caso, 1,
+                                                              array['financiero'], '{}'::jsonb);
+  perform pruebas.assert('un reintento con autores no evaluables no crea tareas y lo registra',
+    v_n = 0 and (select pendientes::text like '%reintento_sin_autores_evaluables%'
+                   from forense.casos where id = v_caso), 'filas=' || v_n);
+
+  update forense.corridas set familias_evaluables = '{D,F,R,T,E}'::text[] where id = v_c1;
+  select * into r from forense.crear_tareas_revision(v_caso, 1, array['financiero'],
+                                                     '{}'::jsonb);
+  perform pruebas.assert('crear_tareas_revision devuelve una fila por tarea creada',
+    r.tarea_id is not null and cardinality(r.tarea_ids) >= 1,
+    coalesce(r.tarea_ids::text, '(vacio)'));
+  perform pruebas.assert('crear_tareas_revision conserva las señales previas (historia intacta)',
+    (select count(*) from forense.senales s where s.caso_id = v_caso and s.ronda = 1) = 1, '');
+  select count(*) into v_n from forense.bitacora b
+   where b.caso_id = v_caso and b.payload->>'evento_real' = 'tareas_revision_creadas';
+  perform pruebas.assert('crear_tareas_revision deja evento de reintento en bitacora (regla 2)',
+    v_n = 2, 'eventos=' || v_n);
+
+  select * into r from forense.expandir_cluster_reintento(v_caso,
+    jsonb_build_object('autores', jsonb_build_array('relacional')));
+  perform pruebas.assert('expandir_cluster_reintento expande por la frontera del cluster',
+    r.expandido and 'CCC030303CCC' = any(r.rfcs_nuevos),
+    coalesce(r.rfcs_nuevos::text, '(vacio)'));
+  perform pruebas.assert('expandir_cluster_reintento versiona el contexto del cluster',
+    r.version_contexto > 1, r.version_contexto::text);
+
+  select * into r from forense.revalidar_caso(v_caso);
+  perform pruebas.assert('revalidar_caso revalida antes del dictamen y deja evento validacion',
+    r.caso_id = v_caso
+    and (select count(*) from forense.bitacora b
+          where b.caso_id = v_caso
+            and b.payload->>'evento_real' = 'revalidacion_reintento') = 1,
+    coalesce(r.evidencia_revalidada::text, '?'));
+
   -- B13. aplicar_resolucion_replica: la trampa vale para ESTE caso, no
   --      cambia forense.pistas.estado global (07 §15).
   insert into forense.tareas_agente (caso_id, corrida_id, cluster_id, agente, ronda,
@@ -313,15 +354,20 @@ begin
     (select evaluacion_pistas->'D2'->>'resultado' from forense.casos where id = v_caso)
       = 'descartada', '');
   select count(*) into v_n from forense.bitacora b
-   where b.caso_id = v_caso and b.tipo_evento in ('replica','evidencia_descartada');
-  perform pruebas.assert('aplicar_resolucion_replica deja replica y evidencia_descartada',
-    v_n = 2, 'eventos=' || v_n);
+   where b.caso_id = v_caso and b.tipo_evento = 'replica';
+  perform pruebas.assert('aplicar_resolucion_replica deja evento replica en bitacora (regla 2)',
+    v_n = 1, 'eventos=' || v_n);
+  select count(*) into v_n from forense.bitacora b
+   where b.caso_id = v_caso and b.tipo_evento = 'evidencia_descartada'
+     and b.payload->>'defensa_id' = v_def::text;
+  perform pruebas.assert('aplicar_resolucion_replica deja evidencia_descartada de esa defensa',
+    v_n = 1, 'eventos=' || v_n);
 
   -- B14. Editor: la propuesta NO versiona el documento (regla 11).
   select coalesce(max(version), 0) into v_ver from forense.expedientes where caso_id = v_caso;
   select * into r from forense.guardar_propuesta_edicion(
     v_caso, v_ver, jsonb_build_object('texto', 'nuevo'), jsonb_build_object('add', 1),
-    array['CFDI:UUID-TEST-1'], 'propuesta', null, 'cambia el resumen', null, 'req-010-1', null);
+    array['CFDI:33333333-3333-4333-8333-333333333333'], 'propuesta', null, 'cambia el resumen', null, 'req-010-1', null);
   v_prop := r.propuesta_id;
   perform pruebas.assert('guardar_propuesta_edicion devuelve propuesta_id sin versionar',
     v_prop is not null
@@ -329,7 +375,7 @@ begin
     '');
   select * into r from forense.guardar_propuesta_edicion(
     v_caso, v_ver, jsonb_build_object('texto', 'nuevo'), jsonb_build_object('add', 1),
-    array['CFDI:UUID-TEST-1'], 'propuesta', null, 'cambia el resumen', null, 'req-010-1', null);
+    array['CFDI:33333333-3333-4333-8333-333333333333'], 'propuesta', null, 'cambia el resumen', null, 'req-010-1', null);
   perform pruebas.assert('guardar_propuesta_edicion es idempotente por request_id',
     r.propuesta_id = v_prop, '');
 
@@ -364,7 +410,7 @@ begin
   update forense.evidencia set refutada = false, validada = true where id = v_ev;
   select * into r from forense.cargar_version_expediente(v_caso, null);
   perform pruebas.assert('cargar_version_expediente lista las citas permitidas del caso',
-    r.citas_permitidas ? 'CFDI:UUID-TEST-1' and r.version_actual = 3,
+    r.citas_permitidas ? 'CFDI:33333333-3333-4333-8333-333333333333' and r.version_actual = 3,
     r.citas_permitidas::text);
 
   -- B17. cerrar_barreras_vencidas: timeout deja limitación, no «sin fraude».
