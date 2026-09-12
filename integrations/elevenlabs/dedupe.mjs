@@ -42,12 +42,21 @@ export function liberarParaReintentoManual(almacen, { event_id }) {
  * Dedupe de callbacks correlacionando por conversation_id o call_sid del
  * proveedor (16 línea 61); si ninguno viene en el cuerpo, cae a event_id
  * para no procesar dos veces un callback sin identidad de proveedor.
+ *
+ * La clave real es (identidad, tipo_evento): una misma llamada manda varios
+ * eventos legítimos y distintos (`initiated` → `ringing` → `completed`) con
+ * la MISMA identidad de proveedor. Deduplicar solo por identidad descartaría
+ * esa secuencia entera tras el primer evento, tratando "completed" como
+ * duplicado de "initiated". `tipo_evento` es opcional para no romper a un
+ * llamador que todavía no lo manda: en ese caso el comportamiento es el
+ * previo (una única entrada por identidad).
  */
-export function registrarCallback(almacen, { event_id, conversation_id, call_sid }) {
-  const clave = conversation_id ?? call_sid ?? event_id;
-  if (!clave) {
+export function registrarCallback(almacen, { event_id, conversation_id, call_sid, tipo_evento }) {
+  const identidad = conversation_id ?? call_sid ?? event_id;
+  if (!identidad) {
     throw new ErrorVoz('argumento_invalido', 'registrarCallback requiere conversation_id, call_sid o event_id');
   }
+  const clave = `${identidad}::${tipo_evento ?? 'sin_tipo'}`;
   if (almacen.callbacks.has(clave)) {
     return { nuevo: false, motivo: 'callback_duplicado', clave };
   }
