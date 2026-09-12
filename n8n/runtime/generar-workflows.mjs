@@ -1634,9 +1634,13 @@ export function inyectar() {
 
   add(sql(
     'Registrar inyección',
-    'SELECT * FROM forense.registrar_inyeccion($1::uuid, $2::uuid, $3::text, $4::text)',
+    [
+      'SELECT r.inyeccion_id, r.estado, r.corrida_base_id, r.ingesta_id,',
+      '       r.idempotency_key, r.prioridad',
+      '  FROM forense.registrar_inyeccion($1::uuid, $2::uuid, $3::text, $4::text) AS r',
+    ].join('\n'),
     "={{ $json.body.corrida_base_id }}, ={{ $json.body.ingesta_id }}, ={{ $json.body.idempotency_key }}, ={{ $json.body.prioridad ?? 'inyectados' }}",
-    "Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. DEPENDE de 008 (forense-db).",
+    "Inserta en forense.inyecciones con estado 'recibida' y escribe bitacora con tipo_evento='inyeccion' (21 §3.2). Contrato product.inyectar de contracts 1.2.0. Columnas nombradas: la firma de 010 es TABLE(...), no jsonb.",
   ));
 
   fila = 1; columna = 2;
@@ -1649,9 +1653,15 @@ export function inyectar() {
   fila = 0; columna = 2;
   add(sql(
     'Validar filas',
-    'SELECT * FROM forense.validar_inyeccion($1::uuid)',
-    I('inyeccion_id'),
-    'Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. DEPENDE de 008.',
+    [
+      'SELECT v.ok AS validada, v.inyeccion_id, v.ingesta_id, v.estado,',
+      '       v.aceptadas, v.rechazadas, v.rfcs_afectados, v.diagnostico',
+      '  FROM jsonb_to_record(forense.validar_inyeccion($1::uuid))',
+      '    AS v(ok boolean, inyeccion_id uuid, ingesta_id uuid, estado text,',
+      '         aceptadas int, rechazadas int, rfcs_afectados jsonb, diagnostico jsonb)',
+    ].join('\n'),
+    I('ingesta_id'),
+    'Validación determinista de 19: claves, FK contra el snapshot base MÁS las filas nuevas, moneda, fechas ≤ fecha_corte (si una la supera, la corrida nueva adopta la fecha máxima inyectada y lo declara), duplicados por UUID = rechazo con motivo, y SIN etiquetas. La función toma la INGESTA y devuelve jsonb escalar: `SELECT *` dejaba `validada` en undefined y el IF se iba siempre por el falso.',
   ));
   add(si('¿Inyección validada?', '={{ $json.validada }}'));
 
@@ -1671,9 +1681,12 @@ export function inyectar() {
   fila = 0; columna = 4;
   add(sql(
     'Clonar corrida',
-    'SELECT * FROM forense.clonar_corrida_con_inyeccion($1::uuid, $2::uuid)',
+    [
+      'SELECT forense.clonar_corrida_con_inyeccion($1::uuid, $2::uuid) AS corrida_nueva_id,',
+      `       $1::uuid AS corrida_base_id, $2::uuid AS ingesta_id`,
+    ].join('\n'),
     `${I('corrida_base_id')}, ${I('ingesta_id')}`,
-    'Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). DEPENDE de 008.',
+    'Transacción única: copia el snapshot base, inserta las filas nuevas, calcula un dataset_hash nuevo y deja la corrida `lista`. La corrida base queda intacta (regla 10 y 21 §3). La función devuelve un uuid escalar: sin el alias, la columna se llamaba `clonar_corrida_con_inyeccion` y el nodo siguiente leía undefined.',
   ));
 
   add(sql(
@@ -1688,30 +1701,83 @@ export function inyectar() {
   ));
 
   add(sql(
+    'Asegurar clusters inyectados',
+    [
+      'SELECT a.cluster_id, a.rfc, a.creado',
+      '  FROM forense.asegurar_clusters_inyectados($1::uuid, $2::uuid) AS a',
+    ].join('\n'),
+    `={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}, ${I('inyeccion_id')}`,
+    'QA-004 (decisión H9 07:32): `armar_clusters` aplica el selector de dos familias y puede dejar FUERA a un RFC inyectado que no lo cruza — el juez inyecta y no ve nada. Esta función garantiza un cluster por RFC inyectado (creado=true si lo tuvo que armar, false si ya estaba cubierto) por la ruta de investigación manual `armar_cluster_para`. La entrega es db/012 de forense-db; el nodo está cableado a la firma acordada table(cluster_id, rfc, creado).',
+  ));
+
+  add(sql(
     'Clusters afectados primero',
-    'SELECT * FROM forense.clusters_por_prioridad_inyeccion($1::uuid, $2::uuid)',
-    `={{ $json.corrida_nueva_id }}, ${I('inyeccion_id')}`,
-    'Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). DEPENDE de 008.',
+    [
+      'SELECT c.cluster_id, c.corrida_id, c.inyeccion_id, c.investigacion_id,',
+      '       c.afectado, c.score',
+      '  FROM forense.clusters_por_prioridad_inyeccion($1::uuid, $2::uuid) AS c',
+    ].join('\n'),
+    `={{ $('Recalcular pistas y clusters').first().json.corrida_nueva_id }}, ${I('inyeccion_id')}`,
+    'Ordena primero los clusters que contienen rfcs_afectados; el resto queda en_cola (21 §3 y regla 10 intactas). Columnas nombradas contra la firma TABLE de 010.',
   ));
 
   add(codeInline('Priorizar afectados', [
     '// 21 §3: los clusters con RFC inyectados se despachan PRIMERO; el resto',
     '// espera. El juez tiene que ver la reacción en segundos, sin perder la',
     '// corrida de referencia.',
+    '//',
+    '// QA-004: la lista por prioridad sale del selector de clusters, que puede no',
+    '// contener al RFC inyectado. `Asegurar clusters inyectados` devuelve el',
+    '// conjunto GARANTIZADO (uno por RFC inyectado). Se despacha primero lo que',
+    '// esa función tuvo que crear (creado=true, el caso que antes desaparecía),',
+    '// luego lo garantizado que ya existía, luego el resto de afectados, luego',
+    '// lo demás. Un cluster garantizado que no venga en la lista por prioridad',
+    '// se AÑADE: si no, el RFC inyectado se quedaba sin investigar.',
     'const MAX_ACTIVOS = 4;',
     'const filas = $input.all().map((i) => i.json);',
-    'const afectados = filas.filter((f) => f.afectado === true);',
-    'const resto = filas.filter((f) => f.afectado !== true);',
-    'const admitidos = [...afectados, ...resto].slice(0, MAX_ACTIVOS);',
+    "const recalculo = $('Recalcular pistas y clusters').first().json;",
+    "const garantizados = $('Asegurar clusters inyectados').all().map((i) => i.json)",
+    '  .filter((g) => g && g.cluster_id);',
+    'const creadoPorId = new Map(garantizados.map((g) => [g.cluster_id, g.creado === true]));',
+    'const rfcPorId = new Map(garantizados.map((g) => [g.cluster_id, g.rfc ?? null]));',
+    '',
+    'const vistos = new Set(filas.map((f) => f.cluster_id));',
+    'const faltantes = garantizados',
+    '  .filter((g) => !vistos.has(g.cluster_id))',
+    '  .map((g) => ({',
+    '    cluster_id: g.cluster_id,',
+    '    corrida_id: recalculo.corrida_nueva_id,',
+    '    inyeccion_id: recalculo.inyeccion_id,',
+    '    investigacion_id: null,',
+    '    afectado: true,',
+    '  }));',
+    'const todas = [...filas, ...faltantes];',
+    '',
+    '// Rango: 0 = garantizado recién creado, 1 = garantizado preexistente,',
+    '// 2 = afectado por el selector, 3 = resto. Orden estable dentro de cada rango.',
+    'const rango = (f) => {',
+    '  if (creadoPorId.get(f.cluster_id) === true) return 0;',
+    '  if (creadoPorId.has(f.cluster_id)) return 1;',
+    '  return f.afectado === true ? 2 : 3;',
+    '};',
+    'const ordenadas = todas',
+    '  .map((f, i) => ({ f, i, r: rango(f) }))',
+    '  .sort((a, b) => (a.r - b.r) || (a.i - b.i))',
+    '  .map((e) => e.f);',
+    'const admitidos = ordenadas.slice(0, MAX_ACTIVOS);',
+    'const afectadosTotal = todas.filter((f) => f.afectado === true || creadoPorId.has(f.cluster_id)).length;',
     'return admitidos.map((f) => ({ json: {',
     '  cluster_id: f.cluster_id,',
-    '  corrida_id: f.corrida_id,',
-    '  inyeccion_id: f.inyeccion_id ?? null,',
+    '  corrida_id: f.corrida_id ?? recalculo.corrida_nueva_id,',
+    '  inyeccion_id: f.inyeccion_id ?? recalculo.inyeccion_id ?? null,',
     '  investigacion_id: f.investigacion_id ?? null,',
-    '  afectado: f.afectado === true,',
-    '  idempotency_key: `inyeccion:${f.inyeccion_id}:${f.cluster_id}`,',
-    '  afectados_total: afectados.length,',
-    '  en_cola: Math.max(0, filas.length - admitidos.length),',
+    '  afectado: f.afectado === true || creadoPorId.has(f.cluster_id),',
+    '  garantizado: creadoPorId.has(f.cluster_id),',
+    '  creado: creadoPorId.get(f.cluster_id) === true,',
+    '  rfc_inyectado: rfcPorId.get(f.cluster_id) ?? null,',
+    '  idempotency_key: `inyeccion:${f.inyeccion_id ?? recalculo.inyeccion_id}:${f.cluster_id}`,',
+    '  afectados_total: afectadosTotal,',
+    '  en_cola: Math.max(0, todas.length - admitidos.length),',
     '} }));',
   ].join('\n')));
 
@@ -1753,7 +1819,8 @@ export function inyectar() {
     ['¿Inyección validada?', 'Clonar corrida', 0],
     ['¿Inyección validada?', 'Cerrar inyección rechazada', 1],
     ['Clonar corrida', 'Recalcular pistas y clusters'],
-    ['Recalcular pistas y clusters', 'Clusters afectados primero'],
+    ['Recalcular pistas y clusters', 'Asegurar clusters inyectados'],
+    ['Asegurar clusters inyectados', 'Clusters afectados primero'],
     ['Clusters afectados primero', 'Priorizar afectados'],
     ['Priorizar afectados', ['Despachar afectados', 'Cerrar inyección']],
   ]);
@@ -2310,16 +2377,18 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Webhook inyectar': ['headers', 'params', 'query', 'body'],
     'Registrar inyección': ['inyeccion_id', 'estado', 'corrida_base_id', 'ingesta_id',
       'idempotency_key', 'prioridad'],
-    'Validar filas': ['inyeccion_id', 'validada', 'diagnostico', 'rfcs_afectados',
-      'filas_por_tabla', 'fecha_corte_nueva'],
+    'Validar filas': ['validada', 'inyeccion_id', 'ingesta_id', 'estado',
+      'aceptadas', 'rechazadas', 'rfcs_afectados', 'diagnostico'],
     'Cerrar inyección rechazada': ['inyeccion_id', 'estado', 'diagnostico'],
-    'Clonar corrida': ['inyeccion_id', 'corrida_nueva_id', 'dataset_hash', 'estado'],
+    'Clonar corrida': ['corrida_nueva_id', 'corrida_base_id', 'ingesta_id'],
     'Recalcular pistas y clusters': ['corrida_nueva_id', 'inyeccion_id', 'pistas_insertadas',
       'clusters_armados'],
+    'Asegurar clusters inyectados': ['cluster_id', 'rfc', 'creado'],
     'Clusters afectados primero': ['cluster_id', 'corrida_id', 'inyeccion_id',
       'investigacion_id', 'afectado', 'score'],
     'Priorizar afectados': ['cluster_id', 'corrida_id', 'inyeccion_id', 'investigacion_id',
-      'afectado', 'idempotency_key', 'afectados_total', 'en_cola'],
+      'afectado', 'garantizado', 'creado', 'rfc_inyectado', 'idempotency_key',
+      'afectados_total', 'en_cola'],
     'Despachar afectados': [],
     'Cerrar inyección': ['inyeccion_id', 'estado', 'corrida_nueva_id', 'creado'],
   }),
@@ -2386,9 +2455,12 @@ export const FORMA_PENDIENTE = Object.freeze({
     'Cargar o clonar snapshot', 'Esperar y reconciliar', 'Validar e idempotencia',
     'Verificar integridad',
   ]),
-  FORENSE_inyectar: Object.freeze([
-    'Clonar corrida', 'Clusters afectados primero', 'Registrar inyección', 'Validar filas',
-  ]),
+  // Vacío en H10: las cuatro consultas dejaron de ser `SELECT *` y nombran las
+  // columnas que la firma real de 008/010 devuelve (dos de ellas leían columnas
+  // que no existían: `validada` sobre un jsonb escalar y `corrida_nueva_id` sobre
+  // un uuid escalar). `Asegurar clusters inyectados` nombra columnas contra la
+  // firma acordada de db/012 y se verifica con la prueba marcada PENDIENTE_DB_012.
+  FORENSE_inyectar: Object.freeze([]),
   FORENSE_notificar_completada: Object.freeze([
     'Crear intento de llamada', 'Guardar aceptación', 'Omitir con motivo', 'Reclamar evento',
     'Releer evento desde DB', 'Resolver destinatario',
