@@ -1,7 +1,7 @@
 "use client";
 
 import { Home, Menu, UserRound } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import type { Investigacion, Perfil } from "@/lib/data";
@@ -71,6 +71,16 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
   const [panelOpen, setPanelOpen] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [perfilAbierto, setPerfilAbierto] = useState(false);
+  // Navegación con respuesta inmediata: la fila pulsada gira y una barra corre
+  // arriba hasta que Next confirma la ruta (o su `loading.tsx`). Antes el clic
+  // no hacía nada visible mientras el servidor armaba la página.
+  const [navegando, startNavegacion] = useTransition();
+  const [destino, setDestino] = useState<string | null>(null);
+
+  function navegar(href: string) {
+    setDestino(href);
+    startNavegacion(() => router.push(href));
+  }
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -82,7 +92,12 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
 
   useEffect(() => {
     setPanelOpen(false);
+    setDestino(null);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!navegando) setDestino(null);
+  }, [navegando]);
 
   // El original ordena con las terminadas al final y filtra por título.
   const filas = useMemo(() => {
@@ -126,7 +141,12 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
 
   return (
     <PanelContext.Provider value={{ abrir: () => setPanelOpen((v) => !v), abierto: panelOpen }}>
-    <div className="relative min-h-screen bg-app-bg font-sans text-text">
+    <div className="relative min-h-screen bg-app-bg font-sans text-text" aria-busy={navegando || undefined}>
+      {navegando && (
+        <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-[10] h-[2px] overflow-hidden bg-[#ebe8e2]">
+          <div className="h-full w-1/3 bg-text" style={{ animation: "insp-progreso 1s ease-in-out infinite" }} />
+        </div>
+      )}
       {!lienzoCompleto && (
         <button
           type="button"
@@ -192,7 +212,8 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
           */}
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => navegar("/")}
+            onMouseEnter={() => router.prefetch("/")}
             aria-current={pathname === "/" ? "page" : undefined}
             className={cn(
               "mb-1 flex items-center gap-[9px] rounded-[9px] border-none px-2.5 py-[9px] text-left transition-colors duration-150 hover:bg-surface-hover",
@@ -205,14 +226,24 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
 
           <span className="px-2 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-text-subtle">Investigaciones</span>
 
-          {filas.map((f) => (
+          {filas.map((f) => {
+            const href = `/documentos/${f.id}?doc=0`;
+            const abriendo = navegando && destino === href;
+            return (
             <button
               key={f.id}
               type="button"
-              onClick={() => router.push(`/documentos/${f.id}?doc=0`)}
-              className="flex items-center gap-[9px] rounded-[9px] border-none bg-transparent px-2.5 py-[9px] text-left transition-colors duration-150 hover:bg-[#f7f6f4]"
+              onClick={() => navegar(href)}
+              onMouseEnter={() => router.prefetch(href)}
+              onFocus={() => router.prefetch(href)}
+              disabled={abriendo}
+              aria-busy={abriendo || undefined}
+              className={cn(
+                "flex items-center gap-[9px] rounded-[9px] border-none px-2.5 py-[9px] text-left transition-colors duration-150 hover:bg-[#f7f6f4]",
+                abriendo ? "bg-[#f7f6f4]" : "bg-transparent",
+              )}
             >
-              {f.enCurso && (
+              {(f.enCurso || abriendo) && (
                 <span
                   aria-hidden
                   className="h-4 w-4 flex-none rounded-full border-2 border-[#e3e0da] border-t-text"
@@ -221,10 +252,11 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
               )}
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="max-w-[200px] truncate text-[13.5px] text-text">{f.titulo}</span>
-                <span className="text-[11.5px] text-text-subtle">{f.estado}</span>
+                <span className="text-[11.5px] text-text-subtle">{abriendo ? "Abriendo…" : f.estado}</span>
               </span>
             </button>
-          ))}
+            );
+          })}
 
           {filas.length === 0 && (
             <p className="px-2 py-5 text-center text-[12.5px] text-text-subtle">

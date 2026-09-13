@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation";
 import { getDataSource } from "@/lib/data";
-import { obtenerInvestigacionPrivada, obtenerHistorialPrivado } from "@/lib/data/privado";
+import { obtenerInvestigacionPrivada } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
-import { ZONA_POR_OMISION } from "@/lib/date/formato";
-import { resolveDateRangePreset } from "@/lib/date/range";
 import { desdeMarkdown } from "@/lib/document/markdown";
+import { cargarCasoEditor } from "@/lib/document/servidor";
 import { InvestigacionVista } from "./investigacion-vista";
 
 export const metadata = { title: "Forense · Investigación" };
@@ -31,14 +30,16 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   const inv = await obtenerInvestigacionPrivada(id, session.perfil_id);
   if (!inv) notFound();
 
+  // Todas las lecturas independientes salen a la vez: antes iban en cascada
+  // (detalle → bitácora → resto de casos → clusters → contraste → editor) y
+  // abrir una investigación desde el panel tardaba la suma de todas.
   const casoId = inv.caso_ids[0];
-  const [detalle, corrida, historial] = await Promise.all([
-    casoId ? ds.getCasoDetalle(casoId) : Promise.resolve(null),
+  const [detalles, corrida, bitacoraCorrida] = await Promise.all([
+    Promise.all(inv.caso_ids.map((id) => ds.getCasoDetalle(id))),
     ds.getCorrida(inv.corrida_id),
-    obtenerHistorialPrivado(session.perfil_id),
+    ds.getBitacoraCorrida(inv.corrida_id),
   ]);
-
-  const bitacoraCorrida = await ds.getBitacoraCorrida(inv.corrida_id);
+  const detalle = casoId ? (detalles[0] ?? null) : null;
   const bitacora = casoId ? bitacoraCorrida.filter((e) => e.caso_id === casoId) : bitacoraCorrida;
 
   // Resumen de investigación (vista auditor, feedback 2026-09-12): una
@@ -46,8 +47,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   // primero. Se traen todos con su cluster (para el puntaje de riesgo real,
   // `clusters.score`) y su propio recorte de bitácora — nada inventado, todo
   // sale de lo ya persistido.
-  const detalles = await Promise.all(inv.caso_ids.map((id) => (id === casoId ? Promise.resolve(detalle) : ds.getCasoDetalle(id))));
-  const [casosCargados, estadisticas] = await Promise.all([
+  const [casosCargados, estadisticas, [contraste, trayectoria, entidad], casoEditor] = await Promise.all([
     Promise.all(
       detalles
         .filter((d): d is NonNullable<typeof d> => d !== null)
@@ -61,32 +61,33 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
           };
         }),
     ),
-    ds.getEstadisticas(inv.corrida_id),
+    // Solo alimenta el contador de tokens. En corridas grandes la RPC de métricas
+    // puede pasar el statement_timeout de `anon` (3 s) en frío; eso no debe
+    // tumbar el documento entero, así que el contador queda en "—".
+    ds.getEstadisticas(inv.corrida_id).catch(() => null),
+    detalle
+      ? Promise.all([
+          ds.getContraste(detalle.caso.id),
+          ds.getTrayectoria(detalle.caso.rfc_principal, detalle.caso.corrida_id),
+          ds.getEntidad(detalle.caso.rfc_principal, detalle.caso.corrida_id),
+        ])
+      : Promise.resolve([null, [], null] as [null, never[], null]),
+    // El cuerpo y la versión del documento son los REALMENTE vigentes en
+    // `forense.expedientes` (mismo motivo que `/casos/[id]/expediente`: sembrar
+    // el editor con la versión 1 fija cuando ya hay una versión mayor produce
+    // "conflicto_version" en el primer autoguardado o propuesta). Sin
+    // repositorio configurado se cae al Markdown original del Redactor en
+    // versión 1. Sin Redactor no hay documento y se dice.
+    detalle?.redactor ? cargarCasoEditor(detalle.caso.id) : Promise.resolve(null),
   ]);
   const casos = casosCargados;
 
-  const [contraste, trayectoria, entidad] = detalle
-    ? await Promise.all([
-        ds.getContraste(detalle.caso.id),
-        ds.getTrayectoria(detalle.caso.rfc_principal, detalle.caso.corrida_id),
-        ds.getEntidad(detalle.caso.rfc_principal, detalle.caso.corrida_id),
-      ])
-    : [null, [], null];
-
-  // Mismo cálculo que la pantalla de caso: la ventana real de la corrida,
-  // resuelta por `lib/date/range` en la zona declarada (H11-g).
-  const finInclusive = new Date(corrida?.fin ?? corrida?.fecha_corte ?? inv.creado);
-  const periodo = resolveDateRangePreset({
-    preset: "todo_el_dataset",
-    timezone: ZONA_POR_OMISION,
-    referencia: new Date(corrida?.fecha_corte ?? inv.creado),
-    datasetDesde: new Date(corrida?.inicio ?? inv.creado),
-    datasetHastaExclusivo: new Date(finInclusive.getTime() + 24 * 60 * 60 * 1000),
-  });
-
-  // El cuerpo del documento es el Markdown REAL del Redactor, el mismo que
-  // edita el expediente. Sin Redactor no hay documento y se dice.
-  const documento = detalle?.redactor ? desdeMarkdown(detalle.redactor.markdown) : null;
+  const documento = casoEditor
+    ? casoEditor.versionActual.contenido_json
+    : detalle?.redactor
+      ? desdeMarkdown(detalle.redactor.markdown)
+      : null;
+  const versionDocumento = casoEditor?.versionActual.version ?? 1;
 
   // Lo que el editor necesita para decorar y auditar citas: exactamente lo
   // mismo que le pasa `/casos/[id]/expediente`, para que abrir el reporte
@@ -116,6 +117,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
         investigacion={inv}
         detalle={detalle}
         documento={documento}
+        versionDocumento={versionDocumento}
         evidenciaCitas={evidenciaCitas}
         referenciasValidadas={referenciasValidadas}
         origen={ds.label}
@@ -123,8 +125,6 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
         contraste={contraste}
         trayectoria={trayectoria}
         razonSocialUntrusted={entidad?.razon_social_untrusted ?? null}
-        periodo={periodo}
-        investigaciones={historial}
         corrida={corrida}
         casos={casos}
         tokensCorrida={estadisticas?.operacion.tokens_total ?? null}

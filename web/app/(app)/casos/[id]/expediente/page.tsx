@@ -4,6 +4,7 @@ import { CanvasHeader } from "@/components/shared/canvas-header";
 import { DocumentWorkspace } from "@/components/editor/document-workspace";
 import { getDataSource } from "@/lib/data";
 import { desdeMarkdown } from "@/lib/document/markdown";
+import { cargarCasoEditor } from "@/lib/document/servidor";
 
 export const metadata = { title: "Forense · Reporte" };
 
@@ -12,6 +13,17 @@ export default async function ExpedientePage({ params }: { params: Promise<{ id:
   const ds = getDataSource();
   const detalle = await ds.getCasoDetalle(id);
   if (!detalle || !detalle.redactor) notFound();
+
+  // La versión y el contenido con los que arranca el editor son los
+  // REALMENTE vigentes en `forense.expedientes` — no la versión 1 fija ni el
+  // Markdown original del Redactor —, o el primer autoguardado choca con
+  // "conflicto_version" (409) contra una versión que el editor ni sabía que
+  // existía. Sin repositorio (backend no configurado) se cae al Markdown
+  // original en versión 1: es la mejor aproximación disponible, y el resto
+  // del editor ya declara 503 en cuanto se intenta guardar o proponer.
+  const casoEditor = await cargarCasoEditor(id);
+  const documentoActual = casoEditor?.versionActual.contenido_json ?? desdeMarkdown(detalle.redactor.markdown);
+  const versionActual = casoEditor?.versionActual.version ?? 1;
 
   const referenciasValidadas = new Set(detalle.evidencia.filter((e) => e.validada).flatMap((e) => e.referencias));
 
@@ -42,9 +54,9 @@ export default async function ExpedientePage({ params }: { params: Promise<{ id:
       <DocumentWorkspace
         casoId={detalle.caso.id}
         rfc={detalle.caso.rfc_principal}
-        documento={desdeMarkdown(detalle.redactor.markdown)}
-        version={1}
-        estadoRevision="validado"
+        documento={documentoActual}
+        version={versionActual}
+        estadoRevision={casoEditor?.versionActual.estado_revision ?? "validado"}
         nivel={detalle.caso.nivel ?? undefined}
         origen={ds.label}
         referenciasValidadas={[...referenciasValidadas]}

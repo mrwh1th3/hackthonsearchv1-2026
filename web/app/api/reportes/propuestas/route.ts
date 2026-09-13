@@ -122,7 +122,16 @@ export async function POST(req: Request) {
     if (!respuesta.ok) {
       return NextResponse.json({ error: "backend_rechazo", status: respuesta.status }, { status: 502 });
     }
-    const cuerpo = (await respuesta.json()) as unknown;
+    // El webhook pudo responder 200 con un cuerpo que no es JSON (p.ej. una
+    // página de error de n8n si el workflow no está publicado tal cual está
+    // en el repo): eso es un fallo del backend, no una excepción sin capturar
+    // que tumbe la ruta con 500.
+    let cuerpo: unknown;
+    try {
+      cuerpo = await respuesta.json();
+    } catch {
+      return NextResponse.json({ error: "respuesta_invalida" }, { status: 502 });
+    }
     const salidaValida = validateContract("agents.editor", cuerpo);
     if (!salidaValida.ok) {
       return NextResponse.json({ error: "salida_invalida", detalles: salidaValida.errors }, { status: 502 });

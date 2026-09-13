@@ -138,6 +138,16 @@ textarea::placeholder {
   }
 }
 
+/* Barra de navegación del shell: corre mientras la transición de ruta sigue pendiente. */
+@keyframes insp-progreso {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
 /*
  * Tres puntos "cargando" del canvas de análisis en proceso
  * (`app/(app)/analisis/[casoId]`). Sólo se montan mientras el caso persistido

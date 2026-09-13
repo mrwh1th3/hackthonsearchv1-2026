@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ResultadosCaso } from "../../casos/[id]/resultados";
-import { CasoChat } from "../../casos/[id]/caso-chat";
 import { CanvasHeader } from "@/components/shared/canvas-header";
-import type { CasoDetalle, ContrasteCaso, Corrida, EventoForense, Investigacion, Periodo, TrayectoriaPunto } from "@/lib/data";
+import type { CasoDetalle, ContrasteCaso, Corrida, EventoForense, Investigacion, TrayectoriaPunto } from "@/lib/data";
 import { DocumentWorkspace } from "@/components/editor/document-workspace";
+import { ReportChat } from "@/components/editor/report-chat";
 import type { EvidenciaCita } from "@/components/editor/cita-drawer";
 import type { Documento } from "@/lib/document/tipos";
 import { ResumenInvestigacion, type CasoConContexto } from "@/components/shared/investigacion-resumen";
@@ -52,14 +52,13 @@ export function InvestigacionVista({
   investigacion,
   detalle,
   documento,
+  versionDocumento,
   evidenciaCitas,
   referenciasValidadas,
   origen,
   bitacora,
   contraste,
   trayectoria,
-  periodo,
-  investigaciones,
   corrida,
   casos,
   tokensCorrida,
@@ -69,6 +68,8 @@ export function InvestigacionVista({
   investigacion: Investigacion;
   detalle: CasoDetalle | null;
   documento: Documento | null;
+  /** Versión real de `forense.expedientes`, no la 1 fija (evita 409 en el primer autoguardado/propuesta). */
+  versionDocumento: number;
   evidenciaCitas: EvidenciaCita[];
   referenciasValidadas: string[];
   origen: "fixture" | "supabase";
@@ -76,16 +77,16 @@ export function InvestigacionVista({
   contraste: ContrasteCaso | null;
   trayectoria: TrayectoriaPunto[];
   razonSocialUntrusted: string | null;
-  periodo: Periodo;
-  investigaciones: Investigacion[];
   corrida: Corrida | null;
   casos: CasoConContexto[];
   tokensCorrida: number | null;
 }) {
   const searchParams = useSearchParams();
   const [doc, setDoc] = useState(searchParams.get("doc") !== "0");
-  const caso = detalle?.caso ?? null;
-  const titulo = investigacion.titulo ?? investigacion.mensaje ?? "Investigación";
+  // Versión del expediente que ve el chat lateral (fuera del editor): arranca
+  // en la versión REAL vigente (`versionDocumento`, no 1 fija) y sube cuando
+  // Aplicar versiona, para que la siguiente pregunta cite la versión correcta.
+  const [versionChat, setVersionChat] = useState(versionDocumento);
   // El documento (editor) es una vista DENTRO de esta pantalla, no otra ruta:
   // "Atrás" con el documento abierto cierra el documento y deja los
   // hallazgos/stats de esta misma investigación (feedback 2026-09-12, "q este
@@ -134,7 +135,7 @@ export function InvestigacionVista({
                 casoId={detalle.caso.id}
                 rfc={detalle.caso.rfc_principal}
                 documento={documento}
-                version={1}
+                version={versionDocumento}
                 estadoRevision="validado"
                 nivel={detalle.caso.nivel ?? undefined}
                 origen={origen}
@@ -171,14 +172,33 @@ export function InvestigacionVista({
       </div>
 
       <div className={cn("min-h-0 max-lg:hidden", editorAbierto && "hidden")}>
-        <CasoChat
-          corridaId={investigacion.corrida_id}
-          clusterId={caso?.cluster_id ?? ""}
-          rfcs={caso ? [caso.rfc_principal, ...caso.rfcs_satelite].slice(0, 40) : []}
-          periodo={periodo}
-          tituloInicial={titulo}
-          investigaciones={investigaciones}
-        />
+        {/*
+          Mismo chat que dentro del editor (`ReportChat`, contrato
+          `editor.solicitud`/`agents.editor`): pregunta o propone sobre EL
+          DOCUMENTO de esta investigación, con la evidencia y las citas ya
+          validadas como contexto. No dispara investigaciones nuevas —eso era
+          `CasoChat`, pensado para el board de corridas, no para el
+          expediente— y Aplicar sí versiona aunque el documento esté
+          colapsado (feedback 2026-09-12: "sin investigaciones solo contexto
+          y edicion del doc").
+        */}
+        {detalle ? (
+          <ReportChat
+            casoId={detalle.caso.id}
+            version={versionChat}
+            seleccion={null}
+            evidencia={evidenciaCitas}
+            origen={origen}
+            modoLectura={false}
+            onAplicado={(reporte) => setVersionChat(reporte.version)}
+            onLimpiarSeleccion={() => {}}
+            onAbrirCita={() => setDoc(true)}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center rounded-[18px] border border-border bg-surface-muted p-4 text-center text-[12.5px] text-text-subtle">
+            Esta investigación todavía no tiene expediente que editar.
+          </div>
+        )}
       </div>
       </div>
     </>
