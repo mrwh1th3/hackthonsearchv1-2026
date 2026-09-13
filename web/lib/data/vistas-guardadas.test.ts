@@ -99,7 +99,7 @@ describe("guardarVistaConFallback / borrarVistaConFallback", () => {
     const resultado = await guardarVistaConFallback({ nombre: "x", ruta: "/", filtros: {} });
     expect(resultado.ok).toBe(false);
     expect(resultado.fuente).toBe("servidor");
-    expect(resultado.error).toMatch(/sesión/);
+    expect(resultado.error).toMatch(/session/);
     expect(leerVistasGuardadas()).toEqual([]);
   });
 

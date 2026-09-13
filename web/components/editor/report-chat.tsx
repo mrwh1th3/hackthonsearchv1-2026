@@ -36,11 +36,11 @@ export interface SeleccionUI {
 }
 
 const SUGERENCIAS = [
-  "Resume esta sección",
-  "Explica la evidencia",
-  "Hazlo más claro",
-  "Agrega las limitaciones",
-  "Propón próximos pasos",
+  "Summarize this section",
+  "Explain the evidence",
+  "Make this clearer",
+  "Add the limitations",
+  "Suggest next steps",
 ];
 
 type Mensaje =
@@ -51,6 +51,7 @@ type Mensaje =
       texto: string;
       versionBase: number;
       origen: string;
+      references?: string[];
       /** `false` explícito: el servidor no pudo comprobar la selección. */
       seleccionVerificada?: boolean;
     }
@@ -84,8 +85,7 @@ function AvisoSeleccion() {
       data-testid="seleccion-no-verificada"
     >
       <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden />
-      Selección no verificada: el servidor no pudo comprobar que el texto sigue igual en esta versión. Revisa el diff
-      antes de aplicar.
+      Unverified selection. Review the differences before applying changes.
     </p>
   );
 }
@@ -99,7 +99,13 @@ export function ReportChat({
   onAplicado,
   onLimpiarSeleccion,
   onAbrirCita,
+  onAsk,
+  initialAnswers = [],
+  contextLabel,
 }: {
+  onAsk?: (question: string) => Promise<{answer: string; references: string[]}>;
+  initialAnswers?: Array<{request_id: string; question: string; answer: string; references: string[]}>;
+  contextLabel?: string;
   casoId: string;
   version: number;
   seleccion: SeleccionUI | null;
@@ -111,7 +117,7 @@ export function ReportChat({
   onLimpiarSeleccion: () => void;
   onAbrirCita: (referencia: string) => void;
 }) {
-  const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [mensajes, setMensajes] = useState<Mensaje[]>(() => initialAnswers.flatMap((entry): Mensaje[] => [{id: `${entry.request_id}-q`, autor: "humano", texto: entry.question, versionBase: version}, {id: entry.request_id, autor: "editor", texto: entry.answer, references: entry.references, versionBase: version, origen: "codex"}]));
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [modoEnvio, setModoEnvio] = useState<"propuesta" | "pregunta">("propuesta");
@@ -129,21 +135,21 @@ export function ReportChat({
   const describirError = (error: ErrorBFF): string => {
     switch (error.error) {
       case "backend_no_configurado":
-        return "No hay backend de edición configurado. No se inventa una respuesta: configura N8N_WEBHOOK_BASE o usa la fuente de fixtures.";
+        return "The editing service is not configured in this environment.";
       case "conflicto_version":
-        return `El reporte cambió a la versión ${error.version_actual}. Tu borrador se conserva; vuelve a seleccionar el texto y pide la propuesta otra vez.`;
+        return `The report changed to version ${error.version_actual}. Your draft is preserved. Select the text and request the change again.`;
       case "seleccion_desplazada":
-        return "La selección ya no existe en esta versión del documento. Selecciona de nuevo el fragmento.";
+        return "The selection no longer exists in this version. Select the text again.";
       case "citas_no_autorizadas":
-        return error.detalle ?? "La propuesta introduce citas sin evidencia validada y fue rechazada.";
+        return error.detalle ?? "The proposal was rejected because it introduced unsupported citations.";
       case "cambio_de_nivel":
-        return "La propuesta intentaba cambiar el nivel del dictamen. El nivel lo fija el código determinista, no el editor.";
+        return "The proposal tried to change the rule-based confidence level. The editor cannot change it.";
       case "seccion_protegida":
-        return error.detalle ?? "La propuesta elimina una sección que no puede faltar.";
+        return error.detalle ?? "The proposal removes a required section.";
       case "no_autenticado":
-        return "Tu sesión expiró. Vuelve a entrar para seguir editando.";
+        return "Your session expired. Sign in to continue editing.";
       default:
-        return error.detalle ?? `No se pudo completar la operación (${error.error}).`;
+        return error.detalle ?? `Could not complete the operation (${error.error}).`;
     }
   };
 
@@ -155,6 +161,15 @@ export function ReportChat({
     agregar({ id: uuid(), autor: "humano", texto: limpio, versionBase: version });
     setTexto("");
     setEnviando(true);
+
+    if (onAsk) {
+      try {
+        const reply = await onAsk(limpio);
+        agregar({id: uuid(), autor: "editor", texto: reply.answer, references: reply.references, versionBase: version, origen: "codex"});
+      } catch (error) { agregar({id: uuid(), autor: "sistema", texto: error instanceof Error ? error.message : "Could not answer. Please retry.", tono: "error"}); }
+      finally { setEnviando(false); }
+      return;
+    }
 
     const resultado = await pedirEdicion({
       caso_id: casoId,
@@ -216,7 +231,7 @@ export function ReportChat({
     if (!resultado.ok) {
       actualizarPropuesta(mensaje.id, { estado: resultado.error.error === "conflicto_version" ? "conflicto" : "pendiente" });
       agregar({ id: uuid(), autor: "sistema", texto: describirError(resultado.error), tono: "error" });
-      toast.error("No se aplicó la propuesta");
+      toast.error("The proposal was not applied");
       return;
     }
 
@@ -227,14 +242,14 @@ export function ReportChat({
     });
     onAplicado(resultado.datos.reporte, resultado.datos.revisar_citas);
     onLimpiarSeleccion();
-    toast.success(`Versión ${resultado.datos.version} creada`);
+    toast.success(`Version ${resultado.datos.version} created`);
     // CLAUDE.md regla 2: si la escritura no dejó evento en `forense.bitacora`,
     // la UI lo dice. Solo el `false` explícito; `undefined` es "no informado".
     if (resultado.datos.bitacora === false) {
       agregar({
         id: uuid(),
         autor: "sistema",
-        texto: `La versión ${resultado.datos.version} no dejó registro en la bitácora: este entorno no persiste trazabilidad, así que el cambio no es auditable.`,
+        texto: `Version ${resultado.datos.version} has no activity record, so this change cannot be audited.`,
         tono: "aviso",
       });
     }
@@ -242,7 +257,7 @@ export function ReportChat({
       agregar({
         id: uuid(),
         autor: "sistema",
-        texto: `La versión ${resultado.datos.version} tiene citas sin evidencia validada (${resultado.datos.citas_invalidas.join(", ")}): queda en "revisar citas" y no puede publicarse.`,
+        texto: `Version ${resultado.datos.version} has unvalidated citations (${resultado.datos.citas_invalidas.join(", ")}): citations need review before publishing.`,
         tono: "aviso",
       });
     }
@@ -275,7 +290,7 @@ export function ReportChat({
   return (
     <aside
       className="flex h-full min-h-0 w-full flex-col bg-surface px-3.5 print:hidden"
-      aria-label="Chat del reporte"
+      aria-label="Report chat"
     >
       {/*
         La pestaña "Evidencia" se ocultó a pedido (feedback 2026-09-13): el
@@ -283,24 +298,27 @@ export function ReportChat({
         una UI que la alimente por ahora — adjuntar evidencia a una propuesta
         necesitará otra entrada cuando se pida de vuelta.
       */}
+      {onAsk && <div className="border-b border-border px-3 py-4"><div className="text-[13px] font-medium">Investigation assistant</div><p className="mt-1 truncate text-[11px] text-text-subtle">{contextLabel || "Reading this investigation"}</p></div>}
       <div className="flex min-h-0 flex-1 flex-col pt-1">
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-auto px-3 py-3" data-testid="chat-mensajes">
+            {onAsk && mensajes.length === 0 && <div className="py-8 text-[13px] leading-6 text-text-muted"><span className="mb-3 block text-xl">✧</span>Follow a finding, question its evidence, or ask for a plain-English explanation.</div>}
             <ul className="flex flex-col gap-3">
               {mensajes.map((m) => (
                 <li key={m.id}>
                   {m.autor === "humano" && (
                     <div className="ml-auto max-w-[92%] rounded-[14px_14px_4px_14px] bg-primary px-[11px] py-2 text-[12.5px] leading-relaxed text-white">
                       {m.texto}
-                      <span className="mt-1 block text-[10px] text-white/70">sobre la versión {m.versionBase}</span>
+                      <span className="mt-1 block text-[10px] text-white/70">{onAsk ? "Report question" : `on version ${m.versionBase}`}</span>
                     </div>
                   )}
 
                   {m.autor === "editor" && (
                     <div className="mr-auto max-w-[92%] rounded-[14px_14px_14px_4px] border border-border bg-surface-raised px-[11px] py-2 text-[12.5px] leading-relaxed text-text">
-                      {m.texto}
+                      <span className="whitespace-pre-wrap">{m.texto}</span>
+                      {m.references && <div className="mt-2 flex flex-wrap gap-1">{m.references.map(ref => <button key={ref} onClick={() => onAbrirCita(ref)} className="rounded border border-border bg-surface px-1.5 py-1 text-[10px] underline">{ref}</button>)}</div>}
                       <span className="mt-1 block text-[10px] text-text-subtle">
-                        Editor · no modifica el documento
+                        {onAsk ? "Codex · saved answer" : "Editor · changes require approval"}
                       </span>
                       {m.seleccionVerificada === false && <AvisoSeleccion />}
                     </div>
@@ -322,7 +340,7 @@ export function ReportChat({
                     <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-border p-2">
                       <p className="text-sm text-text">{m.propuesta.mensaje}</p>
                       {m.seleccionVerificada === false && <AvisoSeleccion />}
-                      <VersionDiff diff={m.propuesta.diff} titulo={`Propuesta sobre la versión ${m.propuesta.version_base}`} maxAltura={200} />
+                      <VersionDiff diff={m.propuesta.diff} titulo={`Proposal for version ${m.propuesta.version_base}`} maxAltura={200} />
 
                       {m.propuesta.citas.length > 0 && (
                         <p className="flex flex-wrap gap-1 text-[11px] text-text-subtle">
@@ -355,7 +373,7 @@ export function ReportChat({
                             className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-input)] bg-primary px-2.5 text-xs text-white hover:bg-primary-hover disabled:opacity-60"
                           >
                             {m.estado === "aplicando" && <Loader2 size={12} className="animate-spin" aria-hidden />}
-                            Aplicar
+                            Apply
                           </button>
                           <button
                             type="button"
@@ -364,17 +382,17 @@ export function ReportChat({
                             className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-input)] border border-border px-2.5 text-xs text-text-muted hover:bg-surface-hover disabled:opacity-60"
                           >
                             {m.estado === "descartando" && <Loader2 size={12} className="animate-spin" aria-hidden />}
-                            Descartar
+                            Dismiss
                           </button>
                         </div>
                       ) : (
                         <p className="text-[11px] text-text-subtle">
-                          {m.estado === "aplicada" && `Aplicada: versión ${m.versionCreada} creada.`}
-                          {m.estado === "descartada" && "Descartada: el documento quedó sin cambios."}
-                          {m.estado === "conflicto" && "En conflicto: el reporte avanzó de versión. Vuelve a pedir la propuesta."}
+                          {m.estado === "aplicada" && `Applied: version ${m.versionCreada} created.`}
+                          {m.estado === "descartada" && "Dismissed: the document is unchanged."}
+                          {m.estado === "conflicto" && "Conflict: a newer report version exists. Request the proposal again."}
                           {m.bitacora === false && (m.estado === "aplicada" || m.estado === "descartada") && (
                             <span className="ml-1 text-warn" data-testid="sin-bitacora">
-                              Sin registro en la bitácora.
+                              No activity record.
                             </span>
                           )}
                         </p>
@@ -395,7 +413,7 @@ export function ReportChat({
 
           <div className="shrink-0 pt-3">
             <div className="mb-2 flex gap-[7px] overflow-x-auto pb-0.5 [scrollbar-width:thin]">
-              {SUGERENCIAS.map((s) => (
+              {(onAsk ? ["What matters most?", "Explain this finding", "What evidence is missing?", "Could this be legitimate?"] : SUGERENCIAS).map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -426,7 +444,7 @@ export function ReportChat({
                     className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-focus/40 bg-focus/10 px-2 py-0.5 text-focus"
                     title={seleccion.texto}
                   >
-                    selección: {seleccion.texto.slice(0, 28) || `${seleccion.block_ids.length} bloque(s)`} <X size={10} aria-hidden />
+                    selection: {seleccion.texto.slice(0, 28) || `${seleccion.block_ids.length} bloque(s)`} <X size={10} aria-hidden />
                   </button>
                 )}
               </div>
@@ -442,7 +460,7 @@ export function ReportChat({
                     aria-pressed={modoEnvio === m}
                     className={cn("rounded-[6px] px-2 py-0.5", modoEnvio === m ? "bg-surface-muted text-text" : "text-text-muted")}
                   >
-                    {m === "propuesta" ? "Editar" : "Preguntar"}
+                    {m === "propuesta" ? "Edit" : "Preguntar"}
                   </button>
                 ))}
               </div>
@@ -460,8 +478,8 @@ export function ReportChat({
                 onChange={(e) => setTexto(e.target.value)}
                 rows={2}
                 disabled={modoLectura}
-                aria-label="Instrucción para el Editor"
-                placeholder={modoLectura ? "Modo lectura" : seleccion ? "Qué cambio quieres en la selección…" : "Pregunta sobre el reporte…"}
+                aria-label={onAsk ? "Question for the investigation assistant" : "Instruction for the editor"}
+                placeholder={modoLectura ? "Read-only" : seleccion ? "How should this selection change?" : "Ask about the report…"}
                 className="w-full resize-none border-none bg-transparent text-[12.5px] leading-relaxed text-text outline-none disabled:opacity-50"
                 onKeyDown={(e) => {
                   // Feedback 2026-09-13: Enter envía (como en cualquier chat);
@@ -475,7 +493,7 @@ export function ReportChat({
               <button
                 type="submit"
                 disabled={enviando || modoLectura || texto.trim().length === 0}
-                aria-label="Enviar"
+                aria-label="Send"
                 className="ml-auto inline-flex h-[26px] w-[26px] items-center justify-center rounded-full bg-primary text-white transition-colors duration-150 hover:bg-primary-hover disabled:opacity-40"
               >
                 <Send size={13} aria-hidden />

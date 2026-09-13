@@ -2,9 +2,14 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { RANGO_PRESET_LABEL, resolveDateRangePreset, type AlcanceRango, type RangoPreset, type RangoResuelto } from "@/lib/date/range";
+import { resolveDateRangePreset, type AlcanceRango, type RangoPreset, type RangoResuelto } from "@/lib/date/range";
+import { AppDateField, isISODate } from "./app-date-field";
 
 const PRESETS: RangoPreset[] = ["hoy", "ayer", "7d", "30d", "90d", "mes_actual", "mes_anterior", "todo_el_dataset"];
+const PRESET_LABELS: Record<RangoPreset, string> = {
+  hoy: "Today", ayer: "Yesterday", "7d": "7 days", "30d": "30 days", "90d": "90 days",
+  mes_actual: "This month", mes_anterior: "Last month", todo_el_dataset: "Full dataset", personalizado: "Custom",
+};
 
 export interface DateRangePickerProps {
   /** "ejecucion": reloj real (historial). "dataset": ancla a fecha_corte del snapshot (analítica), 15 §9. */
@@ -23,10 +28,8 @@ export interface DateRangePickerProps {
 /**
  * 15 §9: presets + rango personalizado con inputs manuales, dos alcances
  * separados, salida siempre en UTC con fin exclusivo (ver `lib/date/range`).
- * El calendario visual completo queda simplificado a `<input type="date">`
- * (accesible, operable por teclado) dado el tiempo del corte; la lógica de
- * conversión de zona horaria es la parte normativa y está cubierta por
- * tests.
+ * El calendario comparte la entrada ISO manual; la conversión de zona
+ * horaria permanece en el contrato existente, cubierta por tests.
  */
 export function DateRangePicker({
   alcance,
@@ -42,11 +45,12 @@ export function DateRangePicker({
   const [personalizadoDesde, setPersonalizadoDesde] = useState("");
   const [personalizadoHasta, setPersonalizadoHasta] = useState("");
   const idBase = useId();
+  const referenceDate = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(referencia);
 
   const rango = useMemo<RangoResuelto | null>(() => {
     try {
       if (preset === "personalizado") {
-        if (!personalizadoDesde || !personalizadoHasta) return null;
+        if (!isISODate(personalizadoDesde) || !isISODate(personalizadoHasta)) return null;
         const [y1, m1, d1] = personalizadoDesde.split("-").map(Number);
         const [y2, m2, d2] = personalizadoHasta.split("-").map(Number);
         return resolveDateRangePreset({
@@ -92,11 +96,11 @@ export function DateRangePicker({
   return (
     <div className={cn("flex flex-col gap-2", className)} data-testid="date-range-picker">
       <div className="flex items-center gap-1.5 text-xs text-text-subtle">
-        <span>{alcance === "dataset" ? "Periodo del dataset" : "Periodo de ejecución"}</span>
+        <span>{alcance === "dataset" ? "Dataset period" : "Execution period"}</span>
         <span aria-hidden>·</span>
         <span>{timezone}</span>
       </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Presets de rango de fecha">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Date range presets">
         {PRESETS.map((p) => (
           <button
             key={p}
@@ -104,11 +108,11 @@ export function DateRangePicker({
             onClick={() => selectPreset(p)}
             aria-pressed={preset === p}
             className={cn(
-              "h-8 rounded-full border border-border px-3 text-xs transition-colors",
-              preset === p ? "bg-primary text-white" : "bg-surface text-text hover:bg-surface-hover",
+              "insp-focus-ring h-8 rounded-full border border-border px-3 text-xs transition-colors",
+              preset === p ? "border-[var(--brand)]/25 bg-[var(--brand-soft)] text-[var(--brand-strong)]" : "bg-surface text-text-muted hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]",
             )}
           >
-            {RANGO_PRESET_LABEL[p]}
+            {PRESET_LABELS[p]}
           </button>
         ))}
         <button
@@ -116,53 +120,41 @@ export function DateRangePicker({
           onClick={() => setPreset("personalizado")}
           aria-pressed={preset === "personalizado"}
           className={cn(
-            "h-8 rounded-full border border-border px-3 text-xs transition-colors",
-            preset === "personalizado" ? "bg-primary text-white" : "bg-surface text-text hover:bg-surface-hover",
+            "insp-focus-ring h-8 rounded-full border border-border px-3 text-xs transition-colors",
+            preset === "personalizado" ? "border-[var(--brand)]/25 bg-[var(--brand-soft)] text-[var(--brand-strong)]" : "bg-surface text-text-muted hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]",
           )}
         >
-          Personalizado
+          Custom
         </button>
-        <button type="button" onClick={limpiar} className="h-8 rounded-full px-3 text-xs text-text-subtle underline-offset-2 hover:underline">
-          Limpiar
+        <button type="button" onClick={limpiar} className="insp-focus-ring h-8 rounded-full px-3 text-xs text-text-subtle hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]">
+          Clear
         </button>
       </div>
       {preset === "personalizado" && (
         <div className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1 text-xs text-text-muted" htmlFor={`${idBase}-desde`}>
-            Desde
-            <input
-              id={`${idBase}-desde`}
-              type="date"
-              value={personalizadoDesde}
-              onChange={(e) => setPersonalizadoDesde(e.target.value)}
-              className="h-9 rounded-[var(--radius-input)] border border-border bg-surface px-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-text-muted" htmlFor={`${idBase}-hasta`}>
-            Hasta (incluido)
-            <input
-              id={`${idBase}-hasta`}
-              type="date"
-              value={personalizadoHasta}
-              onChange={(e) => setPersonalizadoHasta(e.target.value)}
-              className="h-9 rounded-[var(--radius-input)] border border-border bg-surface px-2 text-sm"
-            />
-          </label>
+          <div className="flex flex-col gap-1 text-xs text-text-muted">
+            <label htmlFor={`${idBase}-desde`}>From</label>
+            <AppDateField id={`${idBase}-desde`} label="From" value={personalizadoDesde} onChange={setPersonalizadoDesde} referenceDate={referenceDate}/>
+          </div>
+          <div className="flex flex-col gap-1 text-xs text-text-muted">
+            <label htmlFor={`${idBase}-hasta`}>To (inclusive)</label>
+            <AppDateField id={`${idBase}-hasta`} label="To (inclusive)" value={personalizadoHasta} onChange={setPersonalizadoHasta} referenceDate={personalizadoDesde || referenceDate}/>
+          </div>
           <button
             type="button"
             onClick={applyPersonalizado}
             disabled={!rango}
-            className="h-9 rounded-[var(--radius-input)] bg-primary px-3 text-sm text-white disabled:opacity-40"
+            className="insp-focus-ring h-9 rounded-[10px] bg-[var(--brand-strong)] px-3 text-xs text-white hover:brightness-110 disabled:opacity-40"
           >
-            Aplicar
+            Apply
           </button>
         </div>
       )}
       {rango && (
         <p className="text-xs text-text-subtle">
-          {new Date(rango.desde).toLocaleDateString("es-MX", { timeZone: timezone })} –{" "}
-          {new Date(new Date(rango.hasta_exclusivo).getTime() - 1).toLocaleDateString("es-MX", { timeZone: timezone })}{" "}
-          <span className="text-text-subtle/70">(fin exclusivo en UTC: {rango.hasta_exclusivo})</span>
+          {new Date(rango.desde).toLocaleDateString("en-US", { timeZone: timezone, month: "short", day: "numeric", year: "numeric" })} –{" "}
+          {new Date(new Date(rango.hasta_exclusivo).getTime() - 1).toLocaleDateString("en-US", { timeZone: timezone, month: "short", day: "numeric", year: "numeric" })}{" "}
+          <span className="text-text-subtle/70">(exclusive end in UTC: {rango.hasta_exclusivo})</span>
         </p>
       )}
     </div>

@@ -60,8 +60,8 @@ export async function POST(req: Request) {
     citas_sin_evidencia: citas.invalidas,
     nota:
       citas.invalidas.length > 0
-        ? "Expediente con citas por revisar: no es entregable final (15 §10)."
-        : "Citas verificadas contra la evidencia validada de la corrida.",
+        ? "Citations need review before this report can be delivered."
+        : "Citations checked against validated dataset evidence.",
   };
 
   const nombreBase = `expediente-${caso.rfc}-v${reporte.version}`;
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
   if (parseo.data.formato === "md") {
     const encabezado = [
       `<!-- ${nombreBase} -->`,
-      `<!-- caso ${reporte.caso_id} · versión ${reporte.version} · ${reporte.creado} -->`,
+      `<!-- caso ${reporte.caso_id} · version ${reporte.version} · ${reporte.creado} -->`,
       `<!-- contenido ${reporte.content_hash} · contratos v${contractVersion} · origen ${manifiesto.origen} -->`,
       "",
     ].join("\n");

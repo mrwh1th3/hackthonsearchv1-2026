@@ -80,11 +80,11 @@ async function mensajeError(res: Response): Promise<string> {
   }
   if (res.status === 429) {
     const s = typeof body.retry_after_ms === "number" ? Math.ceil(body.retry_after_ms / 1000) : null;
-    return s ? `Demasiadas solicitudes; intenta de nuevo en ${s}s.` : "Demasiadas solicitudes; intenta de nuevo en unos segundos.";
+    return s ? `Too many requests. Try again in ${s}s.` : "Too many requests. Try again shortly.";
   }
-  if (res.status === 401 || res.status === 403) return "Tu sesión ya no es válida; vuelve a iniciar sesión.";
-  if (res.status === 400) return "La vista no pasó la validación del servidor.";
-  return body.error ? `${body.error} (${res.status}).` : `Error del servidor (${res.status}).`;
+  if (res.status === 401 || res.status === 403) return "Your session expired. Sign in again.";
+  if (res.status === 400) return "The view failed server validation.";
+  return body.error ? `${body.error} (${res.status}).` : `Server error (${res.status}).`;
 }
 
 export async function listarVistasConFallback(ruta: string): Promise<{ vistas: VistaGuardada[]; fuente: FuenteVistas; error?: string }> {

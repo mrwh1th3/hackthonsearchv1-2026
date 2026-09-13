@@ -1,6 +1,22 @@
 # RUNBOOK — Inicio, desarrollo y despliegue del Agente Forense
 
-Documento operativo de referencia para trabajar con el sistema multi-agente de investigación de fraude fiscal. Última actualización: 2026-09-12 H10 (oleada 4 integrada).
+Documento operativo del sistema de investigación de fraude fiscal. Flujo principal actualizado el 2026-09-13; las secciones históricas de n8n conservan su contexto.
+
+## Flujo principal vigente · 2026-09-13
+
+La investigación nueva se inicia en `/`: seleccionar datos, indicar el giro y pulsar **Investigar**. Es una sola ejecución: **motor determinista → contexto del giro → A/B → compilador → revisión humana**. El motor termina y valida `engine/run_log.json` antes de que A y B reciban sus recortes. A contrasta los hallazgos y descartes; B explora el universo sin señal con contexto de exclusión. La página principal y su mapa muestran las mismas etapas, resultados, evidencias y consumo. `/laboratorio` redirige a `/`; los nombres internos `labs/` y `/api/laboratorio` son detalles de implementación.
+
+Esta ruta usa Python local y **Codex CLI con sesión ChatGPT**. No requiere API key de un proveedor LLM ni un workflow n8n. El servidor web debe ejecutarse en la misma máquina que Codex y el archivo canónico del dataset; el worker local no funciona en una función serverless de Vercel. Supabase sigue aportando los datos e historial anteriores. Los nuevos artefactos privados se guardan en `data/labs/runs/` y el contexto en `data/labs/context/`; requieren respaldo del disco si se cambia de equipo.
+
+```sh
+npm run dev
+npm run test:labs
+npm run lab:demo
+```
+
+`FORENSE_CODEX_BIN`, `FORENSE_CODEX_MODEL` y `FORENSE_CODEX_TIMEOUT` son opcionales. La sesión se comprueba con `codex login status`. La investigación acota sus invocaciones y muestra cobertura pendiente; contexto sectorial e invocaciones A/B tienen presupuestos separados. Los tokens provienen de Codex; no se infiere un saldo de suscripción ni un costo en dólares. Toda propuesta queda `pending_human` y ninguna regla se activa automáticamente.
+
+El disparo automático anterior de IA es legado: `FORENSE_LEGACY_N8N=1` lo habilita explícitamente, y `scripts/lab-transition.py` permite inspeccionar o desactivar su configuración remota con respaldo reversible. Los apartados n8n posteriores documentan la ruta histórica y las integraciones que se conservan. Contratos, límites, pruebas y comandos del runner: [labs/README.md](labs/README.md).
 
 ## (a) Requisitos locales
 
@@ -862,3 +878,23 @@ git stash push -u -m "WIP-worktree"
 3. ElevenLabs: número saliente configurado en UI (voz sin número se omite)
 
 Versión: 1.1 (H10, 2026-09-12 — oleada 4 integrada)
+
+## Unified investigation report verification · 2026-09-13
+
+The local Codex workflow publishes its report only after a private candidate passes the official
+format/reference checks and recorded replay. Inspect `delivery/validation.json` for a successful
+delivery, or `delivery_error.txt` when publication failed. Existing published bytes are retained
+on validation failure.
+
+To verify a saved run manually, from the repository root:
+
+```bash
+npm run verify:judge -- --run-dir data/labs/runs/RUN_ID --estate /absolute/path/to/estate.db
+```
+
+Add `--validator /absolute/path/to/validate_format.py` to use another supplied official validator.
+The check needs the original canonical estate and recorded run artifacts. It performs no model
+calls and does not rerun detectors. Keep the renderer version together with saved inputs for
+byte-identical replay. Whole-workflow Codex invocations and tokens are separate from engine-only
+metrics; unavailable subscription MXN allocation is not zero cost. The Hypotheses page is an
+owner-scoped reader of saved outputs and does not promote proposals into production rules.

@@ -225,4 +225,9 @@ export interface DataSource {
   getAuditorResultado(corridaId: string): Promise<AuditorResultado | null>;
   /** HTML autocontenido del expediente del auditor (sin red). */
   getAuditorExpedienteHtml(corridaId: string): Promise<string | null>;
+  /**
+   * `submission.json` persistido de la corrida (columna jsonb: el orden de claves no se conserva). La descarga
+   * prefiere los bytes del archivo en disco cuando coinciden con esto (`lib/auditoria/submission.ts`).
+   */
+  getAuditorSubmission(corridaId: string): Promise<Record<string, unknown> | null>;
 }

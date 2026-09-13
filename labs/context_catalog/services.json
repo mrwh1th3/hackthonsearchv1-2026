@@ -1,0 +1,1279 @@
+{
+  "schema_version": 1,
+  "researched_at": "2026-09-13T11:06:34Z",
+  "sectors": [
+    {
+      "id": "healthcare",
+      "giro": "Healthcare",
+      "aliases": [
+        "health care",
+        "medical services",
+        "hospital",
+        "hospitals",
+        "clinical laboratory",
+        "healthcare provider",
+        "salud",
+        "servicios médicos",
+        "hospitales",
+        "clínica",
+        "clinicas",
+        "laboratorio clínico"
+      ],
+      "normal_operations": [
+        "Clinician orders before services",
+        "Patient eligibility documented",
+        "Delivered care matches billing",
+        "Medical necessity reviewed",
+        "Insurer payments reconciled"
+      ],
+      "mechanisms": [
+        {
+          "name": "Alleged retrospective diagnosis inflation",
+          "vulnerability": "Risk-adjusted payments",
+          "actions": [
+            "Add unsupported diagnoses after visits",
+            "Reward coding targets"
+          ],
+          "concealment": [
+            "Late record addenda"
+          ],
+          "observable_signals": [
+            "Coding spikes without treatment",
+            "Bonus-linked additions"
+          ],
+          "licit_alternatives": [
+            "Supported chart corrections"
+          ],
+          "disconfirming_evidence": [
+            "Contemporaneous assessment and care plan"
+          ],
+          "distinctive_detail": "Kaiser allegations tied historical chart mining to higher reimbursement.",
+          "source_urls": [
+            "https://www.justice.gov/usao-ndca/pr/kaiser-permanente-affiliates-pay-556m-resolve-false-claims-act-allegations"
+          ]
+        },
+        {
+          "name": "Telemedicine order mills",
+          "vulnerability": "Detached ordering and fulfillment",
+          "actions": [
+            "Sign prefilled orders",
+            "Bill unnecessary equipment/testing"
+          ],
+          "concealment": [
+            "Telemarketing presented as clinical assessment"
+          ],
+          "observable_signals": [
+            "No clinician contact",
+            "Repeated template orders"
+          ],
+          "licit_alternatives": [
+            "Documented remote consultation"
+          ],
+          "disconfirming_evidence": [
+            "Patient interview and individualized necessity"
+          ],
+          "distinctive_detail": "Robinson admitted signing orders without an established patient relationship.",
+          "source_urls": [
+            "https://www.justice.gov/usao-ma/pr/alabama-doctor-pleads-guilty-6-million-telemedicine-health-care-fraud-scheme"
+          ]
+        },
+        {
+          "name": "Hospice eligibility fabrication",
+          "vulnerability": "Recurring beneficiary payments",
+          "actions": [
+            "Enroll nonterminal patients",
+            "Pay referral kickbacks"
+          ],
+          "concealment": [
+            "Invent patient charts"
+          ],
+          "observable_signals": [
+            "Patients unaware of enrollment",
+            "Payments tied to referrals"
+          ],
+          "licit_alternatives": [
+            "Documented terminal prognosis"
+          ],
+          "disconfirming_evidence": [
+            "Independent eligibility review and actual care"
+          ],
+          "distinctive_detail": "Palma's false charts were supplied after Medicare requested support.",
+          "source_urls": [
+            "https://www.justice.gov/usao-cdca/pr/glendale-woman-sentenced-9-years-federal-prison-106-million-hospice-fraud-scheme"
+          ]
+        },
+        {
+          "name": "Alleged test substitution",
+          "vulnerability": "Order-to-bill mismatch",
+          "actions": [
+            "Run costlier blood tests",
+            "Bill substituted procedures"
+          ],
+          "concealment": [
+            "Routine billing obscures original order"
+          ],
+          "observable_signals": [
+            "Ordered code differs from billed code"
+          ],
+          "licit_alternatives": [
+            "Authorized additional testing"
+          ],
+          "disconfirming_evidence": [
+            "Amended order with documented clinical reason"
+          ],
+          "distinctive_detail": "BioReference allegedly added a WBC differential to simpler CBC orders.",
+          "source_urls": [
+            "https://www.justice.gov/archives/opa/pr/bioreference-health-and-opko-health-agree-pay-704349-settle-allegations-they-billed"
+          ]
+        },
+        {
+          "name": "Alleged unnecessary inpatient days",
+          "vulnerability": "Daily reimbursement incentives",
+          "actions": [
+            "Admit ineligible patients",
+            "Delay discharge"
+          ],
+          "concealment": [
+            "Insufficient individualized care documentation"
+          ],
+          "observable_signals": [
+            "Long stays with sparse therapy",
+            "Staffing inconsistent with billed care"
+          ],
+          "licit_alternatives": [
+            "Complex clinical needs"
+          ],
+          "disconfirming_evidence": [
+            "Independent necessity assessment and therapy logs"
+          ],
+          "distinctive_detail": "Acadia settlement concerns both eligibility and services actually delivered.",
+          "source_urls": [
+            "https://www.justice.gov/usao-mdfl/pr/acadia-healthcare-company-inc-pay-1985m-settle-allegations-relating-medically"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Kaiser Permanente: diagnosis-code settlement",
+          "url": "https://www.justice.gov/usao-ndca/pr/kaiser-permanente-affiliates-pay-556m-resolve-false-claims-act-allegations",
+          "published_at": "2026-01-14",
+          "event_date": "2026-01-14",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations only, no liability determination",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Robinson: telemedicine health care fraud guilty plea",
+          "url": "https://www.justice.gov/usao-ma/pr/alabama-doctor-pleads-guilty-6-million-telemedicine-health-care-fraud-scheme",
+          "published_at": "2025-11-13",
+          "event_date": "2025-10-01",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea; sentencing not established by this source",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Palma: hospice fraud sentencing",
+          "url": "https://www.justice.gov/usao-cdca/pr/glendale-woman-sentenced-9-years-federal-prison-106-million-hospice-fraud-scheme",
+          "published_at": "2025-08-05",
+          "event_date": "2025-08-05",
+          "jurisdiction": "United States",
+          "legal_status": "Conviction and sentencing",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "BioReference and OPKO: unordered blood-test settlement",
+          "url": "https://www.justice.gov/archives/opa/pr/bioreference-health-and-opko-health-agree-pay-704349-settle-allegations-they-billed",
+          "published_at": "2025-01-17",
+          "event_date": "2025-01-17",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations only, no liability determination",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Acadia Healthcare: inpatient behavioral health settlement",
+          "url": "https://www.justice.gov/usao-mdfl/pr/acadia-healthcare-company-inc-pay-1985m-settle-allegations-relating-medically",
+          "published_at": "2024-09-26",
+          "event_date": "2024-09-26",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations only, no liability determination",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        }
+      ],
+      "limitations": [
+        "Curated examples, not the five latest worldwide or a prevalence estimate.",
+        "Signals, lawful alternatives and refutation checks are analyst inferences; require company-specific evidence.",
+        "Legal status reflects the cited event; later proceedings were not exhaustively checked.",
+        "U.S. reimbursement examples; local eligibility and billing rules differ."
+      ]
+    },
+    {
+      "id": "pharmaceuticals_life_sciences",
+      "giro": "Pharmaceuticals and life sciences",
+      "aliases": [
+        "pharmaceuticals",
+        "pharmaceutical",
+        "pharma",
+        "life sciences",
+        "pharmacy",
+        "pharmacies",
+        "drug manufacturer",
+        "farmacéutica",
+        "farmaceutica",
+        "farmacéuticas",
+        "medicamentos",
+        "farmacia",
+        "farmacias",
+        "biotecnología"
+      ],
+      "normal_operations": [
+        "Documented prescribing independence",
+        "Transparent assistance programs",
+        "Traceable drug dispensing",
+        "Price submissions reconciled",
+        "Educational events justified"
+      ],
+      "mechanisms": [
+        {
+          "name": "Patient-assistance funding influence",
+          "vulnerability": "Manufacturer-funded co-pay support",
+          "actions": [
+            "Fund assistance foundations",
+            "Use assistance data in budgeting"
+          ],
+          "concealment": [
+            "Charitable-contribution framing"
+          ],
+          "observable_signals": [
+            "Fund scope follows one drug",
+            "Patient data reaches donation planners"
+          ],
+          "licit_alternatives": [
+            "Independent multi-drug assistance"
+          ],
+          "disconfirming_evidence": [
+            "Arm's-length governance and data separation"
+          ],
+          "distinctive_detail": "Dompé admitted foundation conversations and information flows around Oxervate.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/dompe-us-agrees-pay-32m-resolve-false-claims-act-liability-relating-self-disclosure-patient"
+          ]
+        },
+        {
+          "name": "Prescriber hospitality incentives",
+          "vulnerability": "Sales-directed education spending",
+          "actions": [
+            "Pay high prescribers",
+            "Repeat lavish programs"
+          ],
+          "concealment": [
+            "Educational-event labeling"
+          ],
+          "observable_signals": [
+            "Same attendees and topic",
+            "Fees concentrated on prescribers"
+          ],
+          "licit_alternatives": [
+            "Necessary professional education"
+          ],
+          "disconfirming_evidence": [
+            "Independent selection and documented learning need"
+          ],
+          "distinctive_detail": "Gilead admitted repeated dinners and speaker travel to desirable destinations.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdny/pr/us-attorney-announces-202-million-settlement-gilead-sciences-using-speaker-programs"
+          ]
+        },
+        {
+          "name": "Alleged dispensing despite warning signs",
+          "vulnerability": "Volume targets weaken review",
+          "actions": [
+            "Fill suspicious controlled prescriptions",
+            "Claim insurer reimbursement"
+          ],
+          "concealment": [
+            "Restrict internal prescriber warnings"
+          ],
+          "observable_signals": [
+            "Early refills and extreme quantities",
+            "Unresolved compliance alerts"
+          ],
+          "licit_alternatives": [
+            "Clinically justified dose changes"
+          ],
+          "disconfirming_evidence": [
+            "Prescriber verification and resolved red flags"
+          ],
+          "distinctive_detail": "Walgreens allegations include blocking pharmacists' access to warning data.",
+          "source_urls": [
+            "https://www.justice.gov/usao-edny/pr/walgreens-agrees-pay-350-million-illegally-filling-unlawful-opioid-prescriptions-and"
+          ]
+        },
+        {
+          "name": "Alleged speaker-bureau inducements",
+          "vulnerability": "Prescribers receive commercial payments",
+          "actions": [
+            "Award paid speaking slots",
+            "Provide expensive meals"
+          ],
+          "concealment": [
+            "Nominal medical education"
+          ],
+          "observable_signals": [
+            "Repeat programs without new content",
+            "Guests lacking professional need"
+          ],
+          "licit_alternatives": [
+            "Bona fide specialist education"
+          ],
+          "disconfirming_evidence": [
+            "Relevant audience and fair-value deliverables"
+          ],
+          "distinctive_detail": "Biohaven allegations included spouses, friends and repeated-topic attendance.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/pfizer-agrees-pay-nearly-60m-resolve-false-claims-allegations-relating-improper-physician"
+          ]
+        },
+        {
+          "name": "Alleged reimbursement benchmark inflation",
+          "vulnerability": "Supplier controls reported reference price",
+          "actions": [
+            "Report inflated wholesale values",
+            "Market reimbursement spread"
+          ],
+          "concealment": [
+            "Published benchmark appears authoritative"
+          ],
+          "observable_signals": [
+            "Reported price far above actual sale",
+            "Ingredient choice tracks margin"
+          ],
+          "licit_alternatives": [
+            "Different pack sizes or price definitions"
+          ],
+          "disconfirming_evidence": [
+            "Unit-normalized invoices and benchmark methodology"
+          ],
+          "distinctive_detail": "Medisca allegations concern ingredient benchmarks used by downstream compounders.",
+          "source_urls": [
+            "https://www.justice.gov/archives/opa/pr/compound-ingredient-supplier-medisca-inc-pay-2175m-resolve-allegations-false-and-inflated"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Dompé U.S.: patient-assistance kickback settlement",
+          "url": "https://www.justice.gov/opa/pr/dompe-us-agrees-pay-32m-resolve-false-claims-act-liability-relating-self-disclosure-patient",
+          "published_at": "2026-09-10",
+          "event_date": "2026-09-10",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement with specified factual admissions; no criminal conviction stated",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Gilead Sciences: speaker-program settlement",
+          "url": "https://www.justice.gov/usao-sdny/pr/us-attorney-announces-202-million-settlement-gilead-sciences-using-speaker-programs",
+          "published_at": "2025-04-29",
+          "event_date": "2025-04-28",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement with specified factual admissions",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Walgreens: invalid controlled-substance prescription settlement",
+          "url": "https://www.justice.gov/usao-edny/pr/walgreens-agrees-pay-350-million-illegally-filling-unlawful-opioid-prescriptions-and",
+          "published_at": "2025-04-21",
+          "event_date": "2025-04-21",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations only, no liability determination",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Pfizer/Biohaven: physician-payment settlement",
+          "url": "https://www.justice.gov/opa/pr/pfizer-agrees-pay-nearly-60m-resolve-false-claims-allegations-relating-improper-physician",
+          "published_at": "2025-01-24",
+          "event_date": "2025-01-24",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations only, no liability determination",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Medisca: inflated wholesale-price settlement",
+          "url": "https://www.justice.gov/archives/opa/pr/compound-ingredient-supplier-medisca-inc-pay-2175m-resolve-allegations-false-and-inflated",
+          "published_at": "2024-11-01",
+          "event_date": "2024-11-01",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations only, no liability determination",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        }
+      ],
+      "limitations": [
+        "Curated examples, not the five latest worldwide or a prevalence estimate.",
+        "Signals, lawful alternatives and refutation checks are analyst inferences; require company-specific evidence.",
+        "Legal status reflects the cited event; later proceedings were not exhaustively checked.",
+        "U.S. pricing, distribution and marketing examples; not clinical-trial or global regulatory coverage."
+      ]
+    },
+    {
+      "id": "financial_services_investment",
+      "giro": "Financial services and investment",
+      "aliases": [
+        "financial services",
+        "investment",
+        "investments",
+        "asset management",
+        "investment fund",
+        "wealth management",
+        "brokerage",
+        "servicios financieros",
+        "inversiones",
+        "inversión",
+        "finanzas",
+        "fondos de inversión",
+        "casa de bolsa",
+        "gestión patrimonial"
+      ],
+      "normal_operations": [
+        "Independent asset custody",
+        "Returns reconcile to trades",
+        "Investor rights documented",
+        "Valuation and collateral verified",
+        "Client and operating cash separated"
+      ],
+      "mechanisms": [
+        {
+          "name": "Alleged concealed fund losses",
+          "vulnerability": "Auditors depend on manager evidence",
+          "actions": [
+            "Concentrate supposedly diversified capital",
+            "Continue charging fees"
+          ],
+          "concealment": [
+            "Fabricated documents",
+            "Sham transactions"
+          ],
+          "observable_signals": [
+            "Collateral below represented protection",
+            "Exposure concentrated in one sub-adviser"
+          ],
+          "licit_alternatives": [
+            "Disclosed concentrated mandate"
+          ],
+          "disconfirming_evidence": [
+            "Custodian positions and independent collateral confirmation"
+          ],
+          "distinctive_detail": "Prophecy allegedly misrepresented diversification and loss protection.",
+          "source_urls": [
+            "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26414"
+          ]
+        },
+        {
+          "name": "Alleged ATM-yield Ponzi payments",
+          "vulnerability": "Investor cash funds fixed distributions",
+          "actions": [
+            "Overstate operating network",
+            "Use new capital for payouts"
+          ],
+          "concealment": [
+            "Profitable asset-network narrative"
+          ],
+          "observable_signals": [
+            "Distributions exceed verified fee income",
+            "Repeated short-term borrowing"
+          ],
+          "licit_alternatives": [
+            "Disclosed temporary financing"
+          ],
+          "disconfirming_evidence": [
+            "Processor settlements covering payouts"
+          ],
+          "distinctive_detail": "Heller allegations distinguish real ATM fees from recycled investor funds.",
+          "source_urls": [
+            "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26387"
+          ]
+        },
+        {
+          "name": "Fake crypto investments",
+          "vulnerability": "Cold-call trust and opaque custody",
+          "actions": [
+            "Sell nonexistent investments",
+            "Collect investor funds"
+          ],
+          "concealment": [
+            "Consultancy/business front",
+            "Delete recorded calls"
+          ],
+          "observable_signals": [
+            "No independent asset confirmation",
+            "Promotional claims exceed custody evidence"
+          ],
+          "licit_alternatives": [
+            "Documented speculative investment"
+          ],
+          "disconfirming_evidence": [
+            "Wallet control and independently reconciled trades"
+          ],
+          "distinctive_detail": "Bedi and Mavanga admitted fraud; Mavanga also convicted for deleting recordings.",
+          "source_urls": [
+            "https://www.fca.org.uk/news/press-releases/two-individuals-sentenced-combined-12-years-crypto-fraud"
+          ]
+        },
+        {
+          "name": "Alleged phantom partnership interests",
+          "vulnerability": "Seller controls investor paperwork",
+          "actions": [
+            "Sell unrecorded interests",
+            "Mix investor and personal money"
+          ],
+          "concealment": [
+            "False tax documents"
+          ],
+          "observable_signals": [
+            "Ownership absent from official register",
+            "Payouts sourced from new subscriptions"
+          ],
+          "licit_alternatives": [
+            "Unprocessed legitimate transfer"
+          ],
+          "disconfirming_evidence": [
+            "Partnership consent and reconciled capital account"
+          ],
+          "distinctive_detail": "Mattson allegedly sold interests in otherwise legitimate property partnerships.",
+          "source_urls": [
+            "https://www.sec.gov/newsroom/press-releases/2025-76-sec-charges-former-real-estate-investment-ceo-operating-multimillion-dollar-ponzi-scheme"
+          ]
+        },
+        {
+          "name": "Demo accounts passed off as live",
+          "vulnerability": "Platform appearance substitutes for custody",
+          "actions": [
+            "Supply test trading access",
+            "Divert funding payments"
+          ],
+          "concealment": [
+            "Simulated balances and activity"
+          ],
+          "observable_signals": [
+            "No real broker execution",
+            "Payments meet personal expenses"
+          ],
+          "licit_alternatives": [
+            "Explicitly disclosed training account"
+          ],
+          "disconfirming_evidence": [
+            "Broker-confirmed funded account and settlements"
+          ],
+          "distinctive_detail": "McCabe supplied accounts incapable of executing real foreign-exchange trades.",
+          "source_urls": [
+            "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-083mr-former-financial-services-director-mark-mccabe-sentenced-for-fraud-offences"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Prophecy Asset Management: alleged advisory fraud",
+          "url": "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26414",
+          "published_at": "2025-09-29",
+          "event_date": "2025-09-29",
+          "jurisdiction": "United States",
+          "legal_status": "SEC civil charges; allegations, not an adjudication",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Heller, Prestige and Paramount: alleged ATM investment Ponzi scheme",
+          "url": "https://www.sec.gov/enforcement-litigation/litigation-releases/lr-26387",
+          "published_at": "2025-09-03",
+          "event_date": "2025-09-03",
+          "jurisdiction": "United States",
+          "legal_status": "SEC civil charges; allegations, not an adjudication",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Bedi and Mavanga: crypto investment fraud sentencing",
+          "url": "https://www.fca.org.uk/news/press-releases/two-individuals-sentenced-combined-12-years-crypto-fraud",
+          "published_at": "2025-07-04",
+          "event_date": "2025-07-04",
+          "jurisdiction": "United Kingdom",
+          "legal_status": "Guilty pleas and sentencing; Mavanga also convicted of evidence deletion",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Kenneth Mattson: alleged fake partnership interests",
+          "url": "https://www.sec.gov/newsroom/press-releases/2025-76-sec-charges-former-real-estate-investment-ceo-operating-multimillion-dollar-ponzi-scheme",
+          "published_at": "2025-05-22",
+          "event_date": "2025-05-22",
+          "jurisdiction": "United States",
+          "legal_status": "SEC civil charges; allegations, not an adjudication",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Mark McCabe: simulated trading-account fraud sentencing",
+          "url": "https://www.asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-083mr-former-financial-services-director-mark-mccabe-sentenced-for-fraud-offences",
+          "published_at": "2025-05-21",
+          "event_date": "2025-05-16",
+          "jurisdiction": "Australia",
+          "legal_status": "Guilty pleas and sentencing",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        }
+      ],
+      "limitations": [
+        "Curated examples, not the five latest worldwide or a prevalence estimate.",
+        "Signals, lawful alternatives and refutation checks are analyst inferences; require company-specific evidence.",
+        "Legal status reflects the cited event; later proceedings were not exhaustively checked.",
+        "U.S., UK and Australian investment examples; not banking or insurance underwriting coverage."
+      ]
+    },
+    {
+      "id": "technology_saas",
+      "giro": "Technology and SaaS",
+      "aliases": [
+        "technology",
+        "tech",
+        "software",
+        "saas",
+        "software as a service",
+        "IT services",
+        "information technology",
+        "tecnología",
+        "tecnologia",
+        "servicios informáticos",
+        "desarrollo de software",
+        "tecnologías de la información"
+      ],
+      "normal_operations": [
+        "Verifiable active users",
+        "Contracted software deliverables",
+        "Authenticated staff access",
+        "Independent procurement bids",
+        "Payroll liabilities reconciled"
+      ],
+      "mechanisms": [
+        {
+          "name": "Software-mediated false documentation",
+          "vulnerability": "Platform coordinates disconnected parties",
+          "actions": [
+            "Generate unsupported medical orders",
+            "Route paid referrals"
+          ],
+          "concealment": [
+            "Sham service contracts",
+            "Sanitize audit-sensitive wording"
+          ],
+          "observable_signals": [
+            "Orders without clinical contact",
+            "Fees follow referral volume"
+          ],
+          "licit_alternatives": [
+            "Legitimate workflow automation"
+          ],
+          "disconfirming_evidence": [
+            "Underlying consultations and arm's-length fees"
+          ],
+          "distinctive_detail": "DMERx connected order signers, marketers and suppliers; software appearance did not prove care.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/ceo-health-care-software-company-sentenced-1b-fraud-conspiracy"
+          ]
+        },
+        {
+          "name": "Fabricated customer metrics",
+          "vulnerability": "Acquirer relies on seller's dataset",
+          "actions": [
+            "Inflate user count",
+            "Generate fictitious customer data"
+          ],
+          "concealment": [
+            "Synthetic records support claims"
+          ],
+          "observable_signals": [
+            "Reported users exceed activity",
+            "Records lack signup history"
+          ],
+          "licit_alternatives": [
+            "Disclosed leads rather than users"
+          ],
+          "disconfirming_evidence": [
+            "Consent, signup logs and independent customer sampling"
+          ],
+          "distinctive_detail": "Frank acquisition fraud used fabricated data to support a much larger user base.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdny/pr/startup-ceo-charlie-javice-sentenced-85-months-prison-175-million-fraud"
+          ]
+        },
+        {
+          "name": "Remote-worker identity substitution",
+          "vulnerability": "Identity check separated from actual work",
+          "actions": [
+            "Misstate qualifications",
+            "Share hired worker credentials"
+          ],
+          "concealment": [
+            "Remote access masks operator location"
+          ],
+          "observable_signals": [
+            "Work sessions inconsistent with assigned person",
+            "Salary flows to undisclosed operators"
+          ],
+          "licit_alternatives": [
+            "Approved subcontracting"
+          ],
+          "disconfirming_evidence": [
+            "Verified worker identity and authorized access"
+          ],
+          "distinctive_detail": "Vong personally passed identity checks while others secretly performed the work.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/maryland-man-pleads-guilty-conspiracy-commit-wire-fraud"
+          ]
+        },
+        {
+          "name": "Payroll withholding retained",
+          "vulnerability": "Executive controls tax remittance",
+          "actions": [
+            "Deduct employee taxes",
+            "Fail to remit withheld amounts"
+          ],
+          "concealment": [
+            "Payroll records suggest taxes paid"
+          ],
+          "observable_signals": [
+            "Tax liabilities accumulate",
+            "Employee records contradict authority records"
+          ],
+          "licit_alternatives": [
+            "Documented processing delay"
+          ],
+          "disconfirming_evidence": [
+            "Tax-authority receipts matched to payroll"
+          ],
+          "distinctive_detail": "Park continued despite payroll-provider notices and employee discrepancy reports.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/former-ceo-startup-software-company-sentenced-payroll-tax-fraud-crimes"
+          ]
+        },
+        {
+          "name": "IT procurement collusion",
+          "vulnerability": "Insiders access confidential budgets",
+          "actions": [
+            "Coordinate supposedly independent bids",
+            "Divert inflated margins"
+          ],
+          "concealment": [
+            "Intermediary payments"
+          ],
+          "observable_signals": [
+            "Non-independent pricing",
+            "Payments to official-linked intermediaries"
+          ],
+          "licit_alternatives": [
+            "Independent bids using common vendor costs"
+          ],
+          "disconfirming_evidence": [
+            "Bid provenance and defensible market benchmarks"
+          ],
+          "distinctive_detail": "Related IT cases involved confidential procurement information and bribery.",
+          "source_urls": [
+            "https://www.justice.gov/archives/opa/pr/four-defendants-plead-guilty-ongoing-bid-rigging-fraud-and-bribery-investigation-related-us"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Gary Cox/DMERx: health care software fraud sentencing",
+          "url": "https://www.justice.gov/opa/pr/ceo-health-care-software-company-sentenced-1b-fraud-conspiracy",
+          "published_at": "2025-12-22",
+          "event_date": "2025-12-19",
+          "jurisdiction": "United States",
+          "legal_status": "Conviction and sentencing",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Charlie Javice/Frank: fabricated-customer acquisition fraud sentencing",
+          "url": "https://www.justice.gov/usao-sdny/pr/startup-ceo-charlie-javice-sentenced-85-months-prison-175-million-fraud",
+          "published_at": "2025-09-29",
+          "event_date": "2025-09-29",
+          "jurisdiction": "United States",
+          "legal_status": "Conviction and sentencing",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Vong: remote software-developer identity fraud guilty plea",
+          "url": "https://www.justice.gov/opa/pr/maryland-man-pleads-guilty-conspiracy-commit-wire-fraud",
+          "published_at": "2025-04-15",
+          "event_date": "2025-04-15",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Andrew Park: software startup payroll-tax sentencing",
+          "url": "https://www.justice.gov/opa/pr/former-ceo-startup-software-company-sentenced-payroll-tax-fraud-crimes",
+          "published_at": "2025-01-24",
+          "event_date": "2025-01-23",
+          "jurisdiction": "United States",
+          "legal_status": "Criminal sentencing for willful tax-payment and filing failures",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Government IT procurement: bid-rigging and bribery guilty pleas",
+          "url": "https://www.justice.gov/archives/opa/pr/four-defendants-plead-guilty-ongoing-bid-rigging-fraud-and-bribery-investigation-related-us",
+          "published_at": "2025-01-14",
+          "event_date": "2025-01-13",
+          "jurisdiction": "United States",
+          "legal_status": "Four guilty pleas; latest reported plea January 13, 2025",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        }
+      ],
+      "limitations": [
+        "Curated examples, not the five latest worldwide or a prevalence estimate.",
+        "Signals, lawful alternatives and refutation checks are analyst inferences; require company-specific evidence.",
+        "Legal status reflects the cited event; later proceedings were not exhaustively checked.",
+        "U.S. software/platform and IT-provider examples; not an exhaustive SaaS fraud taxonomy."
+      ]
+    },
+    {
+      "id": "retail_ecommerce",
+      "giro": "Retail and e-commerce",
+      "aliases": [
+        "retail",
+        "ecommerce",
+        "e-commerce",
+        "online store",
+        "online marketplace",
+        "retailer",
+        "comercio minorista",
+        "comercio electrónico",
+        "comercio electronico",
+        "tienda en línea",
+        "tienda online",
+        "venta al menudeo",
+        "marketplace"
+      ],
+      "normal_operations": [
+        "Orders reconcile to fulfillment",
+        "Returns inspected against originals",
+        "Subscription consent recorded",
+        "Marketplace payouts matched",
+        "Merchant performance independently measured"
+      ],
+      "mechanisms": [
+        {
+          "name": "Alleged subscription trapping",
+          "vulnerability": "Checkout design shapes consent",
+          "actions": [
+            "Enroll without informed consent",
+            "Obstruct cancellation"
+          ],
+          "concealment": [
+            "Confusing interface choices"
+          ],
+          "observable_signals": [
+            "Recurring charges without consent evidence",
+            "Cancellation abandonment"
+          ],
+          "licit_alternatives": [
+            "Clearly accepted recurring membership"
+          ],
+          "disconfirming_evidence": [
+            "Timestamped disclosures, consent and simple cancellation"
+          ],
+          "distinctive_detail": "Amazon settlement required clearer refusal, renewal terms and cancellation paths.",
+          "source_urls": [
+            "https://www.ftc.gov/news-events/news/press-releases/2025/09/ftc-secures-historic-25-billion-settlement-against-amazon"
+          ]
+        },
+        {
+          "name": "Counterfeit warranty substitution",
+          "vulnerability": "Identifiers trusted over physical authenticity",
+          "actions": [
+            "Return counterfeit devices",
+            "Receive genuine replacements"
+          ],
+          "concealment": [
+            "Copy valid in-warranty identifiers"
+          ],
+          "observable_signals": [
+            "Serial reuse across unrelated returns",
+            "Returned hardware fails authenticity checks"
+          ],
+          "licit_alternatives": [
+            "Authorized repair or refurbished device"
+          ],
+          "disconfirming_evidence": [
+            "Physical inspection and original ownership trail"
+          ],
+          "distinctive_detail": "Apple-return conspirators copied identifiers belonging to other legitimate devices.",
+          "source_urls": [
+            "https://www.justice.gov/usao-cdca/pr/chinese-nationals-plead-guilty-fake-apple-device-return-fraud-conned-technology-giant"
+          ]
+        },
+        {
+          "name": "Alleged automated-store income deception",
+          "vulnerability": "Upfront fees precede performance proof",
+          "actions": [
+            "Sell managed storefronts",
+            "Promise unsupported passive income"
+          ],
+          "concealment": [
+            "AI branding",
+            "Suppress complaints"
+          ],
+          "observable_signals": [
+            "Verified net income misses claims",
+            "High fees and obstructed reviews"
+          ],
+          "licit_alternatives": [
+            "Transparent high-risk store service"
+          ],
+          "disconfirming_evidence": [
+            "Cohort-level net results and contractual delivery"
+          ],
+          "distinctive_detail": "Ascend allegations paired storefront fees with AI-based earnings promises.",
+          "source_urls": [
+            "https://search.ftc.gov/news-events/news/press-releases/2025/06/ftc-case-leads-order-banning-ascend-ecom-its-owners-business-opportunity-marketing"
+          ]
+        },
+        {
+          "name": "Replayed delivery payouts",
+          "vulnerability": "Privileged status changes trigger payments",
+          "actions": [
+            "Assign orders to controlled drivers",
+            "Repeat delivered/in-process transitions"
+          ],
+          "concealment": [
+            "Internal credentials confer apparent legitimacy"
+          ],
+          "observable_signals": [
+            "Repeated payouts for one order",
+            "No matching physical delivery"
+          ],
+          "licit_alternatives": [
+            "Authorized correction or redelivery"
+          ],
+          "disconfirming_evidence": [
+            "Delivery proof and documented adjustment approval"
+          ],
+          "distinctive_detail": "Devagiri admitted looping delivery status to collect repeated platform payments.",
+          "source_urls": [
+            "https://www.justice.gov/usao-ndca/pr/former-delivery-driver-pleads-guilty-defrauding-san-francisco-food-delivery-company"
+          ]
+        },
+        {
+          "name": "Organized refund manipulation",
+          "vulnerability": "Refund issued before return inspection",
+          "actions": [
+            "Claim false loss or damage",
+            "Keep purchased goods"
+          ],
+          "concealment": [
+            "Falsified carrier scans",
+            "Substitute junk returns"
+          ],
+          "observable_signals": [
+            "Refunded inventory fails reconciliation",
+            "Repeated insider scan anomalies"
+          ],
+          "licit_alternatives": [
+            "Genuine transit loss or damage"
+          ],
+          "disconfirming_evidence": [
+            "Carrier evidence and inspected returned item"
+          ],
+          "distinctive_detail": "Vidal's ring combined customer claims with carrier insiders and resale.",
+          "source_urls": [
+            "https://www.justice.gov/usao-wdwa/pr/second-defendant-organized-refunding-fraud-ring-sentenced-30-months-prison"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Amazon Prime: enrollment and cancellation settlement",
+          "url": "https://www.ftc.gov/news-events/news/press-releases/2025/09/ftc-secures-historic-25-billion-settlement-against-amazon",
+          "published_at": "2025-09-25",
+          "event_date": "2025-09-25",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement of FTC allegations; no criminal conviction stated",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Lin and Xing: counterfeit Apple warranty-return guilty pleas",
+          "url": "https://www.justice.gov/usao-cdca/pr/chinese-nationals-plead-guilty-fake-apple-device-return-fraud-conned-technology-giant",
+          "published_at": "2025-09-03",
+          "event_date": "2025-09-03",
+          "jurisdiction": "United States; cross-border supply from China",
+          "legal_status": "Guilty pleas",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Ascend Ecom: proposed business-opportunity settlement",
+          "url": "https://search.ftc.gov/news-events/news/press-releases/2025/06/ftc-case-leads-order-banning-ascend-ecom-its-owners-business-opportunity-marketing",
+          "published_at": "2025-06-23",
+          "event_date": "2025-06-23",
+          "jurisdiction": "United States",
+          "legal_status": "Proposed stipulated civil order; allegations, judicial approval not established by this source",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Devagiri: false DoorDash delivery-payment guilty plea",
+          "url": "https://www.justice.gov/usao-ndca/pr/former-delivery-driver-pleads-guilty-defrauding-san-francisco-food-delivery-company",
+          "published_at": "2025-05-13",
+          "event_date": "2025-05-13",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Leonardo Vidal: organized retail refund fraud sentencing",
+          "url": "https://www.justice.gov/usao-wdwa/pr/second-defendant-organized-refunding-fraud-ring-sentenced-30-months-prison",
+          "published_at": "2025-02-06",
+          "event_date": "2025-02-06",
+          "jurisdiction": "United States",
+          "legal_status": "Criminal sentencing",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        }
+      ],
+      "limitations": [
+        "Curated examples, not the five latest worldwide or a prevalence estimate.",
+        "Signals, lawful alternatives and refutation checks are analyst inferences; require company-specific evidence.",
+        "Legal status reflects the cited event; later proceedings were not exhaustively checked.",
+        "Primarily U.S. retail/platform examples, including cross-border counterfeit returns; not global coverage."
+      ]
+    },
+    {
+      "id": "nonprofit_charities",
+      "giro": "Nonprofit and charities",
+      "aliases": [
+        "nonprofit",
+        "non-profit",
+        "charity",
+        "charities",
+        "foundation",
+        "NGO",
+        "nonprofit organization",
+        "organización sin fines de lucro",
+        "organizacion sin fines de lucro",
+        "asociación civil",
+        "asociacion civil",
+        "fundación",
+        "fundacion",
+        "beneficencia",
+        "ONG"
+      ],
+      "normal_operations": [
+        "Restricted gifts tracked to purpose",
+        "Independent board oversight",
+        "Beneficiary funds segregated",
+        "Fundraisers authorized",
+        "Audit reports confirmed independently"
+      ],
+      "mechanisms": [
+        {
+          "name": "Forged audit assurance",
+          "vulnerability": "Executive controls cash and board information",
+          "actions": [
+            "Transfer funds to self",
+            "Charge personal spending"
+          ],
+          "concealment": [
+            "Forge auditor reports and signature"
+          ],
+          "observable_signals": [
+            "Board reports differ from auditor records",
+            "Executive-directed payments"
+          ],
+          "licit_alternatives": [
+            "Approved reasonable compensation"
+          ],
+          "disconfirming_evidence": [
+            "Auditor confirmation and independent payment approval"
+          ],
+          "distinctive_detail": "Szwast used a CPA firm's letterhead to conceal nonprofit embezzlement.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdin/pr/former-nonprofit-ceo-heads-federal-prison-33-months-2-million-embezzlement-scheme"
+          ]
+        },
+        {
+          "name": "False grant-use certification",
+          "vulnerability": "Grant reporting depends on beneficiary claims",
+          "actions": [
+            "Divert restricted aid",
+            "Certify proper spending"
+          ],
+          "concealment": [
+            "Uncompensated-director claim"
+          ],
+          "observable_signals": [
+            "Cash withdrawals after grant receipt",
+            "Personal obligations paid from grant account"
+          ],
+          "licit_alternatives": [
+            "Documented eligible reimbursements"
+          ],
+          "disconfirming_evidence": [
+            "Receipts and beneficiary confirmation matching grant rules"
+          ],
+          "distinctive_detail": "Cannon-Grant admitted falsely reporting pandemic grant spending.",
+          "source_urls": [
+            "https://www.justice.gov/usao-ma/pr/former-director-boston-nonprofit-pleads-guilty-fraud-charges"
+          ]
+        },
+        {
+          "name": "Invented board oversight",
+          "vulnerability": "Founder controls donor trust",
+          "actions": [
+            "Spend donations personally",
+            "Assert board approval"
+          ],
+          "concealment": [
+            "List unaware acquaintances as directors"
+          ],
+          "observable_signals": [
+            "Directors cannot confirm meetings",
+            "Charity cash reaches personal brokerage"
+          ],
+          "licit_alternatives": [
+            "Authorized mission expenses"
+          ],
+          "disconfirming_evidence": [
+            "Independent director confirmations and board minutes"
+          ],
+          "distinctive_detail": "Modest Needs' purported directors did not know they had been listed.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdny/pr/founder-and-former-ceo-charity-pleads-guilty-multimillion-dollar-charity-fraud-and-tax"
+          ]
+        },
+        {
+          "name": "Alleged beneficiary trust diversion",
+          "vulnerability": "Nonprofit controls vulnerable clients' assets",
+          "actions": [
+            "Misappropriate trust funds",
+            "Finance related personal ventures"
+          ],
+          "concealment": [
+            "False account balances",
+            "Complex transfers"
+          ],
+          "observable_signals": [
+            "Trust statements exceed custodied assets",
+            "Undisclosed related-party flows"
+          ],
+          "licit_alternatives": [
+            "Documented authorized distributions"
+          ],
+          "disconfirming_evidence": [
+            "Independent bank/custodian reconciliation by beneficiary"
+          ],
+          "distinctive_detail": "CSNT allegations involved false statements masking missing beneficiary funds.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/florida-nonprofit-founder-and-accountant-charged-stealing-over-100m-special-needs-victims"
+          ]
+        },
+        {
+          "name": "Charitable fundraiser impersonation",
+          "vulnerability": "Public trusts recognizable charity branding",
+          "actions": [
+            "Solicit donations under charity names",
+            "Retain collections"
+          ],
+          "concealment": [
+            "Impersonate authorized collectors"
+          ],
+          "observable_signals": [
+            "Collections absent from charity bank records",
+            "No fundraiser authorization"
+          ],
+          "licit_alternatives": [
+            "Authorized outsourced fundraising"
+          ],
+          "disconfirming_evidence": [
+            "Charity confirmation and reconciled remittances"
+          ],
+          "distinctive_detail": "Levi and Chesterman's gang exploited charity identities; named charities were victims.",
+          "source_urls": [
+            "https://www.cps.gov.uk/cps/news/fraud-gang-forced-pay-charities-back-over-ps100000"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Theresa Szwast: nonprofit embezzlement sentencing",
+          "url": "https://www.justice.gov/usao-sdin/pr/former-nonprofit-ceo-heads-federal-prison-33-months-2-million-embezzlement-scheme",
+          "published_at": "2025-12-22",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea and sentencing",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Monica Cannon-Grant/Violence in Boston: fraud guilty plea",
+          "url": "https://www.justice.gov/usao-ma/pr/former-director-boston-nonprofit-pleads-guilty-fraud-charges",
+          "published_at": "2025-09-22",
+          "event_date": "2025-09-22",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea; sentencing not established by this source",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Keith Taylor/Modest Needs: charity fraud guilty plea",
+          "url": "https://www.justice.gov/usao-sdny/pr/founder-and-former-ceo-charity-pleads-guilty-multimillion-dollar-charity-fraud-and-tax",
+          "published_at": "2025-08-18",
+          "event_date": "2025-08-18",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea; sentencing not established by this source",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Center for Special Needs Trust Administration: alleged beneficiary-fund theft",
+          "url": "https://www.justice.gov/opa/pr/florida-nonprofit-founder-and-accountant-charged-stealing-over-100m-special-needs-victims",
+          "published_at": "2025-06-23",
+          "event_date": "2025-06-23",
+          "jurisdiction": "United States",
+          "legal_status": "Criminal indictment; allegations, presumed innocent",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        },
+        {
+          "title": "Levi and Chesterman: charity-collection fraud confiscation",
+          "url": "https://www.cps.gov.uk/cps/news/fraud-gang-forced-pay-charities-back-over-ps100000",
+          "published_at": "2025-05-23",
+          "event_date": "not stated",
+          "jurisdiction": "United Kingdom",
+          "legal_status": "Convicted in 2023; confiscation orders reported in 2025",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:06:34Z"
+        }
+      ],
+      "limitations": [
+        "Curated examples, not the five latest worldwide or a prevalence estimate.",
+        "Signals, lawful alternatives and refutation checks are analyst inferences; require company-specific evidence.",
+        "Legal status reflects the cited event; later proceedings were not exhaustively checked.",
+        "U.S. and UK examples; includes nonprofit statistical services, trusts and outside impersonators."
+      ]
+    }
+  ]
+}

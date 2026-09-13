@@ -35,24 +35,24 @@ export function confianzaAnalisis(detalle: CasoDetalle): ConfianzaAnalisis {
   const evaluadas = pistas.filter((p) => p.estado !== "no_evaluable");
   if (evaluadas.length > 0) {
     const sostenidas = evaluadas.filter((p) => !(p.evaluacion_caso?.estado ?? "").startsWith("refutada")).length;
-    factores.push({ nombre: "Señales de alerta confirmadas", valor: sostenidas / evaluadas.length, explica: `${sostenidas} de ${evaluadas.length} señales se sostuvieron al revisarlas` });
+    factores.push({ nombre: "Supported warning signs", valor: sostenidas / evaluadas.length, explica: `${sostenidas} de ${evaluadas.length} signals supported after review` });
   }
 
   const conCerteza = senales.filter((s) => !s.refuta && CERTEZA[s.confianza] !== undefined);
   if (conCerteza.length > 0) {
     const promedio = conCerteza.reduce((a, s) => a + CERTEZA[s.confianza], 0) / conCerteza.length;
-    factores.push({ nombre: "Certeza de los especialistas", valor: promedio, explica: `promedio de ${conCerteza.length} hallazgo${conCerteza.length === 1 ? "" : "s"}` });
+    factores.push({ nombre: "Specialist confidence", valor: promedio, explica: `average of ${conCerteza.length} hallazgo${conCerteza.length === 1 ? "" : "s"}` });
   }
 
   if (defensa.length > 0) {
     const resiste = defensa.reduce((a, d) => a + (DEFENSA[d.resultado] ?? 0.5), 0) / defensa.length;
-    factores.push({ nombre: "Resistió explicaciones legítimas", valor: resiste, explica: `${defensa.length} explicación${defensa.length === 1 ? "" : "es"} alternativa${defensa.length === 1 ? "" : "s"} evaluada${defensa.length === 1 ? "" : "s"}` });
+    factores.push({ nombre: "Survived alternative explanations", valor: resiste, explica: `${defensa.length} explanation${defensa.length === 1 ? "" : "es"} alternativa${defensa.length === 1 ? "" : "s"} evaluada${defensa.length === 1 ? "" : "s"}` });
   }
 
   factores.push({
-    nombre: "Cobertura del periodo",
+    nombre: "Period reviewed",
     valor: caso.presupuesto_agotado ? 0.5 : caso.cobertura_completa ? 1 : 0.5,
-    explica: caso.presupuesto_agotado ? "se agotó el tiempo antes de terminar" : caso.cobertura_completa ? "se revisó todo el periodo" : "faltó revisar parte del periodo",
+    explica: caso.presupuesto_agotado ? "time limit reached before completion" : caso.cobertura_completa ? "the full period was reviewed" : "part of the period remains unreviewed",
   });
 
   // Sólo con cobertura no hay análisis que calificar.

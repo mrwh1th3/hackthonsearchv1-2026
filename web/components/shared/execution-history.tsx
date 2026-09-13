@@ -8,10 +8,10 @@ import type { Investigacion } from "@/lib/data";
 import { fechaHora } from "@/lib/date/formato";
 
 export const ESTADO_LABEL: Record<Investigacion["estado"], string> = {
-  en_cola: "En cola",
-  investigando: "Investigando",
+  en_cola: "Queued",
+  investigando: "Investigating",
   generando_reporte: "Generando reporte",
-  investigacion_completa: "Investigación completa",
+  investigacion_completa: "Full investigation",
   parcial: "Parcial",
   error: "Error",
   cancelada: "Cancelada",
@@ -49,7 +49,7 @@ export interface ExecutionHistoryRow {
  * técnicas hijas. "Investigación completa" es estado de entrega, no de
  * riesgo: nunca se confunde con el nivel del caso.
  */
-export function ExecutionHistory({ rows, emptyMessage = "Sin investigaciones para este filtro." }: { rows: ExecutionHistoryRow[]; emptyMessage?: string }) {
+export function ExecutionHistory({ rows, emptyMessage = "No investigations match this filter." }: { rows: ExecutionHistoryRow[]; emptyMessage?: string }) {
   if (rows.length === 0) {
     return <p className="rounded-[var(--radius-card)] border border-border bg-surface p-6 text-center text-sm text-text-subtle">{emptyMessage}</p>;
   }
@@ -82,7 +82,7 @@ function ExecutionRow({ row }: { row: ExecutionHistoryRow }) {
 
         <div className="min-w-[180px] flex-1">
           <Link href={`/documentos/${investigacion.id}`} className="font-medium text-text hover:underline">
-            {investigacion.titulo ?? investigacion.mensaje ?? "Investigación"}
+            {investigacion.titulo ?? investigacion.mensaje ?? "Investigation"}
           </Link>
           <p className="text-xs text-text-subtle">
             {fechaHora(investigacion.creado)}
@@ -108,7 +108,7 @@ function ExecutionRow({ row }: { row: ExecutionHistoryRow }) {
 
       {abierto && row.hijas && row.hijas.length > 0 && (
         <div className="border-t border-border bg-surface-muted p-3">
-          <p className="mb-1.5 text-xs font-medium text-text-muted">Ejecuciones técnicas</p>
+          <p className="mb-1.5 text-xs font-medium text-text-muted">Technical runs</p>
           <ul className="space-y-1 text-xs text-text-subtle">
             {row.hijas.map((h) => (
               <li key={h.id} className="flex gap-2">

@@ -13,25 +13,25 @@ import { estimarCostoUsd } from "./costo";
 
 /** Estados de `forense.casos.estado` (001_schema) en el orden del pipeline de 03/07. */
 const ETAPA_CASO: Record<string, string> = {
-  en_cola: "cola",
-  ronda1: "ronda 1 · especialistas",
-  ronda_1: "ronda 1 · especialistas",
-  ronda2: "ronda 2 · especialistas",
-  ronda_2: "ronda 2 · especialistas",
-  auditando: "auditoría",
-  auditoria: "auditoría",
-  defendiendo: "defensa",
-  replicando: "réplica",
-  validando: "validación",
+  en_cola: "queued",
+  ronda1: "round 1 · specialists",
+  ronda_1: "round 1 · specialists",
+  ronda2: "round 2 · specialists",
+  ronda_2: "round 2 · specialists",
+  auditando: "audit",
+  auditoria: "audit",
+  defendiendo: "alternative explanations",
+  replicando: "response",
+  validando: "validation",
   dictaminando: "dictamen",
-  redactando: "redacción",
+  redactando: "drafting",
   dictaminado: "dictamen emitido",
   reintento: "reintento",
   error: "error",
 };
 
 export function etapaCaso(estado: string | null | undefined): string {
-  if (!estado) return "cola";
+  if (!estado) return "queued";
   return ETAPA_CASO[estado] ?? estado.replace(/_/g, " ");
 }
 
@@ -42,23 +42,23 @@ export function casoTerminado(estado: string | null | undefined): boolean {
 
 /** Roles fuera de las rondas de especialistas, en orden de ejecución (07 §2). */
 const ROLES: Array<{ agente: string; etapa: string }> = [
-  { agente: "auditor", etapa: "auditoría" },
-  { agente: "defensor", etapa: "defensa" },
-  { agente: "auditor_final", etapa: "auditor final" },
-  { agente: "redactor", etapa: "redacción" },
+  { agente: "auditor", etapa: "audit" },
+  { agente: "defensor", etapa: "alternative explanations" },
+  { agente: "auditor_final", etapa: "final audit" },
+  { agente: "redactor", etapa: "drafting" },
 ];
 
 const NOMBRE_AGENTE: Record<string, string> = {
-  documental: "documental",
-  financiero: "financiero",
-  relacional: "relacional",
-  temporal: "temporal",
-  externo: "externo",
-  auditor: "auditoría",
-  defensor: "defensa",
-  auditor_final: "auditoría final",
-  redactor: "redacción",
-  editor: "edición",
+  documental: "document review",
+  financiero: "financial review",
+  relacional: "company relationships",
+  temporal: "timing",
+  externo: "external sources",
+  auditor: "audit",
+  defensor: "alternative explanations",
+  auditor_final: "final audit",
+  redactor: "drafting",
+  editor: "editing",
 };
 
 export function nombreAgente(agente: string): string {
@@ -116,31 +116,31 @@ const TIPO_EVENTO: Record<string, string> = {
   caso_creado: "Caso creado",
   cluster_armado: "Cluster armado",
   pista_cargada: "Pista cargada",
-  ronda_inicio: "Inicio de ronda",
-  ronda_fin: "Fin de ronda",
+  ronda_inicio: "Round started",
+  ronda_fin: "Round finished",
   razonamiento: "Razonamiento",
   tool_call: "Consulta a herramienta",
-  tool_result: "Resultado de herramienta",
-  senal_escrita: "Señal escrita",
-  senal_leida: "Señal leída",
+  tool_result: "Tool result",
+  senal_escrita: "Signal recorded",
+  senal_leida: "Signal reviewed",
   despertar: "Despertar",
   frontera_detectada: "Frontera detectada",
   cluster_expandido: "Cluster expandido",
-  auditoria: "Auditoría",
-  defensa_inicio: "Inicio de defensa",
-  defensa_argumento: "Argumento de defensa",
-  replica: "Réplica",
-  validacion: "Validación",
+  auditoria: "Audit",
+  defensa_inicio: "Alternative-explanation review started",
+  defensa_argumento: "Alternative explanation",
+  replica: "Response",
+  validacion: "Validation",
   evidencia_descartada: "Evidencia descartada",
   dictamen: "Dictamen",
-  rechazo_auditor_final: "Rechazo del auditor final",
-  reintento_inicio: "Inicio de reintento",
-  redaccion_inicio: "Inicio de redacción",
-  redaccion_fin: "Fin de redacción",
-  edicion: "Edición",
+  rechazo_auditor_final: "Final review rejected",
+  reintento_inicio: "Retry started",
+  redaccion_inicio: "Report drafting started",
+  redaccion_fin: "Report drafting finished",
+  edicion: "Edit",
   error: "Error",
   presupuesto_agotado: "Presupuesto agotado",
-  paso_en_cola: "Paso en cola",
+  paso_en_cola: "Step queued",
   paso_checkpoint: "Checkpoint",
 };
 
@@ -174,7 +174,7 @@ function logsDe(eventos: EventoForense[], estado: EstadoNodo): LogAgente[] {
   if (ultimo?.tipo_evento === "tool_call") {
     logs[logs.length - 1] = { ...logs[logs.length - 1], ts: null };
   } else {
-    logs.push({ id: "en-proceso", nombre: estado === "pendiente" ? "En espera de despacho" : "Paso del agente", ts: null });
+    logs.push({ id: "en-proceso", nombre: estado === "pendiente" ? "Waiting to start" : "Investigator step", ts: null });
   }
   return logs;
 }
@@ -252,10 +252,10 @@ export function construirArbol(
   const etapas: EtapaArbol[] = [];
   const rondasVisibles = rondas.length > 0 ? rondas : [1];
   for (const r of rondasVisibles) {
-    const titulo = `Ronda ${r} · especialistas`;
+    const titulo = `Round ${r} · specialists`;
     const nodos = especialistas
       .filter(([, t]) => t.ronda === r)
-      .map(([clave, t]) => nodo(clave, t, `ronda ${r}`))
+      .map(([clave, t]) => nodo(clave, t, `round ${r}`))
       .sort((a, b) => a.agente.localeCompare(b.agente));
     etapas.push({ id: `ronda-${r}`, titulo, nodos, pendiente: nodos.length === 0 });
   }

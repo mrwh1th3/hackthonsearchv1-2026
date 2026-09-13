@@ -73,7 +73,7 @@ describe("POST /api/estates — multi-formato", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("mezcla_invalida");
-    expect(body.detalle).toMatch(/no se pueden mezclar/);
+    expect(body.detalle).toMatch(/cannot be mixed/);
     expect(ejecutarPython).not.toHaveBeenCalled();
   });
 

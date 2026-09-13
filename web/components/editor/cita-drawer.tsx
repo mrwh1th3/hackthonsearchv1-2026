@@ -54,7 +54,7 @@ export function CitaDrawer({
             </div>
             <Dialog.Close
               className="rounded-[var(--radius-input)] border border-border p-1 text-text-muted hover:bg-surface-hover"
-              aria-label="Cerrar"
+              aria-label="Close"
             >
               <X size={14} aria-hidden />
             </Dialog.Close>
@@ -62,10 +62,9 @@ export function CitaDrawer({
 
           {!evidencia ? (
             <div className="rounded-[var(--radius-card)] border border-error/40 bg-error/5 p-3 text-sm text-error">
-              <p className="font-medium">Sin evidencia validada para este ID.</p>
+              <p className="font-medium">No validated evidence for this ID.</p>
               <p className="mt-1 text-xs text-text-muted">
-                La cita queda marcada en rojo y el reporte en estado &quot;revisar citas&quot;: se conserva el borrador, pero no
-                puede publicarse como entregable (09 §8, 15 §10). Corrige el ID o elimina la afirmación.
+                Correct this citation or remove its claim before publishing. Your draft is preserved.
               </p>
             </div>
           ) : (
@@ -106,8 +105,7 @@ export function CitaDrawer({
               </div>
 
               <p className="text-xs text-text-subtle">
-                Los campos de texto libre del contribuyente llegan con sufijo <code>_untrusted</code> y no sostienen ningún
-                veredicto (CLAUDE.md regla 6).
+                Freeform source fields are marked <code>_untrusted</code> and cannot establish a conclusion.
               </p>
             </div>
           )}

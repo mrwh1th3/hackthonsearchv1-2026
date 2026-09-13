@@ -36,62 +36,31 @@ export function FalloDatos({
     <div className="mx-auto flex max-w-2xl flex-col gap-5 px-6 py-14" data-testid="fallo-datos">
       <div className="flex items-center gap-2.5">
         <span aria-hidden className="h-2 w-2 rounded-full bg-error" />
-        <h1 className="text-lg font-semibold text-text">La capa de datos no respondió</h1>
+        <h1 className="text-lg font-semibold text-text">The data service did not respond</h1>
       </div>
 
       <p className="text-sm text-text-muted">
-        {alcance === "app"
-          ? "Falló la lectura de perfil y notificaciones, que alimenta el shell de toda la aplicación."
-          : "Falló la consulta de esta pantalla. El resto de la navegación sigue en pie."}{" "}
-        <strong className="font-medium text-text">Esto no significa que no haya hallazgos:</strong>{" "}
-        significa que no se pudo preguntar. No se sustituye por datos de demostración a propósito,
-        para no mezclar una corrida real con un fixture.
+        {alcance === "app" ? "Could not load your profile and app navigation." : "Could not load this screen. Other pages remain available."}
+        {" "}This does not mean there are no findings. Your real data has not been replaced with demo data.
       </p>
-
-      <div className="rounded-lg border border-border bg-surface-muted p-4">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-text-subtle">
-          Qué revisar, en este orden
-        </p>
-        <p className="mb-2 text-xs text-text-subtle">
-          Si esto empezó <strong className="font-medium">a media sesión</strong> y antes funcionaba,
-          la configuración no es la causa: mira primero el estado del proyecto Supabase y el log de
-          la función, y reintenta.
-        </p>
-        <ol className="list-decimal space-y-1.5 pl-5 text-sm text-text-muted">
-          <li>
-            Que el schema <code className="text-text">forense</code> esté expuesto en Supabase →
-            Project Settings → API → Exposed schemas. Es el fallo más probable: las claves pueden
-            estar bien y PostgREST seguir rechazando el schema.
-          </li>
-          <li>
-            Que estén las variables de servidor <code className="text-text">SUPABASE_URL</code> y{" "}
-            <code className="text-text">SUPABASE_SERVICE_ROLE_KEY</code>, y las públicas{" "}
-            <code className="text-text">NEXT_PUBLIC_SUPABASE_URL</code> y{" "}
-            <code className="text-text">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.
-          </li>
-          <li>
-            Que las migraciones <code className="text-text">001</code>–
-            <code className="text-text">020</code> estén aplicadas en el proyecto al que apuntan
-            esas variables.
-          </li>
-          <li>
-            Si acabas de cambiar una variable <code className="text-text">NEXT_PUBLIC_*</code>:
-            hace falta volver a desplegar, no sólo guardarla. Se incrustan en el bundle al
-            construir.
-          </li>
+      <details className="rounded-lg border border-border p-4 text-sm text-text-muted">
+        <summary>Troubleshooting</summary>
+        <ol className="mt-3 list-decimal space-y-2 pl-5">
+          <li>Check Supabase → Project Settings → API → Exposed schemas for <code>forense</code>.</li>
+          <li>Check the project’s availability, server configuration and applied migrations.</li>
+          <li>After changing public environment variables, rebuild and redeploy.</li>
         </ol>
-      </div>
+      </details>
 
       {(mensaje || error.digest) && (
         <p className="text-xs text-text-subtle">
           {mensaje ? (
             <>
-              Detalle: <code className="text-text-muted">{mensaje}</code>
+              Details: <code className="text-text-muted">{mensaje}</code>
             </>
           ) : (
             <>
-              El mensaje del servidor no viaja al navegador en producción. Busca este identificador
-              en el log de la función: <code className="text-text-muted">{error.digest}</code>
+              Error reference: <code className="text-text-muted">{error.digest}</code>
             </>
           )}
         </p>
@@ -103,7 +72,7 @@ export function FalloDatos({
           onClick={() => (reset ? reset() : window.location.reload())}
           className="h-9 rounded-[var(--radius-input)] bg-primary px-3 text-sm text-white hover:bg-primary-hover"
         >
-          Reintentar
+          Retry
         </button>
       </div>
     </div>

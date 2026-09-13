@@ -61,16 +61,16 @@ export type ResultadoEditor = ResultadoRespuesta | ResultadoPropuesta | Resultad
 const NIVELES = [
   "presuncion_alta",
   "presuncion alta",
-  "presunción alta",
+  "high suspicion",
   "presuncion",
-  "presunción",
+  "suspicion",
   "anomalia_explicada",
   "anomalia explicada",
-  "anomalía explicada",
+  "explained anomaly",
   "no_concluyente",
   "no concluyente",
   "sin_hallazgos",
-  "sin hallazgos",
+  "no findings",
 ] as const;
 
 function nivelesMencionados(texto: string): string[] {
@@ -103,7 +103,7 @@ function numerosDe(texto: string): Set<string> {
 /** Diff unificado del Markdown derivado: lo que ve el humano antes de Aplicar. */
 export function construirDiff(antes: Documento, despues: Documento): string {
   const diff = createTwoFilesPatch(
-    "expediente (versión base)",
+    "case file (base version)",
     "expediente (propuesta)",
     `${aMarkdown(antes)}\n`,
     `${aMarkdown(despues)}\n`,
@@ -133,7 +133,7 @@ export function construirPropuesta(args: ArgsPropuesta): ResultadoEditor {
   }
 
   const contenido = (salida.contenido ?? "").trim();
-  if (contenido.length === 0) return { tipo: "rechazo", motivo: "contenido_vacio", detalle: "El Editor no devolvió contenido para una propuesta de edición." };
+  if (contenido.length === 0) return { tipo: "rechazo", motivo: "contenido_vacio", detalle: "The editor returned no proposed content." };
 
   const protegidos = bloquesProtegidos(documento);
   const patch: Patch[] = [];
@@ -143,15 +143,15 @@ export function construirPropuesta(args: ArgsPropuesta): ResultadoEditor {
     patch.push({ op: "replace_document", before_hash: hashDocumento(documento), after: nuevo });
   } else {
     if (!seleccion || seleccion.block_ids.length === 0) {
-      return { tipo: "rechazo", motivo: "seleccion_requerida", detalle: "Una propuesta de fragmento exige selección con bloques." };
+      return { tipo: "rechazo", motivo: "seleccion_requerida", detalle: "Select a passage before requesting a partial edit." };
     }
     const indice = indexarBloques(documento);
     const objetivo = indice.get(seleccion.block_ids[0]);
     if (!objetivo) {
-      return { tipo: "rechazo", motivo: "bloque_no_encontrado", detalle: `El bloque ${seleccion.block_ids[0]} ya no existe en esta versión.` };
+      return { tipo: "rechazo", motivo: "bloque_no_encontrado", detalle: `El bloque ${seleccion.block_ids[0]} no longer exists in this version.` };
     }
     if (!esBloqueTexto(objetivo)) {
-      return { tipo: "rechazo", motivo: "bloque_no_encontrado", detalle: "La selección apunta a un contenedor; selecciona un párrafo o encabezado." };
+      return { tipo: "rechazo", motivo: "bloque_no_encontrado", detalle: "Select a paragraph or heading." };
     }
     const reemplazo: Bloque = { ...clonar(objetivo), content: inlineDesdeTexto(contenido) };
     patch.push({ op: "replace_block", block_id: objetivo.attrs.id, before_hash: hashBloque(objetivo), after: reemplazo });
@@ -171,7 +171,7 @@ export function construirPropuesta(args: ArgsPropuesta): ResultadoEditor {
     return {
       tipo: "rechazo",
       motivo: aplicado.motivo === "bloque_protegido" ? "seccion_protegida" : "patch_no_aplicable",
-      detalle: `El patch no es aplicable sobre la versión base (${aplicado.motivo}).`,
+      detalle: `The change cannot be applied to the base version (${aplicado.motivo}).`,
     };
   }
   const previsualizacion = normalizarDocumento(aplicado.documento);
@@ -184,7 +184,7 @@ export function construirPropuesta(args: ArgsPropuesta): ResultadoEditor {
     return {
       tipo: "rechazo",
       motivo: "citas_no_autorizadas",
-      detalle: `La propuesta introduce referencias sin evidencia validada: ${noAutorizadas.join(", ")}.`,
+      detalle: `The proposal cites unvalidated evidence: ${noAutorizadas.join(", ")}.`,
     };
   }
 
@@ -208,7 +208,7 @@ export function construirPropuesta(args: ArgsPropuesta): ResultadoEditor {
     return {
       tipo: "rechazo",
       motivo: "cambio_de_nivel",
-      detalle: "El nivel lo fija el dictamen determinista (CLAUDE.md regla 4): una edición no puede cambiarlo.",
+      detalle: "The confidence level is set by rule checks and cannot be changed by editing.",
     };
   }
 
@@ -219,12 +219,12 @@ export function construirPropuesta(args: ArgsPropuesta): ResultadoEditor {
   const numerosBase = numerosDe(aMarkdown(documento));
   for (const numero of numerosDe(contenido)) {
     if (!numerosBase.has(numero)) {
-      advertencias.push({ codigo: "monto_nuevo", detalle: `La propuesta introduce la cifra ${numero}, que no está en la versión base: queda pendiente de validación.` });
+      advertencias.push({ codigo: "monto_nuevo", detalle: `The proposal introduces the amount ${numero}, which is absent from the base version and requires validation.` });
     }
   }
   for (const cita of extraerCitas(contenido)) {
     if (!referenciasValidadas.has(cita)) {
-      advertencias.push({ codigo: "cita_sin_evidencia", detalle: `La cita ${cita} no tiene evidencia validada en esta corrida.` });
+      advertencias.push({ codigo: "cita_sin_evidencia", detalle: `La cita ${cita} has no validated evidence in this dataset.` });
     }
   }
 
@@ -256,7 +256,7 @@ export function salidaEditorDemostracion(args: {
     return {
       modo: "respuesta",
       mensaje:
-        "Respuesta de demostración (sin agente Editor configurado): esta sección se apoya en la evidencia citada del expediente. Selecciona texto para proponer una edición.",
+        "Demo response: this section uses the report's cited evidence. Select text to request an edit.",
     };
   }
   const indice = indexarBloques(documento);
@@ -267,7 +267,7 @@ export function salidaEditorDemostracion(args: {
   const sufijo = citas.length > 0 ? ` ${citas.map((c) => `[${c}]`).join(" ")}` : "";
   return {
     modo: "fragmento",
-    mensaje: `Propuesta determinista de demostración para: "${mensajeUsuario.slice(0, 160)}". Conserva las citas del fragmento.`,
-    contenido: `${sinCitas}${sinCitas.endsWith(".") ? "" : "."} Redacción revisada para mayor claridad.${sufijo}`,
+    mensaje: `Demo proposal for: "${mensajeUsuario.slice(0, 160)}". Preserve the passage's citations.`,
+    contenido: `${sinCitas}${sinCitas.endsWith(".") ? "" : "."} Wording revised for clarity.${sufijo}`,
   };
 }

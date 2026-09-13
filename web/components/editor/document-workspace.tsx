@@ -14,6 +14,7 @@ import { hashTexto, normalizarDocumento } from "@/lib/document/documento";
 import { construirIndice } from "@/lib/document/secciones";
 import type { Documento, Reporte } from "@/lib/document/tipos";
 import { cn } from "@/lib/utils";
+import { AppSelect } from "@/components/shared/app-select";
 
 import { guardarBorradorRemoto, leerVersiones, revertirVersion, uuid } from "./cliente";
 import { CitaDrawer, type EvidenciaCita } from "./cita-drawer";
@@ -126,7 +127,7 @@ export function DocumentWorkspace({
     ],
     content: documento,
     editorProps: {
-      attributes: { class: "hoja-prosa", "aria-label": "Documento del reporte", role: "textbox" },
+      attributes: { class: "hoja-prosa", "aria-label": "Report document", role: "textbox" },
     },
     onCreate: ({ editor: instancia }) => {
       baseRef.current = JSON.stringify(normalizarDocumento(instancia.getJSON()));
@@ -197,8 +198,8 @@ export function DocumentWorkspace({
         tipo: "error",
         mensaje:
           resultado.error.error === "backend_no_configurado"
-            ? "Sin backend configurado: el borrador se conserva aquí pero no se está guardando; no cierres la pestaña."
-            : `No se pudo guardar (${resultado.error.error}).`,
+            ? "The draft is kept in this tab but is not being saved. Keep the tab open."
+            : `Could not save (${resultado.error.error}).`,
       });
     },
     [casoId, onVersionCambiada],
@@ -237,7 +238,7 @@ export function DocumentWorkspace({
     editor?.commands.setContent(reporte.contenido_json, { emitUpdate: false });
     baseRef.current = editor ? JSON.stringify(normalizarDocumento(editor.getJSON())) : null;
     setGuardado({ tipo: "limpio" });
-    if (revisarCitas) toast.warning("La versión nueva tiene citas por revisar");
+    if (revisarCitas) toast.warning("The new version has citations to review");
   }
 
   // Referencia estable: `cargarHistorial` se memoiza por caso y no debe
@@ -249,7 +250,7 @@ export function DocumentWorkspace({
     async (opciones: { adoptarVigente?: boolean } = {}): Promise<void> => {
       const resultado = await leerVersiones(casoId);
       if (!resultado.ok) {
-        if (!opciones.adoptarVigente) toast.error("No se pudo leer el historial de versiones");
+        if (!opciones.adoptarVigente) toast.error("Could not load version history");
         return;
       }
       // Respuesta sin lista (backend antiguo o cuerpo inesperado): no se rompe
@@ -264,7 +265,7 @@ export function DocumentWorkspace({
         // recarga, u otra pestaña). Montar en la versión vieja dejaría toda
         // escritura en conflicto permanente.
         adoptarVersionRef.current?.(vigente);
-        toast.info(`El reporte ya estaba en la versión ${vigente.version}: se cargó esa.`);
+        toast.info(`The report was already at version ${vigente.version}: that version was loaded.`);
       }
     },
     [casoId],
@@ -288,17 +289,17 @@ export function DocumentWorkspace({
     if (!resultado.ok) {
       toast.error(
         resultado.error.error === "conflicto_version"
-          ? `El reporte ya está en la versión ${resultado.error.version_actual}.`
-          : `No se pudo revertir (${resultado.error.error}).`,
+          ? `The report is now at version ${resultado.error.version_actual}.`
+          : `Could not restore (${resultado.error.error}).`,
       );
       return;
     }
     adoptarVersion(resultado.datos.reporte);
-    toast.success(`Versión ${resultado.datos.version} creada a partir de la ${objetivo}`);
+    toast.success(`Version ${resultado.datos.version} created from version ${objetivo}`);
     // CLAUDE.md regla 2: una reversión sin evento en `forense.bitacora` no es
     // auditable, y eso se dice. Solo el `false` explícito.
     if (resultado.datos.bitacora === false) {
-      toast.warning("La reversión no dejó registro en la bitácora: este entorno no persiste trazabilidad.");
+      toast.warning("The reversal has no activity record. Traceability is unavailable in this environment.");
     }
     setHistorialAbierto(false);
   }
@@ -334,13 +335,13 @@ export function DocumentWorkspace({
           <input
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
-            aria-label="Título del documento"
+            aria-label="Document title"
             className="min-w-0 flex-1 rounded-[var(--radius-input)] border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-text hover:border-border focus:border-border focus:outline-none"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-
+          <span className="rounded border border-border px-1.5 text-[11px] text-text-subtle">v{version}</span>
           <span
             role="status"
             aria-live="polite"
@@ -351,24 +352,22 @@ export function DocumentWorkspace({
           >
             {guardado.tipo === "guardando" && (
               <>
-                <Loader2 size={11} className="animate-spin" aria-hidden /> Guardando…
+                <Loader2 size={11} className="animate-spin" aria-hidden /> Saving…
               </>
             )}
             {guardado.tipo === "guardado" && (
               <>
-                <Check size={11} aria-hidden /> Guardado {guardado.hora}
+                <Check size={11} aria-hidden /> Saved {guardado.hora}
               </>
             )}
             {guardado.tipo === "conflicto" && (
               <>
-                <AlertTriangle size={11} aria-hidden /> Conflicto: el reporte está en la v{guardado.versionActual}. Tu borrador
-                se conserva.
+                <AlertTriangle size={11} aria-hidden /> Conflict: the report is at v{guardado.versionActual}. Your draft is preserved.
               </>
             )}
             {guardado.tipo === "validada" && (
               <>
-                <AlertTriangle size={11} aria-hidden /> La v{guardado.versionActual} está validada y no se sobrescribe. Pide el
-                cambio en el chat y usa Aplicar para crear una versión nueva.
+                <AlertTriangle size={11} aria-hidden /> Version {guardado.versionActual} is validated. Request a change in chat and apply it as a new version.
               </>
             )}
             {guardado.tipo === "error" && (
@@ -386,7 +385,7 @@ export function DocumentWorkspace({
             }}
             className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-input)] border border-border bg-surface px-2.5 text-xs text-text hover:bg-surface-hover"
           >
-            <History size={14} aria-hidden /> Historial
+            <History size={14} aria-hidden /> History
           </button>
           <DescargasExpediente casoId={casoId} version={version} />
         </div>
@@ -396,41 +395,41 @@ export function DocumentWorkspace({
       <div className="flex flex-none flex-wrap items-center gap-0.5 border-b border-border bg-surface px-2 py-1 text-xs print:hidden">
         {[
           {
-            etiqueta: "Archivo",
+            etiqueta: "File",
             opciones: [
-              { texto: "Guardar ahora (Cmd/Ctrl+S)", accion: () => void guardar(documentoActual) },
-              { texto: "Imprimir / PDF", accion: () => window.print() },
+              { texto: "Save now (Cmd/Ctrl+S)", accion: () => void guardar(documentoActual) },
+              { texto: "Print / PDF", accion: () => window.print() },
             ],
           },
           {
-            etiqueta: "Editar",
+            etiqueta: "Edit",
             opciones: [
-              { texto: "Deshacer", accion: () => editor?.chain().focus().undo().run() },
-              { texto: "Rehacer", accion: () => editor?.chain().focus().redo().run() },
-              { texto: "Seleccionar todo", accion: () => editor?.chain().focus().selectAll().run() },
+              { texto: "Undo", accion: () => editor?.chain().focus().undo().run() },
+              { texto: "Redo", accion: () => editor?.chain().focus().redo().run() },
+              { texto: "Select all", accion: () => editor?.chain().focus().selectAll().run() },
             ],
           },
           {
-            etiqueta: "Ver",
+            etiqueta: "View",
             opciones: [
               ...ZOOMS.map((z) => ({ texto: `Zoom ${z}%`, accion: () => setZoom(z) })),
-              { texto: "Ajustar ancho", accion: () => setZoom("ancho") },
+              { texto: "Fit width", accion: () => setZoom("ancho") },
             ],
           },
           {
-            etiqueta: "Insertar",
+            etiqueta: "Insert",
             opciones: [
-              { texto: "Tabla 3×3", accion: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-              { texto: "Línea horizontal", accion: () => editor?.chain().focus().setHorizontalRule().run() },
-              { texto: "Cita en bloque", accion: () => editor?.chain().focus().toggleBlockquote().run() },
+              { texto: "3×3 table", accion: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+              { texto: "Horizontal rule", accion: () => editor?.chain().focus().setHorizontalRule().run() },
+              { texto: "Block quote", accion: () => editor?.chain().focus().toggleBlockquote().run() },
             ],
           },
           {
-            etiqueta: "Formato",
+            etiqueta: "Format",
             opciones: [
-              { texto: "Negrita", accion: () => editor?.chain().focus().toggleBold().run() },
-              { texto: "Cursiva", accion: () => editor?.chain().focus().toggleItalic().run() },
-              { texto: "Quitar formato", accion: () => editor?.chain().focus().unsetAllMarks().run() },
+              { texto: "Bold", accion: () => editor?.chain().focus().toggleBold().run() },
+              { texto: "Italic", accion: () => editor?.chain().focus().toggleItalic().run() },
+              { texto: "Clear formatting", accion: () => editor?.chain().focus().unsetAllMarks().run() },
             ],
           },
         ].map((menu) => (
@@ -462,33 +461,28 @@ export function DocumentWorkspace({
 
         <span className="mx-1 h-4 w-px bg-border" aria-hidden />
 
-        <div className="inline-flex rounded-[var(--radius-input)] border border-border p-0.5" role="group" aria-label="Modo de edición">
+        <div className="inline-flex rounded-[var(--radius-input)] border border-border p-0.5" role="group" aria-label="Editing mode">
           {(["editar", "sugerir", "lectura"] as const).map((m) => (
             <button
-              key={m}
+              key={{ editar: "Edit", sugerir: "Suggest", lectura: "Read" }[m]}
               type="button"
               onClick={() => setModo(m)}
               aria-pressed={modo === m}
               className={cn("rounded-[6px] px-2 py-0.5 capitalize", modo === m ? "bg-surface-muted text-text" : "text-text-muted")}
             >
-              {m}
+              {{ editar: "Edit", sugerir: "Suggest", lectura: "Read" }[m]}
             </button>
           ))}
         </div>
 
-        <select
+        <AppSelect
           aria-label="Zoom"
+          size="sm"
           value={String(zoom)}
-          onChange={(e) => setZoom(e.target.value === "ancho" ? "ancho" : Number(e.target.value))}
-          className="ml-1 h-7 rounded-[var(--radius-input)] border border-border bg-surface px-1.5 text-xs text-text"
-        >
-          {ZOOMS.map((z) => (
-            <option key={z} value={z}>
-              {z}%
-            </option>
-          ))}
-          <option value="ancho">Ajustar ancho</option>
-        </select>
+          onValueChange={(value) => setZoom(value === "ancho" ? "ancho" : Number(value))}
+          className="ml-1"
+          options={[...ZOOMS.map(z => ({ value: String(z), label: `${z}%` })), { value: "ancho", label: "Fit width" }]}
+        />
 
         <span
           className={cn(
@@ -503,7 +497,7 @@ export function DocumentWorkspace({
             </>
           ) : (
             <>
-              <Check size={11} aria-hidden /> {citas.total} citas con evidencia validada
+              <Check size={11} aria-hidden /> {citas.total} citations backed by validated evidence
             </>
           )}
         </span>
@@ -513,8 +507,7 @@ export function DocumentWorkspace({
 
       {modo === "sugerir" && (
         <p className="flex-none border-b border-border bg-surface-muted px-3 py-1.5 text-[11px] text-text-muted print:hidden">
-          Modo sugerir: el documento no se edita a mano. Selecciona texto y pide el cambio en el chat; llega como propuesta con
-          diff y solo &quot;Aplicar&quot; crea versión.
+          Select text and request changes in chat. Review the differences, then apply the proposal to create a version.
         </p>
       )}
 
@@ -546,7 +539,7 @@ export function DocumentWorkspace({
                 {editor ? (
                   <EditorContent editor={editor} />
                 ) : (
-                  <p className="text-sm text-text-subtle">Cargando el documento…</p>
+                  <p className="text-sm text-text-subtle">Loading document…</p>
                 )}
               </div>
             </div>
@@ -588,9 +581,9 @@ export function DocumentWorkspace({
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-black/20" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(900px,92vw)] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-auto rounded-[var(--radius-card)] border border-border bg-surface p-5 shadow-xl">
-            <Dialog.Title className="text-sm font-semibold text-text">Historial de versiones</Dialog.Title>
+            <Dialog.Title className="text-sm font-semibold text-text">Version history</Dialog.Title>
             <Dialog.Description className="text-xs text-text-subtle">
-              Revertir no borra nada: copia la versión elegida a una versión nueva (07 §4, 09 §8).
+              Restoring creates a new version. Earlier versions are preserved.
             </Dialog.Description>
 
             <ul className="flex flex-col gap-1">
@@ -634,7 +627,7 @@ export function DocumentWorkspace({
             )}
 
             <Dialog.Close className="self-end rounded-[var(--radius-input)] border border-border px-3 py-1 text-xs text-text-muted hover:bg-surface-hover">
-              Cerrar
+              Close
             </Dialog.Close>
           </Dialog.Content>
         </Dialog.Portal>

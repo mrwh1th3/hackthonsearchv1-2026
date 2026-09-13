@@ -1,0 +1,14 @@
+{
+  "seed": 42,
+  "company_rfc": "DEMO010101AAA",
+  "period": ["2026-01-01", "2026-03-31"],
+  "findings": [{"scheme_type":"phantom_vendor","entities":["RFC:DEMO020202BBB"],"confidence":"medium","peso_amount":11600,"signals":["undocumented"],"narrative":"Ejemplo sintético: factura sin soporte dentro del snapshot.","exhibits":[{"source_table":"vendors","record_id":"DEMO020202BBB"},{"source_table":"invoices","record_id":"INV-DEMO-1"}],"money_trail":[]}],
+  "leads": [{"entity":"RFC:DEMO030303CCC","investigated_as":"phantom_vendor","signal":"recent_registration","reason":"Contrato válido y entregas documentadas; señal cerrada por motor.","closed_by":"investigator"}],
+  "triage": {"records":[
+    {"subject_id":"RFC:DEMO020202BBB","subject_type":"vendor","scheme_type":"phantom_vendor","status":"finding","fraud_flag":true,"confidence":"medium","score":{"total":2},"signals":["undocumented"],"reason":"Factura sin soporte en este ejemplo sintético.","peso_amount":11600,"record_ids":[{"source_table":"vendors","record_id":"DEMO020202BBB"},{"source_table":"invoices","record_id":"INV-DEMO-1"}],"related_subjects":[]},
+    {"subject_id":"RFC:DEMO030303CCC","subject_type":"vendor","scheme_type":"phantom_vendor","status":"closed_lead","fraud_flag":false,"confidence":null,"signals":["recent_registration"],"reason":"Contrato válido y entregas documentadas.","record_ids":[{"source_table":"vendors","record_id":"DEMO030303CCC"},{"source_table":"contracts","record_id":"CONTRACT-DEMO-1"}],"related_subjects":[],"closed_by":"investigator"},
+    {"subject_id":"RFC:DEMO040404DDD","subject_type":"vendor","scheme_type":null,"status":"no_signal","fraud_flag":false,"confidence":null,"signals":[],"reason":"Ningún detector abrió investigación.","record_ids":[{"source_table":"vendors","record_id":"DEMO040404DDD"}],"related_subjects":[]},
+    {"subject_id":"CLABE:000000000000000001","subject_type":"company_account","scheme_type":null,"status":"no_signal","fraud_flag":false,"confidence":null,"signals":[],"reason":"Cuenta propia de tesorería.","record_ids":[],"related_subjects":[]}
+  ]},
+  "run_metadata":{"deterministic":true,"llm_mode":"off","llm_calls":0}
+}

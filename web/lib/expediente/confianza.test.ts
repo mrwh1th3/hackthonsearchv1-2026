@@ -11,7 +11,7 @@ describe("confianzaAnalisis — índice transparente, no probabilidad de fraude"
   it("promedia sólo factores con datos reales y los expone", async () => {
     const r = confianzaAnalisis(await demo());
     const nombres = r.factores.map((f) => f.nombre);
-    expect(nombres).toEqual(["Pruebas verificadas", "Señales de alerta confirmadas", "Certeza de los especialistas", "Resistió explicaciones legítimas", "Cobertura del periodo"]);
+    expect(nombres).toEqual(["Pruebas verificadas", "Supported warning signs", "Specialist confidence", "Survived alternative explanations", "Period reviewed"]);
     const esperado = Math.round((r.factores.reduce((a, f) => a + f.valor, 0) / r.factores.length) * 100);
     expect(r.porcentaje).toBe(esperado);
   });

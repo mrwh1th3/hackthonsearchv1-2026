@@ -30,13 +30,13 @@ describe("construirArbol", () => {
   it("agrupa especialistas por ronda y deja pendientes las etapas sin tareas", () => {
     const arbol = construirArbol(caso, [tarea("t1", "documental", 1, "completada"), tarea("t2", "financiero", 1, "ejecutando")], []);
     expect(arbol.etapas.map((e) => [e.titulo, e.nodos.length, e.pendiente])).toEqual([
-      ["Ronda 1 · especialistas", 2, false],
-      ["Auditoría", 0, true],
-      ["Defensa", 0, true],
-      ["Auditor final", 0, true],
-      ["Redacción", 0, true],
+      ["Round 1 · specialists", 2, false],
+      ["Audit", 0, true],
+      ["Alternative explanations", 0, true],
+      ["Final audit", 0, true],
+      ["Drafting", 0, true],
     ]);
-    expect(arbol.etapaActual).toBe("ronda 1 · especialistas");
+    expect(arbol.etapaActual).toBe("round 1 · specialists");
     expect(arbol.terminado).toBe(false);
   });
 
@@ -67,7 +67,7 @@ describe("construirArbol", () => {
 
   it("sin caso todavía (202 antes de 'Crear caso') el árbol queda en cola", () => {
     const arbol = construirArbol(null, [], []);
-    expect(arbol.etapaActual).toBe("cola");
+    expect(arbol.etapaActual).toBe("queued");
     expect(arbol.etapas.every((e) => e.pendiente)).toBe(true);
   });
 });
@@ -80,6 +80,6 @@ describe("formatos", () => {
     expect(duracion(null, 0)).toBe("—");
     expect(formatoTokens(18_420)).toBe("18k");
     expect(formatoTokens(1_250)).toBe("1.3k");
-    expect(etapaCaso("auditando")).toBe("auditoría");
+    expect(etapaCaso("auditando")).toBe("audit");
   });
 });

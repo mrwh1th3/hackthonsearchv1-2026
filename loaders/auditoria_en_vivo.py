@@ -14,7 +14,9 @@ Fases, en el vocabulario del canvas (lib/analisis/arbol.ts):
   auditoría      consolidación y confianza por reglas
   defensa        revisor adversarial: explicaciones inocentes probadas
   auditor final  validador: cada record_id existe y el monto concilia al 2%
-  redacción      submission, expediente y publicación como investigación
+  redacción      submission, expediente y publicación como investigación. La entrega la produce
+                 `auditor.pipeline` (el mismo código que `python3 -m auditor run`) en
+                 `FORENSE_SALIDA_DIR/<corrida>` o, por defecto, `data/forensic/runs/<corrida>`
 
 El caso ancla (`origen = 'auditoria'`, `origen_valor` = id de la investigación) es el que
 sondea el canvas; al quedar `dictaminado` la UI abre la investigación. `--paso-ms` es una
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import traceback
@@ -39,7 +42,7 @@ from auditor.detectors import group_leads, run_detectors  # noqa: E402
 from auditor.estate import Estate  # noqa: E402
 from auditor.investigate import Investigator  # noqa: E402
 from auditor.llm import LLM  # noqa: E402
-from auditor.pipeline import file_sha256, write_outputs  # noqa: E402
+from auditor.pipeline import run as correr_pipeline, write_outputs  # noqa: E402
 from auditor.validate import validate_finding  # noqa: E402
 from auditor_to_investigaciones import ESQUEMA, psql, publicar  # noqa: E402
 from forensic_to_supabase import lit  # noqa: E402
@@ -101,8 +104,16 @@ FAMILIA = {"phantom_vendor": "E", "kickback": "F", "round_tripping": "R", "thres
 TERMINALES = {"dictaminado", "error", "parcial", "cerrado"}
 
 
+def carpeta_salida(corrida: str) -> Path:
+    """Dónde queda la entrega de la corrida: `FORENSE_SALIDA_DIR/<corrida>` si está definida (p. ej.
+    ~/Documents/Forense; relativa, contra la raíz del repo), si no data/forensic/runs/<corrida>. Solo del entorno
+    heredado del servidor web, para que `web/lib/auditoria/runner.ts#dirSalidas` resuelva la misma carpeta."""
+    base = os.environ.get("FORENSE_SALIDA_DIR", "").strip()
+    raiz = Path(base).expanduser() if base else ROOT / "data" / "forensic" / "runs"
+    return (raiz if raiz.is_absolute() else ROOT / raiz) / corrida
+
+
 def env(nombre: str) -> str:
-    import os
     if os.environ.get(nombre):
         return os.environ[nombre]
     for linea in (ROOT / ".env").read_text().splitlines():
@@ -335,19 +346,18 @@ def correr(a) -> int:
     # redacción · salidas y publicación
     v.pausa()
     v.sql(v.caso("redactando"), v.tarea("redactor", "ejecutando"))
-    acusados = {(f["scheme_type"], ent) for f in hallazgos for ent in f["entities"]}
-    leads = [l for l in leads if (l["investigated_as"], l["entity"]) not in acusados]
-    hallazgos.sort(key=lambda f: (-f["peso_amount"], f["scheme_type"], f["entities"]))
-    run = {"seed": a.seed, "estate_path": a.estate, "estate_sha256": file_sha256(a.estate), "company_rfc": e.company_rfc,
-           "period": e.period, "bank_horizon": e.bank_horizon.isoformat(), "detector_hits": len(raw),
-           "leads_investigated": len(grupos), "findings": hallazgos, "leads": leads,
-           "run_metadata": {"llm_calls": llm.calls, "mxn_cost": round(llm.cost_mxn, 4),
-                            "wall_clock_seconds": round(time.monotonic() - v.t0, 3),
-                            "cost_by_role": {k: round(x, 4) for k, x in sorted(llm.by_role.items())},
-                            "deterministic": a.llm != "record", "llm_mode": a.llm,
-                            "paso_visible_ms": a.paso_ms}}
-    out = ROOT / "data" / "forensic" / "runs" / a.corrida
+    # La entrega sale de `auditor.pipeline`, no de las fases de arriba: submission.json, run_log.json y
+    # case_file.html son los mismos que da `python3 -m auditor run` para este estate y semilla (mismo contenido y
+    # mismas claves), el reloj mide el cómputo del auditor sin las pausas declaradas ni la escritura a la base, y
+    # re-auditar la corrida deja la submission idéntica (pipeline.write_outputs → executions.jsonl).
+    out = carpeta_salida(a.corrida)
+    run = correr_pipeline(a.estate, a.seed, llm, str(out))
     rutas = write_outputs(run, str(out))
+    hallazgos, leads = run["findings"], run["leads"]
+    try:
+        ejecucion = json.loads(Path(rutas["executions"]).read_text().splitlines()[-1])
+    except (OSError, ValueError, IndexError):
+        ejecucion = {}
     v.sql("INSERT INTO forense.auditor_resultados (corrida_id, seed, fingerprint, estate_sha256, submission, run_log, case_file_html) "
           f"VALUES ({lit(a.corrida)}, {a.seed}, {lit(run['fingerprint'])}, {lit(run['estate_sha256'])}, "
           f"{lit(Path(rutas['submission']).read_text())}::jsonb, {lit(json.dumps(run, ensure_ascii=False, default=str))}::jsonb, "
@@ -362,9 +372,14 @@ def correr(a) -> int:
     nivel = max(niveles, key=NIVEL_ORDEN.index)
     total = round(sum(f["peso_amount"] for f in hallazgos), 2)
     duracion = int((time.monotonic() - v.t0) * 1000)
+    estado_submission = {"new": "submission nueva", "unchanged": "submission idéntica a la auditoría anterior",
+                         "replaced": "submission reemplazada: cambió el resultado"}.get(ejecucion.get("submission"), "submission escrita")
     v.sql(v.evento("redaccion_fin", "redactor", {"resumen": f"{len(hallazgos)} hallazgos · MXN {total:,.2f} · "
-                                                            f"{len(leads)} leads cerrados · huella {run['fingerprint'][:16]}"}, "redactor", ronda=3),
-          v.tarea("redactor", "completada", resultado={"submission": rutas["submission"], "case_file": rutas["case_file"]}),
+                                                            f"{len(leads)} leads cerrados · huella {run['fingerprint'][:16]} · "
+                                                            f"{estado_submission}",
+                                                 "submission": ejecucion.get("submission")}, "redactor", ronda=3),
+          v.tarea("redactor", "completada", resultado={"submission": rutas["submission"], "case_file": rutas["case_file"],
+                                                       "estado_submission": ejecucion.get("submission")}),
           v.evento("dictamen", "auditoria", {"resumen": f"Dictamen: {nivel} · {len(hallazgos)} hallazgos", "nivel": nivel}),
           v.caso("dictaminado", nivel=lit(nivel), monto_en_riesgo=total, cobertura_completa="true",
                  tool_calls=sum(len(f.get("tool_calls") or []) for f in hallazgos) + sum(len(l["tool_calls_made"]) for l in leads),

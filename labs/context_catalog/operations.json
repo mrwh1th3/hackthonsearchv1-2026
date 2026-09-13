@@ -1,0 +1,1232 @@
+{
+  "schema_version": 1,
+  "researched_at": "2026-09-13T11:26:58.470896+00:00",
+  "sectors": [
+    {
+      "id": "construction",
+      "giro": "Construction",
+      "aliases": [
+        "construcción",
+        "construccion",
+        "construction contractor",
+        "building contractor",
+        "ingeniería civil",
+        "obra pública",
+        "obras",
+        "constructora"
+      ],
+      "normal_operations": [
+        "Milestone billing matches inspected work",
+        "Subcontractors perform documented scope",
+        "Bid eligibility matches actual control",
+        "Approved change orders explain deviations",
+        "Payroll reconciles to project staffing"
+      ],
+      "mechanisms": [
+        {
+          "name": "Alleged set-aside pass-throughs",
+          "vulnerability": "Eligibility depends on ownership and control",
+          "actions": [
+            "Use apparently eligible fronts",
+            "Control staffing and finances behind them"
+          ],
+          "concealment": [
+            "Nominal qualifying ownership"
+          ],
+          "observable_signals": [
+            "Shared managers across bidders",
+            "Payments flow to controlling contractor"
+          ],
+          "licit_alternatives": [
+            "Compliant joint venture or subcontract"
+          ],
+          "disconfirming_evidence": [
+            "Ownership records and actual work allocation"
+          ],
+          "distinctive_detail": "Broadway and Cornerstone allegedly controlled execution behind firms claiming veteran/small-business eligibility.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/government-contractor-and-executives-pay-213m-resolve-fraud-scheme-involving-service"
+          ]
+        },
+        {
+          "name": "Alleged payroll-loan inflation",
+          "vulnerability": "Loans rely on applicant payroll declarations",
+          "actions": [
+            "Overstate payroll or headcount",
+            "Request unsupported forgiveness"
+          ],
+          "concealment": [
+            "Application figures obscure actual spending"
+          ],
+          "observable_signals": [
+            "Payroll totals exceed bank wages",
+            "Duplicate staff across affiliates"
+          ],
+          "licit_alternatives": [
+            "Eligible group allocations documented"
+          ],
+          "disconfirming_evidence": [
+            "Payroll tax filings and loan-use bank reconciliation"
+          ],
+          "distinctive_detail": "The home builders and affiliates allegedly misrepresented PPP eligibility and use of proceeds.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdtx/pr/luxury-home-builders-and-owners-pay-265-million-resolve-loan-fraud-allegations"
+          ]
+        },
+        {
+          "name": "Alleged specifications conflict",
+          "vulnerability": "Grant-funded procurement independence",
+          "actions": [
+            "Draft procurement specifications",
+            "Compete for resulting work"
+          ],
+          "concealment": [
+            "Certify procurement compliance"
+          ],
+          "observable_signals": [
+            "Specification author also appears as bidder"
+          ],
+          "licit_alternatives": [
+            "Participation expressly permitted by applicable rules"
+          ],
+          "disconfirming_evidence": [
+            "Independent drafting history and procurement authorization"
+          ],
+          "distinctive_detail": "Cardno allegedly competed for EPA Brownfields work after preparing specifications that required its exclusion.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/stantec-inc-agrees-pay-4m-resolve-allegations-it-violated-false-claims-act-submitting-false"
+          ]
+        },
+        {
+          "name": "Alleged incomplete work certification",
+          "vulnerability": "Payment depends on completion attestations",
+          "actions": [
+            "Omit required drainage equipment",
+            "Bill as compliant completion"
+          ],
+          "concealment": [
+            "Signed completion certificates"
+          ],
+          "observable_signals": [
+            "Required materials absent from inspections"
+          ],
+          "licit_alternatives": [
+            "Approved scope reduction or change order"
+          ],
+          "disconfirming_evidence": [
+            "Independent site inspection and approved scope"
+          ],
+          "distinctive_detail": "Flood-recovery homes allegedly lacked required crawlspace drainage and sump pumps.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdwv/pr/south-carolina-construction-company-pay-191070-united-states-resolve-false-claims"
+          ]
+        },
+        {
+          "name": "Alleged bid-based overcharging",
+          "vulnerability": "Prime contractor relies on supplier bids",
+          "actions": [
+            "Submit fraudulent bids",
+            "Cause inflated government charges"
+          ],
+          "concealment": [
+            "Apparently ordinary procurement quotations"
+          ],
+          "observable_signals": [
+            "Unsupported quote provenance",
+            "Price outliers without scope changes"
+          ],
+          "licit_alternatives": [
+            "Documented urgency or authorized sole-source premium"
+          ],
+          "disconfirming_evidence": [
+            "Independent quotations and bid provenance"
+          ],
+          "distinctive_detail": "The settlement concerned bids supplied through a military maintenance and operations procurement channel.",
+          "source_urls": [
+            "https://www.justice.gov/archives/opa/pr/government-contractor-agrees-pay-1m-resolve-false-claims-act-allegations-submitting"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Broadway and Cornerstone eligibility settlement",
+          "url": "https://www.justice.gov/opa/pr/government-contractor-and-executives-pay-213m-resolve-fraud-scheme-involving-service",
+          "published_at": "2026-06-09",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement of False Claims Act allegations; not a criminal conviction.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Luxury home builders PPP settlement",
+          "url": "https://www.justice.gov/usao-sdtx/pr/luxury-home-builders-and-owners-pay-265-million-resolve-loan-fraud-allegations",
+          "published_at": "2026-01-20",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations resolved without a determination of liability.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Stantec procurement conflict settlement",
+          "url": "https://www.justice.gov/opa/pr/stantec-inc-agrees-pay-4m-resolve-allegations-it-violated-false-claims-act-submitting-false",
+          "published_at": "2025-07-07",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; allegations only, with no determination of liability.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Thompson completion-certificate settlement",
+          "url": "https://www.justice.gov/usao-sdwv/pr/south-carolina-construction-company-pay-191070-united-states-resolve-false-claims",
+          "published_at": "2025-03-31",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement resolving allegations of false completion certifications.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "SAFE and USA Manufacturing bid settlement",
+          "url": "https://www.justice.gov/archives/opa/pr/government-contractor-agrees-pay-1m-resolve-false-claims-act-allegations-submitting",
+          "published_at": "2025-01-03",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement resolving False Claims Act allegations.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        }
+      ],
+      "limitations": [
+        "Curated reference cases, not an exhaustive selection or the five latest cases worldwide.",
+        "Case facts and legal status reflect the cited announcement; later proceedings may change that status.",
+        "Signals, legitimate alternatives and disconfirming checks are analyst inferences for investigation, not findings about the uploaded dataset.",
+        "This profile primarily uses US enforcement announcements; sector relevance does not imply local legal applicability."
+      ]
+    },
+    {
+      "id": "real_estate",
+      "giro": "Real estate",
+      "aliases": [
+        "realestate",
+        "real-estate",
+        "bienes raíces",
+        "bienes raices",
+        "inmobiliario",
+        "inmobiliaria",
+        "property management",
+        "real estate investment",
+        "desarrollo inmobiliario"
+      ],
+      "normal_operations": [
+        "Title and lien priorities verified",
+        "Rent supported by tenant receipts",
+        "Project accounts reconcile to distributions",
+        "Fees follow investor agreements",
+        "Valuations use independent comparables"
+      ],
+      "mechanisms": [
+        {
+          "name": "Investor-funded returns",
+          "vulnerability": "Investors cannot see cash provenance",
+          "actions": [
+            "Pay earlier investors from new deposits",
+            "Misrepresent project finances"
+          ],
+          "concealment": [
+            "Ordinary renovation and resale activity"
+          ],
+          "observable_signals": [
+            "Distributions depend on new subscriptions"
+          ],
+          "licit_alternatives": [
+            "Disclosed return of capital or bridge finance"
+          ],
+          "disconfirming_evidence": [
+            "Trace distributions to genuine property proceeds"
+          ],
+          "distinctive_detail": "Campbell mixed real property activity with a Ponzi scheme spanning 2018–2025.",
+          "source_urls": [
+            "https://www.justice.gov/usao-edca/pr/fresno-man-sentenced-52-months-prison-operating-9-million-real-estate-ponzi-scheme"
+          ]
+        },
+        {
+          "name": "Affiliate-mediated diversion",
+          "vulnerability": "Manager controls pooled investment funds",
+          "actions": [
+            "Transfer investor money to management entity",
+            "Move funds into personal accounts"
+          ],
+          "concealment": [
+            "Long investment lockup delays scrutiny"
+          ],
+          "observable_signals": [
+            "Affiliate transfers exceed contractual fees"
+          ],
+          "licit_alternatives": [
+            "Contract-authorized fees or distributions"
+          ],
+          "disconfirming_evidence": [
+            "Fee agreement and bank tracing to genuine services"
+          ],
+          "distinctive_detail": "Halcyon funds were diverted through the management company while investors faced a long lockup.",
+          "source_urls": [
+            "https://www.justice.gov/usao-wdwa/pr/former-seattle-area-real-estate-broker-sentenced-prison-fraud-investors-and-irs"
+          ]
+        },
+        {
+          "name": "Duplicate collateral promises",
+          "vulnerability": "Investors rely on unverified lien priority",
+          "actions": [
+            "Pledge the same property repeatedly",
+            "Promise exclusive security"
+          ],
+          "concealment": [
+            "Excuses for delayed mortgage filing"
+          ],
+          "observable_signals": [
+            "Multiple exclusive claims over one property"
+          ],
+          "licit_alternatives": [
+            "Disclosed subordinate liens"
+          ],
+          "disconfirming_evidence": [
+            "Independent title search and recorded lien priorities"
+          ],
+          "distinctive_detail": "Motil repeatedly offered the same property as collateral while presenting investors as sole secured lenders.",
+          "source_urls": [
+            "https://www.justice.gov/usao-ndoh/pr/former-real-estate-podcaster-sentenced-more-5-years-prison-orchestrating-7m-ponzi"
+          ]
+        },
+        {
+          "name": "Artificial acquisition values",
+          "vulnerability": "Lender trusts closing price and equity",
+          "actions": [
+            "Arrange related-party flips",
+            "Submit inflated purchase contracts"
+          ],
+          "concealment": [
+            "Brief bridge funding and duplicate closings"
+          ],
+          "observable_signals": [
+            "Back-to-back price jumps",
+            "Closing funds immediately recycled"
+          ],
+          "licit_alternatives": [
+            "Genuine resale supported by independent value"
+          ],
+          "disconfirming_evidence": [
+            "Escrow ledger and authenticated purchase agreements"
+          ],
+          "distinctive_detail": "One property bought for $42 million was presented through a related $70 million flip.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/four-real-estate-investors-sentenced-multimillion-dollar-loan-scheme"
+          ]
+        },
+        {
+          "name": "Invented rental performance",
+          "vulnerability": "Remote owners depend on manager reports",
+          "actions": [
+            "Create fake leases and tenants",
+            "Pay selected investors from pooled money"
+          ],
+          "concealment": [
+            "False occupancy and repair representations"
+          ],
+          "observable_signals": [
+            "Rent reports lack tenant-origin deposits"
+          ],
+          "licit_alternatives": [
+            "Disclosed rental guarantees or cash pooling"
+          ],
+          "disconfirming_evidence": [
+            "Tenant confirmation and independent occupancy inspection"
+          ],
+          "distinctive_detail": "Oceanpointe used fabricated leases for vacant or unrepaired properties and paid complaining investors selectively.",
+          "source_urls": [
+            "https://www.justice.gov/usao-nj/pr/indiana-real-estate-developer-and-property-manager-sentenced-41-months-prison-multi"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Campbell real estate Ponzi sentence",
+          "url": "https://www.justice.gov/usao-edca/pr/fresno-man-sentenced-52-months-prison-operating-9-million-real-estate-ponzi-scheme",
+          "published_at": "2026-08-24",
+          "event_date": "2026-08-24",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea followed by a 52-month sentence; restitution hearing was still pending at announcement.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "King investor-fund diversion sentence",
+          "url": "https://www.justice.gov/usao-wdwa/pr/former-seattle-area-real-estate-broker-sentenced-prison-fraud-investors-and-irs",
+          "published_at": "2026-05-15",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Jury conviction in December 2025 followed by a 55-month prison sentence.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Motil duplicate-collateral sentence",
+          "url": "https://www.justice.gov/usao-ndoh/pr/former-real-estate-podcaster-sentenced-more-5-years-prison-orchestrating-7m-ponzi",
+          "published_at": "2025-07-18",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea in September 2024 followed by a 70-month sentence.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Real estate loan inflation sentences",
+          "url": "https://www.justice.gov/opa/pr/four-real-estate-investors-sentenced-multimillion-dollar-loan-scheme",
+          "published_at": "2025-04-01",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Four investors sentenced after wire-fraud conspiracy convictions.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Whalen fabricated-lease sentence",
+          "url": "https://www.justice.gov/usao-nj/pr/indiana-real-estate-developer-and-property-manager-sentenced-41-months-prison-multi",
+          "published_at": "2025-02-11",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea followed by a 41-month sentence.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        }
+      ],
+      "limitations": [
+        "Curated reference cases, not an exhaustive selection or the five latest cases worldwide.",
+        "Case facts and legal status reflect the cited announcement; later proceedings may change that status.",
+        "Signals, legitimate alternatives and disconfirming checks are analyst inferences for investigation, not findings about the uploaded dataset.",
+        "This profile primarily uses US enforcement announcements; sector relevance does not imply local legal applicability."
+      ]
+    },
+    {
+      "id": "manufacturing",
+      "giro": "Manufacturing",
+      "aliases": [
+        "manufactura",
+        "manufacturing company",
+        "fabricación",
+        "fabricacion",
+        "industrial manufacturing",
+        "fábrica",
+        "fabrica",
+        "automotive manufacturing",
+        "defense manufacturing"
+      ],
+      "normal_operations": [
+        "Inputs reconcile to production output",
+        "Parts retain manufacturer provenance",
+        "Raw tests support certifications",
+        "Project forecasts reflect current costs",
+        "Supplier bids retain independent provenance"
+      ],
+      "mechanisms": [
+        {
+          "name": "Relabeled unapproved parts",
+          "vulnerability": "Buyer relies on approved part markings",
+          "actions": [
+            "Buy cheaper unapproved components",
+            "Engrave approved part numbers"
+          ],
+          "concealment": [
+            "Third-party laser markings"
+          ],
+          "observable_signals": [
+            "Serial provenance mismatch",
+            "Unexplained unit-cost collapse"
+          ],
+          "licit_alternatives": [
+            "Buyer-approved equivalent components"
+          ],
+          "disconfirming_evidence": [
+            "OEM provenance and independent material testing"
+          ],
+          "distinctive_detail": "Nolan supplied mislabeled components under 148 military contracts.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdoh/pr/military-contractor-sentenced-federal-prison-time-providing-faulty-parts"
+          ]
+        },
+        {
+          "name": "Alleged manufactured competition",
+          "vulnerability": "Prime trusts vendor quote independence",
+          "actions": [
+            "Coordinate inflated shelter quotations",
+            "Route quotations through vendors"
+          ],
+          "concealment": [
+            "Multiple apparent competing suppliers"
+          ],
+          "observable_signals": [
+            "Repeated bid templates",
+            "Quotes trace to one source"
+          ],
+          "licit_alternatives": [
+            "Independent resellers using common OEM pricing"
+          ],
+          "disconfirming_evidence": [
+            "Direct bidder confirmation and original quote records"
+          ],
+          "distinctive_detail": "The allegations involved 26 solicitations for 29 rigid-wall military shelters.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/defense-contractor-berg-co-agrees-pay-33m-resolve-allegations-causing-fraudulent-bids"
+          ]
+        },
+        {
+          "name": "Emissions-test data falsification",
+          "vulnerability": "Certification depends on manufacturer tests",
+          "actions": [
+            "Submit false emissions and fuel data",
+            "Obtain sales certifications"
+          ],
+          "concealment": [
+            "Official-looking testing records"
+          ],
+          "observable_signals": [
+            "Certified results diverge from raw laboratory data"
+          ],
+          "licit_alternatives": [
+            "Approved protocol changes with documented rationale"
+          ],
+          "disconfirming_evidence": [
+            "Independent raw tests and regulator correspondence"
+          ],
+          "distinctive_detail": "The announced Hino resolution concerned more than 110,000 engines and conduct during 2010–2022.",
+          "source_urls": [
+            "https://www.justice.gov/archives/opa/pr/hino-motors-toyota-subsidiary-agrees-plead-guilty-and-pay-over-16b-resolve-emissions-fraud"
+          ]
+        },
+        {
+          "name": "Suppressed cost-to-complete forecasts",
+          "vulnerability": "Contract profit depends on project estimates",
+          "actions": [
+            "Understate estimated completion costs",
+            "Use unsupported adjustment figures"
+          ],
+          "concealment": [
+            "Program-challenge accounting entries"
+          ],
+          "observable_signals": [
+            "Forecast costs decline despite overruns"
+          ],
+          "licit_alternatives": [
+            "Verified efficiency gains or approved scope reduction"
+          ],
+          "disconfirming_evidence": [
+            "Project cost ledger reconciled to independent forecast"
+          ],
+          "distinctive_detail": "Austal used artificial adjustments to hide cost growth and inflate reported profitability.",
+          "source_urls": [
+            "https://www.justice.gov/archives/opa/pr/us-navy-shipbuilder-pleads-guilty-financial-accounting-fraud-scheme-and-obstructing-defense"
+          ]
+        },
+        {
+          "name": "Alleged inflated proposal costs",
+          "vulnerability": "Prime relies on subcontractor pricing data",
+          "actions": [
+            "Overstate cost inputs",
+            "Feed inflated figures into contract negotiation"
+          ],
+          "concealment": [
+            "Certified pricing submission"
+          ],
+          "observable_signals": [
+            "Quoted inputs contradict contemporaneous supplier records"
+          ],
+          "licit_alternatives": [
+            "Documented forecast uncertainty and risk allowances"
+          ],
+          "disconfirming_evidence": [
+            "Original vendor quotations and proposal assumptions"
+          ],
+          "distinctive_detail": "Merrill allegedly supplied overstated pricing data for armored-vehicle manufacturing work.",
+          "source_urls": [
+            "https://www.justice.gov/usao-edmi/pr/federal-subcontractor-agrees-pay-5-million-settle-false-claims-act-allegations"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Nolan counterfeit-part sentence",
+          "url": "https://www.justice.gov/usao-sdoh/pr/military-contractor-sentenced-federal-prison-time-providing-faulty-parts",
+          "published_at": "2026-04-16",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea in October 2025 followed by a 24-month sentence.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Berg coordinated-bid settlement",
+          "url": "https://www.justice.gov/opa/pr/defense-contractor-berg-co-agrees-pay-33m-resolve-allegations-causing-fraudulent-bids",
+          "published_at": "2025-07-14",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement with acknowledged facts; no determination of liability.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Hino emissions plea agreement",
+          "url": "https://www.justice.gov/archives/opa/pr/hino-motors-toyota-subsidiary-agrees-plead-guilty-and-pay-over-16b-resolve-emissions-fraud",
+          "published_at": "2025-01-15",
+          "event_date": "not stated",
+          "jurisdiction": "United States / Japan",
+          "legal_status": "Announced agreement to plead guilty and civil settlements, subject to court approval at that time.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Austal accounting-fraud plea",
+          "url": "https://www.justice.gov/archives/opa/pr/us-navy-shipbuilder-pleads-guilty-financial-accounting-fraud-scheme-and-obstructing-defense",
+          "published_at": "2024-08-27",
+          "event_date": "2024-08-26",
+          "jurisdiction": "United States",
+          "legal_status": "Company pleaded guilty on August 26; plea agreement required court acceptance as announced.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Merrill cost-data settlement",
+          "url": "https://www.justice.gov/usao-edmi/pr/federal-subcontractor-agrees-pay-5-million-settle-false-claims-act-allegations",
+          "published_at": "2024-01-30",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; no determination of liability.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        }
+      ],
+      "limitations": [
+        "Curated reference cases, not an exhaustive selection or the five latest cases worldwide.",
+        "Case facts and legal status reflect the cited announcement; later proceedings may change that status.",
+        "Signals, legitimate alternatives and disconfirming checks are analyst inferences for investigation, not findings about the uploaded dataset.",
+        "This profile primarily uses US enforcement announcements; sector relevance does not imply local legal applicability."
+      ]
+    },
+    {
+      "id": "transportation_logistics",
+      "giro": "Transportation and logistics",
+      "aliases": [
+        "transportation",
+        "logistics",
+        "transporte",
+        "logística",
+        "logistica",
+        "freight",
+        "shipping",
+        "trucking",
+        "customs brokerage",
+        "aduanas",
+        "freight forwarding",
+        "transporte y logística"
+      ],
+      "normal_operations": [
+        "Freight invoices match dispatch and delivery",
+        "Rate overrides require current authorization",
+        "Customs duties match official remittances",
+        "Carrier identity and bank owner align",
+        "Port charges retain original receipts"
+      ],
+      "mechanisms": [
+        {
+          "name": "Phantom hauls with kickbacks",
+          "vulnerability": "Employee creates payable freight jobs",
+          "actions": [
+            "Invent hauls for a carrier",
+            "Return a share to the employee"
+          ],
+          "concealment": [
+            "Ordinary carrier invoices"
+          ],
+          "observable_signals": [
+            "No dispatch or proof of delivery",
+            "Supplier returns money to employee"
+          ],
+          "licit_alternatives": [
+            "Contractual cancellation fees with supporting records"
+          ],
+          "disconfirming_evidence": [
+            "Port gate logs and independent delivery confirmation"
+          ],
+          "distinctive_detail": "The employee-carrier scheme operated from July 2021 to August 2024.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdga/pr/two-men-sentenced-prison-scheme-defraud-savannah-port-logistics-service"
+          ]
+        },
+        {
+          "name": "Unauthorized freight-rate inflation",
+          "vulnerability": "Pricing system access outlives employment",
+          "actions": [
+            "Alter carrier rates",
+            "Direct excess payments to associated carrier"
+          ],
+          "concealment": [
+            "Legitimate transport conceals excessive prices"
+          ],
+          "observable_signals": [
+            "Former employee changes rates",
+            "Concentrated unauthorized overrides"
+          ],
+          "licit_alternatives": [
+            "Approved fuel or emergency surcharges"
+          ],
+          "disconfirming_evidence": [
+            "Access logs and authorized rate-card comparison"
+          ],
+          "distinctive_detail": "The scheme inflated Blue Line Transport rates inside Amazon logistics systems.",
+          "source_urls": [
+            "https://www.justice.gov/usao-az/pr/ex-amazon-employee-and-associates-sentenced-multi-million-dollar-fraud-scheme"
+          ]
+        },
+        {
+          "name": "Duty overbilling and nonremittance",
+          "vulnerability": "Client relies on broker-provided customs records",
+          "actions": [
+            "Inflate duty invoices",
+            "Keep funds intended for customs"
+          ],
+          "concealment": [
+            "Altered statements and supporting documents"
+          ],
+          "observable_signals": [
+            "Client charge exceeds official assessment",
+            "No matching customs remittance"
+          ],
+          "licit_alternatives": [
+            "Separately disclosed brokerage fees"
+          ],
+          "disconfirming_evidence": [
+            "Direct customs payment receipt and bank confirmation"
+          ],
+          "distinctive_detail": "The broker overbilled Daiso and diverted other clients’ intended customs payments.",
+          "source_urls": [
+            "https://www.justice.gov/usao-cdca/pr/customs-broker-sentenced-more-4-years-federal-prison-defrauding-clients-out-millions"
+          ]
+        },
+        {
+          "name": "Alleged fabricated port expenses",
+          "vulnerability": "Buyer reimburses overseas fueling extras",
+          "actions": [
+            "Add phony expenses",
+            "Submit altered invoices"
+          ],
+          "concealment": [
+            "False supplier identity and division"
+          ],
+          "observable_signals": [
+            "Port fees lack independent receipts"
+          ],
+          "licit_alternatives": [
+            "Genuine handling fees documented by port"
+          ],
+          "disconfirming_evidence": [
+            "Port confirmation and original fueling records"
+          ],
+          "distinctive_detail": "The indictment describes Navy SEA Card fueling charges at foreign ports.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/florida-fuel-supplier-charged-multimillion-dollar-scheme-defraud-us-department-defense-other"
+          ]
+        },
+        {
+          "name": "Alleged false cross-border declarations",
+          "vulnerability": "Separate customs systems obscure reconciliation",
+          "actions": [
+            "Submit false export declarations",
+            "Use shell import customers"
+          ],
+          "concealment": [
+            "False Mexican tax-payment certificates"
+          ],
+          "observable_signals": [
+            "Declared goods conflict across borders",
+            "Tax certificates lack remittance"
+          ],
+          "licit_alternatives": [
+            "Documented freight consolidation for actual importers"
+          ],
+          "disconfirming_evidence": [
+            "Match both customs entries and ultimate importer records"
+          ],
+          "distinctive_detail": "The Sport LA allegations combine customs evasion, shell customers and payments linked to corruption.",
+          "source_urls": [
+            "https://www.justice.gov/usao-cdca/pr/freight-forwarding-company-executive-arrested-federal-indictment-alleging-massive"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Savannah phantom-freight sentences",
+          "url": "https://www.justice.gov/usao-sdga/pr/two-men-sentenced-prison-scheme-defraud-savannah-port-logistics-service",
+          "published_at": "2026-04-03",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Both defendants pleaded guilty to wire fraud and received prison sentences.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Alwan carrier-rate manipulation sentences",
+          "url": "https://www.justice.gov/usao-az/pr/ex-amazon-employee-and-associates-sentenced-multi-million-dollar-fraud-scheme",
+          "published_at": "2026-03-04",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Defendants pleaded guilty to wire fraud and were sentenced in February–March 2026.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Noah customs-duty diversion sentence",
+          "url": "https://www.justice.gov/usao-cdca/pr/customs-broker-sentenced-more-4-years-federal-prison-defrauding-clients-out-millions",
+          "published_at": "2025-12-18",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea in February 2025 followed by a 51-month sentence.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Independent Marine Oil invoice indictment",
+          "url": "https://www.justice.gov/opa/pr/florida-fuel-supplier-charged-multimillion-dollar-scheme-defraud-us-department-defense-other",
+          "published_at": "2025-06-11",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Indictment allegations only; innocence presumed unless proved in court.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Sport LA customs-fraud indictment",
+          "url": "https://www.justice.gov/usao-cdca/pr/freight-forwarding-company-executive-arrested-federal-indictment-alleging-massive",
+          "published_at": "2025-05-28",
+          "event_date": "not stated",
+          "jurisdiction": "United States / Mexico",
+          "legal_status": "Indictment allegations only; the announcement does not establish guilt.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        }
+      ],
+      "limitations": [
+        "Curated reference cases, not an exhaustive selection or the five latest cases worldwide.",
+        "Case facts and legal status reflect the cited announcement; later proceedings may change that status.",
+        "Signals, legitimate alternatives and disconfirming checks are analyst inferences for investigation, not findings about the uploaded dataset.",
+        "This profile primarily uses US enforcement announcements; sector relevance does not imply local legal applicability."
+      ]
+    },
+    {
+      "id": "energy",
+      "giro": "Energy",
+      "aliases": [
+        "energía",
+        "energia",
+        "oil and gas",
+        "petróleo",
+        "petroleo",
+        "combustibles",
+        "fuel",
+        "biofuel",
+        "commodities trading",
+        "energy trading",
+        "energético",
+        "energetico"
+      ],
+      "normal_operations": [
+        "Fuel volumes reconcile to meters and shipments",
+        "Credits match actual qualifying production",
+        "Broker fees have identifiable deliverables",
+        "Counterparties and beneficiaries are disclosed",
+        "Port expenses match original receipts"
+      ],
+      "mechanisms": [
+        {
+          "name": "Commissions buying confidential bids",
+          "vulnerability": "Intermediaries can reach procurement insiders",
+          "actions": [
+            "Pay insiders through agent fees",
+            "Use confidential competitor pricing"
+          ],
+          "concealment": [
+            "Coded communications and commissions"
+          ],
+          "observable_signals": [
+            "Fees lack deliverables",
+            "Bids align with confidential limits"
+          ],
+          "licit_alternatives": [
+            "Documented advisory or brokerage services"
+          ],
+          "disconfirming_evidence": [
+            "Agent work product and beneficial-owner review"
+          ],
+          "distinctive_detail": "Oztemel obtained Petrobras trading information through disguised intermediary payments.",
+          "source_urls": [
+            "https://www.justice.gov/usao-ct/pr/connecticut-based-oil-trader-sentenced-15-months-prison-international-bribery-and-money"
+          ]
+        },
+        {
+          "name": "Alleged bunker-fuel expense padding",
+          "vulnerability": "Fuel procurement bundles product and port costs",
+          "actions": [
+            "Invoice fictitious add-on expenses",
+            "Alter expense support"
+          ],
+          "concealment": [
+            "False identity and purported business division"
+          ],
+          "observable_signals": [
+            "Delivered volume does not justify extras"
+          ],
+          "licit_alternatives": [
+            "Verified port services and handling charges"
+          ],
+          "disconfirming_evidence": [
+            "Metered delivery reconciled to independent port invoices"
+          ],
+          "distinctive_detail": "The alleged scheme used overseas Navy fueling transactions during 2022–2024.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/florida-fuel-supplier-charged-multimillion-dollar-scheme-defraud-us-department-defense-other"
+          ]
+        },
+        {
+          "name": "Production-volume credit inflation",
+          "vulnerability": "Credits rely on producer volume claims",
+          "actions": [
+            "Overstate biodiesel production",
+            "Claim excess fuel and tax credits"
+          ],
+          "concealment": [
+            "False production and customer records"
+          ],
+          "observable_signals": [
+            "Credited gallons exceed feedstock mass balance"
+          ],
+          "licit_alternatives": [
+            "Documented inventory timing or yield differences"
+          ],
+          "disconfirming_evidence": [
+            "Independent meters, shipments and credit registry"
+          ],
+          "distinctive_detail": "Gillham misrepresented biodiesel production to obtain renewable-fuel and tax benefits.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/florida-man-sentenced-biofuel-fraud-conspiracy"
+          ]
+        },
+        {
+          "name": "Per-barrel concealed bribes",
+          "vulnerability": "Trading margins can absorb intermediary payments",
+          "actions": [
+            "Pay officials for contracts",
+            "Tie payments to traded volume"
+          ],
+          "concealment": [
+            "Offshore intermediaries and cash"
+          ],
+          "observable_signals": [
+            "Volume-linked fees without demonstrable services"
+          ],
+          "licit_alternatives": [
+            "Transparent contracted brokerage"
+          ],
+          "disconfirming_evidence": [
+            "Service deliverables and actual payment beneficiary"
+          ],
+          "distinctive_detail": "Petrobras bribes included payments of up to twenty cents per barrel from 2009.",
+          "source_urls": [
+            "https://www.justice.gov/usao-sdfl/pr/swiss-commodities-trading-company-pleads-guilty-foreign-bribery-scheme"
+          ]
+        },
+        {
+          "name": "State-front procurement bypass",
+          "vulnerability": "State-to-state arrangements bypass bidding",
+          "actions": [
+            "Use state-owned fronts for oil-backed financing",
+            "Pay officials through intermediaries"
+          ],
+          "concealment": [
+            "Shell accounts obscure private beneficiaries"
+          ],
+          "observable_signals": [
+            "State contract benefits undisclosed private trader"
+          ],
+          "licit_alternatives": [
+            "Transparent state financing and legitimate agency"
+          ],
+          "disconfirming_evidence": [
+            "Ultimate beneficiary and tender-exception verification"
+          ],
+          "distinctive_detail": "Gunvor used intermediary bribery around Petroecuador oil contracts during 2012–2020.",
+          "source_urls": [
+            "https://www.justice.gov/usao-edny/pr/gunvor-sa-pleads-guilty-scheme-bribe-ecuadorian-officials-and-ordered-pay-over-600"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Oztemel oil-trading bribery sentence",
+          "url": "https://www.justice.gov/usao-ct/pr/connecticut-based-oil-trader-sentenced-15-months-prison-international-bribery-and-money",
+          "published_at": "2025-12-09",
+          "event_date": "not stated",
+          "jurisdiction": "United States / Brazil",
+          "legal_status": "Individual convicted in September 2024 and sentenced to 15 months in December 2025.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Independent Marine Oil fuel-charge indictment",
+          "url": "https://www.justice.gov/opa/pr/florida-fuel-supplier-charged-multimillion-dollar-scheme-defraud-us-department-defense-other",
+          "published_at": "2025-06-11",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Indictment allegations only; no conviction asserted by the source.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Gillham biofuel-credit sentence",
+          "url": "https://www.justice.gov/opa/pr/florida-man-sentenced-biofuel-fraud-conspiracy",
+          "published_at": "2025-03-13",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Guilty plea followed by a 37-month prison sentence.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Trafigura Brazil bribery plea",
+          "url": "https://www.justice.gov/usao-sdfl/pr/swiss-commodities-trading-company-pleads-guilty-foreign-bribery-scheme",
+          "published_at": "2024-03-28",
+          "event_date": "not stated",
+          "jurisdiction": "United States / Brazil / Switzerland",
+          "legal_status": "Company pleaded guilty to a conspiracy to violate US anti-bribery law.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Gunvor Ecuador bribery plea and sentence",
+          "url": "https://www.justice.gov/usao-edny/pr/gunvor-sa-pleads-guilty-scheme-bribe-ecuadorian-officials-and-ordered-pay-over-600",
+          "published_at": "2024-03-01",
+          "event_date": "not stated",
+          "jurisdiction": "United States / Ecuador / Switzerland",
+          "legal_status": "Company pleaded guilty and was sentenced for an anti-bribery conspiracy.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        }
+      ],
+      "limitations": [
+        "Curated reference cases, not an exhaustive selection or the five latest cases worldwide.",
+        "Case facts and legal status reflect the cited announcement; later proceedings may change that status.",
+        "Signals, legitimate alternatives and disconfirming checks are analyst inferences for investigation, not findings about the uploaded dataset.",
+        "This profile primarily uses US enforcement announcements; sector relevance does not imply local legal applicability."
+      ]
+    },
+    {
+      "id": "professional_services",
+      "giro": "Professional services",
+      "aliases": [
+        "servicios profesionales",
+        "consulting",
+        "consultoría",
+        "consultoria",
+        "government contracting",
+        "staffing",
+        "asesoría",
+        "asesoria",
+        "engineering services",
+        "consultoría empresarial"
+      ],
+      "normal_operations": [
+        "Billed labor matches staff qualifications",
+        "Contract categories match approved rates",
+        "Procurement advice stays independent",
+        "Reimbursed expenses retain original proof",
+        "Eligibility reflects actual company control"
+      ],
+      "mechanisms": [
+        {
+          "name": "Alleged advisory-to-award conflict",
+          "vulnerability": "Consultant influences future procurement",
+          "actions": [
+            "Prepare specifications",
+            "Bid for the funded work"
+          ],
+          "concealment": [
+            "Compliance certification"
+          ],
+          "observable_signals": [
+            "Same consultant drafts and wins tender"
+          ],
+          "licit_alternatives": [
+            "Participation authorized under applicable rules"
+          ],
+          "disconfirming_evidence": [
+            "Independent tender authorship and conflict review"
+          ],
+          "distinctive_detail": "Cardno allegedly crossed a procurement exclusion while advising EPA Brownfields grantees.",
+          "source_urls": [
+            "https://www.justice.gov/opa/pr/stantec-inc-agrees-pay-4m-resolve-allegations-it-violated-false-claims-act-submitting-false"
+          ]
+        },
+        {
+          "name": "Alleged labor-grade overbilling",
+          "vulnerability": "Higher rates depend on qualifications",
+          "actions": [
+            "Bill staff in higher categories"
+          ],
+          "concealment": [
+            "Routine timesheets hide credential mismatch"
+          ],
+          "observable_signals": [
+            "Education or experience below billed category"
+          ],
+          "licit_alternatives": [
+            "Approved equivalence or written waiver"
+          ],
+          "disconfirming_evidence": [
+            "Verified credentials and contract category requirements"
+          ],
+          "distinctive_detail": "Eleven Mercer staff were allegedly billed above their qualifications during 2020–2023.",
+          "source_urls": [
+            "https://www.justice.gov/usao-ct/pr/consulting-company-pays-more-450k-settle-overbilling-allegations"
+          ]
+        },
+        {
+          "name": "Alleged unsupported cost pass-through",
+          "vulnerability": "Government reimburses subcontracted support",
+          "actions": [
+            "Pass through inflated lodging and staffing costs"
+          ],
+          "concealment": [
+            "Subcontract invoices treated as substantiation"
+          ],
+          "observable_signals": [
+            "Rates or headcounts lack underlying records"
+          ],
+          "licit_alternatives": [
+            "Documented security premiums and actual deployment"
+          ],
+          "disconfirming_evidence": [
+            "Hotel rosters, attendance and original cost support"
+          ],
+          "distinctive_detail": "The allegations concerned support costs for a police-training contract in Iraq.",
+          "source_urls": [
+            "https://www.justice.gov/usao-dc/pr/dyncorp-agrees-pay-21-million-resolve-false-claims-act-lawsuit-alleging-inflated-costs"
+          ]
+        },
+        {
+          "name": "Alleged leaked-budget bid shaping",
+          "vulnerability": "Confidential bid information reaches contractor",
+          "actions": [
+            "Use leaked budgets and competitor bids",
+            "Shape task-order pricing"
+          ],
+          "concealment": [
+            "Ordinary training procurement process"
+          ],
+          "observable_signals": [
+            "Quotes track nonpublic budget figures"
+          ],
+          "licit_alternatives": [
+            "Use of genuinely public budget information"
+          ],
+          "disconfirming_evidence": [
+            "Communication audit and independent price preparation"
+          ],
+          "distinctive_detail": "BES managers allegedly used procurement information for training work and 37 sole-source modules.",
+          "source_urls": [
+            "https://www.justice.gov/archives/opa/pr/booz-allen-agrees-pay-15875m-settle-false-claims-act-allegations"
+          ]
+        },
+        {
+          "name": "Alleged size and ownership misrepresentation",
+          "vulnerability": "Set-aside awards depend on affiliation and control",
+          "actions": [
+            "Claim qualifying ownership and small size"
+          ],
+          "concealment": [
+            "Eligibility declarations"
+          ],
+          "observable_signals": [
+            "Affiliation or management contradicts declared independence"
+          ],
+          "licit_alternatives": [
+            "Eligible independently controlled affiliate"
+          ],
+          "disconfirming_evidence": [
+            "Ownership, control and aggregate-size records"
+          ],
+          "distinctive_detail": "The allegations concerned a defense physician-staffing task order reserved for qualifying businesses.",
+          "source_urls": [
+            "https://www.justice.gov/usao-edva/pr/government-contractors-agree-pay-39-million-resolve-claims-misrepresenting-women-owned"
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "title": "Stantec conflicted-advisory settlement",
+          "url": "https://www.justice.gov/opa/pr/stantec-inc-agrees-pay-4m-resolve-allegations-it-violated-false-claims-act-submitting-false",
+          "published_at": "2025-07-07",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; no determination of liability.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Mercer labor-category settlement",
+          "url": "https://www.justice.gov/usao-ct/pr/consulting-company-pays-more-450k-settle-overbilling-allegations",
+          "published_at": "2025-07-07",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement under the Contract Disputes Act and common law; company self-disclosed.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "DynCorp subcontract-cost settlement",
+          "url": "https://www.justice.gov/usao-dc/pr/dyncorp-agrees-pay-21-million-resolve-false-claims-act-lawsuit-alleging-inflated-costs",
+          "published_at": "2025-04-09",
+          "event_date": "not stated",
+          "jurisdiction": "United States / Iraq",
+          "legal_status": "Civil settlement resolving allegations; no determination of liability.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "Booz Allen procurement-information settlement",
+          "url": "https://www.justice.gov/archives/opa/pr/booz-allen-agrees-pay-15875m-settle-false-claims-act-allegations",
+          "published_at": "2025-01-03",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement resolving False Claims Act allegations.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        },
+        {
+          "title": "QuarterLine and PSI eligibility settlement",
+          "url": "https://www.justice.gov/usao-edva/pr/government-contractors-agree-pay-39-million-resolve-claims-misrepresenting-women-owned",
+          "published_at": "2024-01-30",
+          "event_date": "not stated",
+          "jurisdiction": "United States",
+          "legal_status": "Civil settlement; no admission of liability.",
+          "verification": "opened_primary_source",
+          "checked_at": "2026-09-13T11:26:58.470896+00:00"
+        }
+      ],
+      "limitations": [
+        "Curated reference cases, not an exhaustive selection or the five latest cases worldwide.",
+        "Case facts and legal status reflect the cited announcement; later proceedings may change that status.",
+        "Signals, legitimate alternatives and disconfirming checks are analyst inferences for investigation, not findings about the uploaded dataset.",
+        "This profile primarily uses US enforcement announcements; sector relevance does not imply local legal applicability."
+      ]
+    }
+  ]
+}

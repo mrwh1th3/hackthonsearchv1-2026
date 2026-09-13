@@ -62,7 +62,7 @@ export function ChartPanel<T extends object>({
                 onClick={() => setVista("grafica")}
                 className={cn("h-8 px-2.5 text-xs", vista === "grafica" ? "bg-primary text-white" : "bg-surface text-text hover:bg-surface-hover")}
               >
-                Gráfica
+                Chart
               </button>
               <button
                 type="button"
@@ -91,7 +91,7 @@ export function ChartPanel<T extends object>({
 
       {vista === "grafica" && children ? children : <DataTable columns={columns} rows={rows} getRowKey={getRowKey} emptyMessage={emptyMessage} />}
 
-      {ultimaActualizacion && <p className="mt-2 text-right text-[11px] text-text-subtle">Última actualización: {ultimaActualizacion}</p>}
+      {ultimaActualizacion && <p className="mt-2 text-right text-[11px] text-text-subtle">Last updated: {ultimaActualizacion}</p>}
     </section>
   );
 }

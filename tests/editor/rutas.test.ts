@@ -161,7 +161,7 @@ describe("BFF de reportes (editor)", () => {
     expect(validateContract("editor.reporte", aplicado.reporte).errors).toEqual([]);
     // El editor nunca marca una versión como validada.
     expect(aplicado.reporte.estado_revision).toBe("borrador");
-    expect(aplicado.reporte.markdown).toContain("Redacción revisada");
+    expect(aplicado.reporte.markdown).toContain("Wording revised");
   });
 
   it("doble Aplicar (mismo idempotency_key) devuelve la misma versión, no dos", async () => {
@@ -256,7 +256,7 @@ describe("BFF de reportes (editor)", () => {
     // El contenido revertido es idéntico al de la versión 1 (Markdown derivado del mismo JSON).
     expect(revertido.reporte.markdown).toBe(aMarkdown(desdeMarkdown(redactorFixture.markdown)));
     expect(revertido.reporte.markdown).toContain("## 1. Resumen");
-    expect(revertido.reporte.markdown).not.toContain("Redacción revisada");
+    expect(revertido.reporte.markdown).not.toContain("Wording revised");
   });
 
   it("el autoguardado NO crea versión y detecta el conflicto de version_base", async () => {
@@ -348,7 +348,7 @@ describe("BFF de reportes (editor)", () => {
     expect(aplicado.version).toBe(2);
     // La edición manual sobrevive a Aplicar y la propuesta se aplicó sobre ella.
     expect(aplicado.reporte.markdown).toContain("Nota manual del auditor");
-    expect(aplicado.reporte.markdown).toContain("Redacción revisada");
+    expect(aplicado.reporte.markdown).toContain("Wording revised");
   });
 
   it("exportar MD y JSON conserva exactamente las citas del documento", async () => {

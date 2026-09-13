@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   const ruta = rutaEstructura(corrida.dataset_hash);
   if (!ruta) {
     return NextResponse.json(
-      { error: "sin_reporte", detalle: "Esta corrida no tiene reporte de estructura (no se cargó por la ingesta multi-formato)." },
+      { error: "sin_reporte", detalle: "This dataset has no saved structure report." },
       { status: 404 },
     );
   }

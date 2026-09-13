@@ -37,8 +37,8 @@ export function DescargasExpediente({
     if (!resultado.ok) {
       toast.error(
         resultado.error.error === "backend_no_configurado"
-          ? "Sin backend configurado: no se genera la exportación."
-          : `No se pudo exportar (${resultado.error.error}).`,
+          ? "Export is unavailable because the backend is not configured."
+          : `Could not export (${resultado.error.error}).`,
       );
       return;
     }
@@ -66,7 +66,7 @@ export function DescargasExpediente({
           aria-label="Descargar reporte"
         >
           {estado === "generando" ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Download size={14} aria-hidden />}
-          Descargar
+          Download
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -85,7 +85,7 @@ export function DescargasExpediente({
             onSelect={() => void descargar("json")}
             className="cursor-pointer rounded-md px-2 py-1.5 text-text outline-none hover:bg-surface-hover focus:bg-surface-hover"
           >
-            JSON del reporte
+            Report JSON
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           <DropdownMenu.Item
@@ -95,7 +95,7 @@ export function DescargasExpediente({
             PDF (imprimir hoja A4)
           </DropdownMenu.Item>
           <p className="px-2 py-1 text-[11px] leading-tight text-text-subtle">
-            Cada archivo lleva versión, fecha, hash y las citas sin evidencia.
+            Each file includes its version, date, hash and unresolved citations.
           </p>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

@@ -56,7 +56,7 @@ describe("documento canónico contra contracts v1.2.0", () => {
             { type: "text", text: "marcado", marks: [{ type: "highlight" }, { type: "bold" }, { type: "link", attrs: { href: "javascript:alert(1)" } }] },
           ],
         },
-        { type: "heading", attrs: { level: 99 }, content: [{ type: "text", text: "Título" }] },
+        { type: "heading", attrs: { level: 99 }, content: [{ type: "text", text: "Title" }] },
       ],
     };
 
@@ -125,6 +125,18 @@ describe("documento canónico contra contracts v1.2.0", () => {
     const ausentes = entradas.filter((e) => e.estado === "ausente").map((e) => e.clave);
     expect(ausentes).toEqual(["trayectoria", "cadena"]);
     // 21 §4: ninguna se inventa; se declara el motivo.
-    expect(entradas.find((e) => e.clave === "cadena")?.motivoAusencia).toContain("Redactor");
+    expect(entradas.find((e) => e.clave === "cadena")?.motivoAusencia).toContain("not included");
   });
+});
+
+
+it("recognizes English report headings and retains protected sections", () => {
+  const document = normalizarDocumento({type: "doc", content: [
+    {type: "heading", attrs: {level: 2}, content: [{type: "text", text: "Alternative explanations"}]},
+    {type: "paragraph", content: [{type: "text", text: "Supported by the contract."}]},
+    {type: "heading", attrs: {level: 2}, content: [{type: "text", text: "Evidence chain"}]},
+    {type: "paragraph", content: [{type: "text", text: "Invoice linked to bank record."}]},
+  ]});
+  const entries = construirIndice(document);
+  for (const key of ["defensor", "cadena"]) expect(entries.find((entry) => entry.clave === key)).toMatchObject({estado: "presente", protegida: true});
 });

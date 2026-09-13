@@ -7,7 +7,7 @@ import type { EntradaIndice } from "@/lib/document/secciones";
 import { cn } from "@/lib/utils";
 
 /**
- * Índice plegable del expediente (15 §10). Diez entradas: las ocho secciones
+ * Contents plegable del expediente (15 §10). Diez entradas: las ocho secciones
  * fijas del Redactor más Trayectoria y Cadena de explicación (21 §4).
  *
  * Una sección que el documento no trae se muestra **ausente** y deshabilitada,
@@ -26,7 +26,7 @@ export function IndiceSecciones({
   const [abierto, setAbierto] = useState(true);
 
   return (
-    <nav aria-label="Índice del reporte" className="flex flex-col gap-1 text-sm print:hidden">
+    <nav aria-label="Report contents" className="flex flex-col gap-1 text-sm print:hidden">
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
@@ -34,7 +34,7 @@ export function IndiceSecciones({
         className="flex items-center gap-1 rounded-[var(--radius-input)] px-1 py-1 text-xs font-medium text-text-muted hover:bg-surface-hover"
       >
         {abierto ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
-        Índice
+        Contents
       </button>
 
       {abierto && (
@@ -60,7 +60,7 @@ export function IndiceSecciones({
                 >
                   {entrada.titulo}
                   {entrada.protegida && !ausente && (
-                    <span className="ml-1 text-[10px] text-text-subtle" title="Sección que no puede eliminarse (08, 21 §4)">
+                    <span className="ml-1 text-[10px] text-text-subtle" title="Required report section">
                       ·fija
                     </span>
                   )}

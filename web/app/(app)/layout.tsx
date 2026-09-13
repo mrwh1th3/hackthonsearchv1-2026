@@ -2,6 +2,7 @@ import { AppShell } from "@/components/shared/app-shell";
 import { FalloDatos } from "@/components/shared/fallo-datos";
 import { fuentePrivadaActual, obtenerHistorialPrivado, obtenerNotificacionesPrivadas, obtenerPerfilPrivado } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
+import { listLabs } from "@/lib/laboratorio/server";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return <FalloDatos error={e instanceof Error ? e : new Error(String(e))} alcance="app" />;
   }
   const noLeidas = notificaciones.filter((n) => !n.leida_at).length;
+  const labRuns = await listLabs(session.perfil_id);
 
   return (
     <AppShell
@@ -56,6 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       perfilOrganizacion={perfil.organizacion}
       notificacionesNoLeidas={noLeidas}
       investigaciones={investigaciones}
+      labRuns={labRuns}
       perfil={perfil}
       perfilEsFixture={fuentePrivadaActual() === "fixture"}
     >

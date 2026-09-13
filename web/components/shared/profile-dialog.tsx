@@ -28,18 +28,18 @@ export function ProfileDialog({
   return (
     <Dialog.Root open={abierto} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/20" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-[rgba(32,40,30,.22)] backdrop-blur-[5px]" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(92vw,560px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-[var(--radius-composer)] border border-border bg-surface p-5 shadow-xl focus:outline-none"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(92vw,560px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-5 overflow-y-auto rounded-[20px] border border-border/70 bg-surface p-6 shadow-[0_24px_80px_rgba(28,36,25,.16)] focus:outline-none"
           aria-describedby={undefined}
         >
-          <div className="flex items-center justify-between gap-3">
-            <Dialog.Title className="text-lg font-semibold text-text">Perfil</Dialog.Title>
+          <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-4">
+            <Dialog.Title className="font-display text-[22px] font-medium tracking-[-.035em] text-text">Profile</Dialog.Title>
             <div className="flex items-center gap-2">
               {esFixture && <FixtureBadge />}
               <Dialog.Close
-                className="rounded-[var(--radius-input)] border border-border p-1 text-text-muted hover:bg-surface-hover"
-                aria-label="Cerrar"
+                className="insp-focus-ring flex h-8 w-8 items-center justify-center rounded-full text-text-subtle transition-colors hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]"
+                aria-label="Close"
               >
                 <X size={14} aria-hidden />
               </Dialog.Close>

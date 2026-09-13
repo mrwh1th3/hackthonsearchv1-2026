@@ -30,7 +30,7 @@ export function DataTable<T extends object>({
   rows,
   getRowKey,
   caption,
-  emptyMessage = "Sin datos para este filtro.",
+  emptyMessage = "No data matches this filter.",
   className,
   onRowClick,
 }: DataTableProps<T>) {

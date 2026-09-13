@@ -25,7 +25,11 @@
   --border-dashed: #ddd9d1;
   --primary: #141413;
   --primary-hover: #2e2d2a;
-  --focus: #2563eb;
+  --brand: #6c805f;
+  --brand-soft: #edf2e8;
+  --brand-strong: #465a3b;
+  --brand-selection: #d7e6ca;
+  --focus: #718365;
   --ok: #15803d;
   --warn: #a16207;
   --error: #b91c1c;
@@ -72,6 +76,9 @@
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-focus: var(--focus);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-strong: var(--brand-strong);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-error: var(--error);
@@ -111,6 +118,49 @@ body {
   font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
   line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--brand-selection); color: #24301f; }
+
+:where(input, textarea, select) { accent-color: var(--brand); caret-color: var(--brand-strong); }
+:where(button, input, textarea, select) { font-family: inherit; }
+
+.inspector-wordmark { display: inline-flex; align-items: center; gap: .35em; font-family: var(--font-display); font-size: 25px; font-weight: 500; line-height: 1; letter-spacing: -.8px; white-space: nowrap; color: var(--text); }
+.inspector-wordmark .inspector-wordmark-star { height: 1.15em; width: 1.15em; flex: none; }
+
+:where(button, a, input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+:where(button, a, summary) { -webkit-tap-highlight-color: transparent; }
+:where(button:not(:disabled), summary) { cursor: pointer; }
+:where(button:disabled) { cursor: not-allowed; }
+
+.insp-home {
+  background: radial-gradient(ellipse at 50% 15%, var(--surface-muted), transparent 62%);
+}
+
+.insp-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: .13em;
+  color: var(--text-subtle);
+}
+
+.insp-surface {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card-lg);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgb(20 20 19 / 2%);
+}
+
+.insp-scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+
+@media (max-width: 639px) {
+  :where(button, [role="tab"]) { min-height: 40px; }
 }
 
 input::placeholder,

@@ -16,12 +16,12 @@ const NIVEL_ESTILO: Record<Nivel, string> = {
   presuncion_alta: "bg-red-100 text-red-800 border-red-300",
 };
 
-const NIVEL_LABEL: Record<Nivel, string> = {
+export const NIVEL_LABEL: Record<Nivel, string> = {
   sin_hallazgos: "Sin hallazgos",
-  anomalia_explicada: "Anomalía explicada",
-  no_concluyente: "No concluyente",
-  presuncion: "Presunción",
-  presuncion_alta: "Presunción alta",
+  anomalia_explicada: "Explained anomaly",
+  no_concluyente: "Inconclusive",
+  presuncion: "Suspected",
+  presuncion_alta: "Strongly suspected",
 };
 
 export function NivelBadge({ nivel, motivo, className }: { nivel: Nivel | null; motivo?: string; className?: string }) {
@@ -30,7 +30,7 @@ export function NivelBadge({ nivel, motivo, className }: { nivel: Nivel | null; 
     // dictaminado). Nunca se muestra un nivel inventado mientras tanto.
     return (
       <span className={cn("inline-flex items-center rounded-full border border-dashed border-border px-2 py-0.5 text-xs font-medium text-text-subtle", className)}>
-        En curso
+        Running
       </span>
     );
   }
@@ -82,10 +82,10 @@ const ESTADO_ESTILO: Record<string, string> = {
 };
 
 const ESTADO_LABEL: Record<string, string> = {
-  en_cola: "En cola",
+  en_cola: "Queued",
   ronda_1: "Ronda 1",
   ronda_2: "Ronda 2",
-  auditoria: "Auditoría",
+  auditoria: "Audit",
   dictaminado: "Dictaminado",
   reintento: "Reintento",
   error: "Error",
@@ -129,8 +129,8 @@ const INYECCION_ESTADO_LABEL: Record<string, string> = {
   validada: "Validada",
   snapshot_creado: "Snapshot creado",
   pistas_recalculadas: "Pistas recalculadas",
-  investigando: "Investigando",
-  completada: "Completada",
+  investigando: "Investigating",
+  completada: "Completed",
   rechazada: "Rechazada",
   error: "Error",
 };

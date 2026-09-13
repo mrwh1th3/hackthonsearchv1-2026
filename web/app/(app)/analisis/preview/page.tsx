@@ -4,7 +4,7 @@ import type { Caso, EventoForense, Senal, Tarea } from "@/lib/data";
 import { cn } from "@/lib/utils";
 import { AnalisisCanvas, type EstadoAnalisis } from "../[casoId]/analisis-canvas";
 
-export const metadata = { title: "Forense · Preview de análisis" };
+export const metadata = { title: "Inspector · Analysis preview" };
 
 /**
  * Preview SOLO de desarrollo del canvas "Análisis en proceso" para iterar la
@@ -33,7 +33,7 @@ export default async function AnalisisPreviewPage({ searchParams }: { searchPara
           </Link>
         ))}
       </nav>
-      <AnalisisCanvas casoId={CASO_ID} etiqueta="Preview · datos de ejemplo" enVivo={false} inicial={fixture(vista)} sondear={false} />
+      <AnalisisCanvas casoId={CASO_ID} etiqueta="Preview · sample data" enVivo={false} inicial={fixture(vista)} sondear={false} />
     </section>
   );
 }

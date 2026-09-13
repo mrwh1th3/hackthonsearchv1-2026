@@ -6,7 +6,7 @@ import { getDataSource } from "@/lib/data";
 import { desdeMarkdown } from "@/lib/document/markdown";
 import { cargarCasoEditor } from "@/lib/document/servidor";
 
-export const metadata = { title: "Forense · Reporte" };
+export const metadata = { title: "Inspector · Report" };
 
 export default async function ExpedientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -37,7 +37,7 @@ export default async function ExpedientePage({ params }: { params: Promise<{ id:
               href="/"
               className="flex h-8 flex-none items-center rounded-[10px] border border-border bg-surface px-3.5 text-[12.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover"
             >
-              Atrás
+              Back
             </Link>
           </div>
         }

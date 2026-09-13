@@ -161,6 +161,39 @@ Método completo, tablas y límites: `reports/forensic/ESTRUCTURA.md`; CSV en `r
   - En 5 corridas la pérdida no se declaraba. Se corrigió después, declarando la evidencia reducida; la
     re-corrida de esas semillas ya no es held-out y da 0 pérdidas no declaradas.
 
+## Entrega en disco, descarga y determinismo de submission.json (2026-09-13)
+
+- **Rutas.** La única regla de rutas de la guía es de entrada: *"Your system must accept an estate at a path given
+  at run time. Hardcoded paths fail."* No pide una carpeta de salida fija. El CLI escribe donde diga `--out`.
+- **Determinismo verificado.** El mismo estate y la misma semilla dan los mismos hallazgos, leads y huella, también
+  con `PYTHONHASHSEED` 0, 1 y 42 en el estate de 5005. Entre ejecuciones independientes solo cambia
+  `run_metadata.wall_clock_seconds`, que el esquema exige.
+- **Re-ejecutar sobre la misma carpeta no cambia la entrega** (`pipeline.write_outputs`):
+  - `submission.json`, `run_log.json` y `case_file.html` no se reescriben; conservan el reloj de la ejecución que
+    produjo ese resultado;
+  - cada ejecución añade una línea a `executions.jsonl`: `new`, `unchanged` o `replaced`, con el reloj medido y el
+    reportado;
+  - un resultado distinto (otro estate, otra semilla, otra versión del auditor) se escribe y queda `replaced`;
+  - la escritura es atómica y en UTF-8.
+- **Webapp.** `loaders/auditoria_en_vivo.py` produce la entrega con `auditor.pipeline`: sale igual que en el CLI
+  salvo el reloj, que mide el cómputo sin las pausas de visualización (`paso_visible_ms` ya no va en
+  `run_metadata`). La carpeta es `FORENSE_SALIDA_DIR/<corrida>` (acepta `~`) o, por defecto,
+  `data/forensic/runs/<corrida>`.
+- **Descarga.** `GET /auditoria/[corridaId]/submission`, sin editor. Se ofrece en `/documentos/[id]` junto a
+  "Reporte completo" y junto a "Abrir expediente entregable". Sirve los bytes del disco si coinciden con
+  `forense.auditor_resultados.submission`; si no, sirve lo persistido.
+- **Rastro del dinero, corregido al contrastar la guía del juez.** `money_trail` contiene un camino real
+  conectado representativo. `money_trails` conserva todos los caminos, incluidos pagos paralelos, sin inventar
+  enlaces ni omitir movimientos. El expediente y el run log conservan la evidencia íntegra y los importes.
+  Pruebas adicionales comprueban adyacencia, conservación y conciliación porque el validador oficial no comprueba
+  la adyacencia. Las exportaciones históricas requieren volver a renderizarse para adoptar este contrato.
+- **Resultados ya guardados.** Las 5 corridas auditadas en la base pasan el validador oficial, pero la primera
+  re-auditoría de cada una reescribe su submission una vez (`replaced`):
+  - 4 se generaron antes de `7fe7c1d` (2026-09-13 00:14) con versiones anteriores del auditor;
+  - las 5 traen `paso_visible_ms` en `run_metadata`, que el runner web ya no escribe.
+
+  Desde esa re-auditoría quedan fijas.
+
 ## Aislamiento de la clave de evaluación
 
 - `grep -r 'ground_truth' src/ --include='*.py'` no devuelve nada.
@@ -173,3 +206,174 @@ Método completo, tablas y límites: `reports/forensic/ESTRUCTURA.md`; CSV en `r
 - La confianza usa `proven` o `probable`, como pide el esquema de los jueces. Internamente sigue prohibido "definitivo" como nivel.
 - En `efos_list.status`, el valor `definitivo` es dato del SAT, no un veredicto nuestro.
 - El texto libre (`concepto_text`, `reference`, `legal_name`, `scope_text`) no decide ningún veredicto. Solo aparece en la narrativa.
+
+
+## Verificación del flujo único contra los requisitos recibidos (2026-09-13)
+
+Los ocho archivos recibidos en `student-materials/forensic-auditor` coinciden byte por byte con
+`spec/forensic-auditor/`. Se utilizaron como especificación de entrega. El flujo actual es una sola investigación:
+**motor sobre el estate → contexto → A/B sobre ese mismo resultado → compilación y revisión humana**.
+
+### Evidencia de cumplimiento
+
+- Entrada por ruta en tiempo de ejecución; cinco tipos de esquema; claves de evaluación fuera de los imports y
+  herramientas del motor y de A/B. La CLI de Codex recibe muestras acotadas en un directorio aislado, sin shell.
+- Antes de exportar: referencias existentes, al menos tres exhibits, narrativa hasta 150 palabras, monto positivo
+  conciliado por tabla con tolerancia 2%, confianza válida y respaldo estructurado de cada entidad participante.
+  Las notas libres y compartir institución bancaria no acreditan participación.
+- Expediente HTML portable: las cinco secciones obligatorias, diagramas SVG con exhibits, reconciliación,
+  defensa adversarial y descartes con entidad, motivo, consultas y responsable. Si falta nombre o semilla de
+  origen se declara; no se deduce un nombre empresarial ni una semilla de generación inexistentes.
+- La home contiene dataset, giro e Investigar; el mapa se desglosa en la misma página. El resultado muestra
+  identidad, monto, confianza del motor y reservas de A. Los detalles extensos están plegados.
+- Descargas privadas por `run_id`: `/api/laboratorio/[id]/entrega?tipo=submission` sirve el JSON del motor sin
+  envolverlo; `tipo=expediente` sirve `delivery/case_file.html`, incluyendo A/B y métricas del flujo completo.
+  Los bytes coinciden con disco; la ruta valida dueño, UUID, tipo permitido, contención del archivo y tamaño.
+- `python3 -m labs.delivery --run-dir RUTA --check` comprueba HTML y manifiesto byte por byte sin red ni modelo.
+  El manifiesto incluye hashes de entrada y comprueba que A/B recibieron el run log del motor de esa investigación.
+
+### Evaluación y cambios generales
+
+La primera evaluación adicional, semillas 9101–9105, dio 24/25 esquemas detectados, 0/50 señuelos acusados y una
+subestimación en ciclos. Permitió localizar dos errores generales: elegir el siguiente movimiento por ID antes
+que fecha y tratar una aprobación exactamente al límite como autorización superior. Ambos se corrigieron con
+regresiones independientes: permutación de IDs, ciclos sucesivos y límites igual/superior. Esas cinco semillas
+pasan a ser de ajuste/regresión; **no se presentan como no vistas** tras las correcciones.
+
+Evaluación final: ajuste/regresión **1–12, 9101–9105**; no vistas **10101–10105**. Los conjuntos son disjuntos.
+Resultado: **24/25 (96%)**, **0/50 señuelos acusados**, cero hallazgos extra y todos los importes emitidos
+conciliados. Se omitió un proveedor fantasma difícil en 10101. No se afinó el motor sobre estos resultados.
+Tabla exigida: `reports/forensic/judge-final-20260913/results_variants_heldout.csv`; resumen y tabla de ajuste
+están en la misma carpeta. La columna `peso_actual` del harness suma los esquemas detectados, no el importe del
+esquema omitido; por tanto conciliación no equivale a cobertura completa de pérdidas.
+
+### Prueba real con Codex y límites pendientes
+
+Run `f0090036-61c9-420a-b3c8-f358c4605a56`, `estateV1.3.db`: 4 hallazgos del motor, 9 investigaciones cerradas,
+2 grupos contrastados por A, 0 hipótesis adicionales de B y 0 propuestas. Se ejecutaron 6 invocaciones CLI,
+162 518 tokens de entrada, 8 629 de salida y 207.038 segundos en total. A cuestionó parte del soporte del grupo
+phantom_vendor y declaró evidencia insuficiente para corroborar los cierres kickback. No se convirtieron esas
+reservas en cambios automáticos de reglas. B recibió 30 de 117 sujetos residuales elegibles, no todo el estate.
+
+El contexto de construcción tiene cuatro fuentes de casos accesibles y conserva estado parcial; no se inventó
+un quinto caso. Los 14 sujetos cerrados y las 18 participaciones sujeto/comprobación son unidades diferentes;
+118 sin señal incluye una cuenta empresarial excluida de los 117 elegibles para B. Los nuevos briefs explicitan
+las unidades y exclusiones. Esta corrida histórica conserva sus entradas y respuestas originales.
+
+Se volvieron a renderizar sus exportaciones desde el mismo run log, sin reejecutar detectores ni modelos,
+para adoptar caminos conectados y el encabezado requerido. Los originales están en
+`engine/export_history/pre_judge_contract`; `export_migration.json` registra el cambio. La versión exportada
+pasó el validador oficial recibido con comprobación del estate y el replay del expediente completo.
+La corrida mock `86479a24-e7f4-4929-bba7-f612fee56859` también verificó la creación automática de las entregas
+por el supervisor después de motor y A/B.
+
+**No es cumplimiento total demostrable:** una ejecución nueva de Codex puede variar; el replay guardado sí es
+idéntico. El costo MXN atribuible a esta suscripción es desconocido y queda `null`; no se presenta como cero.
+Las seis invocaciones CLI no equivalen a un número conocido de solicitudes internas. Los ceros de costo y
+llamadas de la tabla de evaluación corresponden exclusivamente al motor `--llm off`. Los ciclos siguen teniendo
+asociación conservadora y la evaluación sintética no garantiza generalización a los estates ocultos del juez.
+
+Pruebas de cierre: motor 82/82; labs 51/51; web afectada 47/47, TypeScript correcto y build de producción aprobado. UI comprobada en escritorio y móvil (393 px), sin desbordamiento horizontal. La suite web completa
+registra 461 aprobadas y 4 fallos previos en las pruebas del editor (`tests/editor/repositorio.test.ts` y
+`components/editor/componentes.test.tsx`), fuera de estas modificaciones. Se preservó ese trabajo concurrente.
+
+### English UI and seed 105 verification · 2026-09-13
+
+The main workspace now uses English controls, static investigation/context controls, an explicit
+`Run again` action preserving the dataset and focus, start/end times, searchable findings,
+pattern distribution filters and paginated dismissed leads. Evidence records and technical originals
+remain expandable; mobile money movements use a vertical sequence. English report section titles
+are recognized alongside legacy Spanish headings, retaining section protection.
+
+Real Codex run `06a3fe55-f478-4003-a7c6-7cce08360c79` imported the supplied `estate_seed_105.zip`:
+8 tables, 16,336 rows; canonical hash `c616f3da67a778f90ab7f5ab88d32fd5d4200e8c98aa4aec9463c968ee718f89`.
+The engine reported 18 findings and 226 dismissed leads; the supplied official format validator
+passed against that estate. Runtime was 314.800 seconds. A recorded two pattern reviews; B recorded
+no additional hypotheses and the compiler produced no proposals. Five notes and the sampled scope
+remain available. The industry could not be inferred and general context was used; A reviewed two
+of five groups and B sampled 30 of 6,152 eligible entities. This is not a full-coverage or accuracy claim.
+No answer key was supplied or used. Six workflow CLI calls plus one industry-research invocation
+were recorded; subscription MXN cost remains unavailable.
+
+The completed dataset was dispatched again through the real authenticated API with provider `mock`
+(run `3372722d-bbf3-4892-beff-bdded6c7affe`) to check repeat execution without additional paid calls.
+Distinct run IDs, the same dataset/focus, and unchanged original artifact hashes were verified.
+Authenticated submission/report downloads matched saved bytes. The English delivery replay passed.
+Desktop and 390px mobile UI were inspected, including search, pattern filters, money trails and
+Context/Filters; no horizontal page overflow or browser errors were observed.
+
+### Visual delivery and automatic publication checks · 2026-09-13
+
+The self-contained HTML retains the five required sections in order. It now includes a finding
+index, confidence and exposure charts, workflow diagrams, SVG money trails, complete expandable
+paths, linked exhibits and per-table amount reconciliation. The same operations can contribute
+to several findings; the visual total is explicitly not a deduplicated loss estimate. New engine
+runs record referenced vendor/employee names in presentation metadata; this does not affect the
+conclusion fingerprint or detector logic. Historical run logs keep their original bytes.
+
+The web supervisor builds a candidate report in a private temporary directory, then runs
+`scripts/verify-judge-delivery.py` before publishing it. The gate invokes the supplied official
+format and estate-reference validators, checks the five-section report and rendered SVGs, and
+rebuilds both engine and complete delivery from recorded inputs with network and subprocesses
+blocked. A failure preserves the prior published report and recorded investigation; it leaves
+an error for inspection. Successful deliveries include `delivery/validation.json`.
+
+The presentation of real seed 105 run `06a3fe55-f478-4003-a7c6-7cce08360c79` was refreshed from
+its saved log, with no new model calls or detector run. Prior HTML/manifest files and hash records
+are retained under `presentation_history/20260913T100740Z`; the final disclosure and English-label
+polish has a second backup at `presentation_history/20260913T101626Z`. Engine conclusions, submission,
+A/B inputs and outputs, proposals, notes, traces, launch and summary remain unchanged.
+
+Chrome verification followed finding 9's EX-03 link into its initially collapsed evidence table,
+which opened to BNK-00834 using native fragment navigation. The HTML contains no scripts and the
+authenticated viewer keeps its restrictive content-security policy. Desktop charts and 390px
+reading layouts were inspected; wide diagrams scroll within their own container.
+
+Final verification: 90 auditor tests, 58 lab tests and 524 web tests passed, followed by 14 tests
+of the last affected web components. TypeScript and the production build passed. The refreshed
+real delivery passed the official format/estate gate and offline replay.
+
+Passing this gate demonstrates format, reference integrity and saved replay, not detection
+accuracy. Subscription MXN allocation remains unavailable, fresh Codex reviews may vary, and
+this seed produced no additional B hypotheses or compiler proposals. Improving recall still
+requires separate evaluation on independently verified examples.
+
+### Curated context, bounded reviews and complete timing · 2026-09-13
+
+The context tool now loads a dated local catalog of 12 industries, five case references per
+industry, 58 distinct primary-source URLs and 141 normalized EN/ES aliases. It retains legal
+status, legitimate alternatives and disconfirming checks. Fresh catalog reuse costs no model
+or network calls; only the requested bounded profile enters the prompt. Recent runtime context
+has priority, and stale references require refresh or an explicit stale fallback. These are
+reference mechanisms, not additional accusations or a claim to contain the latest five cases
+worldwide. Details and refresh procedure are in `labs/context_catalog/README.md`.
+
+A's sampled groups share one initial call. The six-call workflow can now fit sector selection,
+initial A and B, both tool follow-ups, and compilation. Smaller configured limits explicitly
+record omitted follow-up; they do not execute a data query whose results cannot be reviewed.
+This fixes B's previous follow-up starvation without raising the workflow call limit.
+
+New runs measure dispatch/preparation, engine, context, A/B, compilation and the first successful
+report build/validation. The public run remains active until a final candidate seals that timing
+and passes another gate. Final metric sealing is outside the measured interval. Renderer v3
+preserves all five required sections, self-contained money diagrams and evidence links; its
+first page distinguishes complete timing from legacy measurements and unknown subscription cost.
+
+The real seed 105 worker was exercised offline with mock A/B in an isolated `/tmp` workspace:
+18 findings and 226 closed leads matched the saved baseline exactly, both publication gates
+passed, and the measured complete interval was 2.857 seconds. Construction context loaded from
+the bundled catalog with no model calls. The 90-test labs suite passed.
+
+Saved reports `3372722d-bbf3-4892-beff-bdded6c7affe` and
+`06a3fe55-f478-4003-a7c6-7cce08360c79` were refreshed to v3 from their saved inputs. Original
+presentation files and SHA records remain in each run's
+`presentation_history/20260913T114109.469501Z`. All 44/52 non-presentation files respectively
+retained their hashes. Their historical durations remain 2.288/314.800 seconds with the legacy
+scope disclosed. Both refreshed deliveries passed the official format/estate and offline replay gate.
+
+The subsequently saved real Codex run `ac160589-4af3-4234-a891-8865017e0df7` also passed that gate
+on read-only inspection: 18 findings, 226 closed leads, two A reviews, zero B hypotheses, zero
+proposals, six provider invocations, 169,237 input and 7,613 output tokens, and 202.058 seconds
+including report validation. B did complete a second review after data-tool calls. This verifies
+the execution path, not improved recall. No independent labels or measured subscription allocation
+were introduced; a new AI review may vary.

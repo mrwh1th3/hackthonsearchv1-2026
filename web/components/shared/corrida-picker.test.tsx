@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { CorridaPicker } from "./corrida-picker";
 import type { Corrida } from "@/lib/data";
 
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+
 function corrida(overrides: Partial<Corrida> = {}): Corrida {
   return {
     id: "00000000-0000-4000-8000-000000000001",
@@ -31,14 +33,14 @@ function corrida(overrides: Partial<Corrida> = {}): Corrida {
 describe("CorridaPicker", () => {
   it("estado vacío honesto: sin corridas, no se pinta como 'sin hallazgos'", () => {
     render(<CorridaPicker corridas={[]} onSelect={vi.fn()} />);
-    expect(screen.getByText("Sin corridas todavía.")).toBeInTheDocument();
+    expect(screen.getByText("No datasets yet.")).toBeInTheDocument();
   });
 
   it("busca por nombre y avisa cuando ninguna corrida coincide", async () => {
     const user = userEvent.setup();
     render(<CorridaPicker corridas={[corrida()]} onSelect={vi.fn()} />);
-    await user.type(screen.getByPlaceholderText("Buscar corridas"), "no existe");
-    expect(screen.getByText(/Ningún dataset coincide con/)).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("Search datasets"), "no existe");
+    expect(screen.getByText(/No dataset matches/)).toBeInTheDocument();
   });
 
   it("selecciona una corrida al hacer click en la fila", async () => {
@@ -56,7 +58,7 @@ describe("CorridaPicker", () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.getByText("Inyección en vivo")).toBeInTheDocument();
+    expect(screen.getByText("Live injection")).toBeInTheDocument();
     expect(screen.queryByText("Dynamic")).not.toBeInTheDocument();
   });
 

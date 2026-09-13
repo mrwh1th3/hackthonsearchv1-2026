@@ -123,15 +123,17 @@ describe("repositorio del expediente", () => {
     expect(almacen.expedientes[0].contenido_json).toEqual(documento);
   });
 
-  it("no autoguarda sobre una versión ya validada: conflicto, no destrucción", async () => {
+  it("preserves a validated version and saves edits as a new draft", async () => {
     const almacen = crearAlmacen();
     almacen.expedientes[0].estado_revision = "validado";
     const repo = crearRepositorioSupabase(clienteFalso(almacen));
     const documento = desdeMarkdown("# Sobrescritura indebida\n\nTexto.\n");
     const r = await repo.guardarBorrador(CASO, { version_base: 1, documento });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.motivo).toBe("conflicto_version");
+    expect(r.ok).toBe(true);
     expect(almacen.expedientes[0].contenido_json).not.toEqual(documento);
+    expect(almacen.expedientes[0].estado_revision).toBe("validado");
+    expect(almacen.expedientes).toHaveLength(2);
+    expect(almacen.expedientes[1]).toMatchObject({version: 2, version_base: 1, estado_revision: "borrador", contenido_json: documento});
   });
 
   it("aplicar delega en forense.aplicar_propuesta (006 §7), que versiona y deja bitácora 'edicion'", async () => {

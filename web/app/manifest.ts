@@ -1,21 +1,20 @@
 import type { MetadataRoute } from "next";
 
-/**
- * 15 §12: manifest `display=standalone`, theme color blanco. Los iconos
- * raster 192/512 y `apple-touch-icon.png` 180 quedan pendientes: este
- * entorno no tiene un rasterizador SVG→PNG disponible (no se instalan
- * paquetes fuera de ownership); `app/icon.svg` cubre el favicon vía la
- * convención de archivo de Next. Ver pendientes del corte.
- */
+/** Installable Inspector identity; generated assets share the SVG star source. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Forense",
-    short_name: "Forense",
-    description: "Agente forense de facturación falsa",
+    name: "Inspector",
+    short_name: "Inspector",
+    description: "Evidence-led financial investigations",
     start_url: "/",
     display: "standalone",
-    background_color: "#FAFAFA",
+    background_color: "#FFFFFF",
     theme_color: "#FFFFFF",
-    icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+    icons: [
+      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: "/icons/inspector-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/inspector-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icons/inspector-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
   };
 }

@@ -143,8 +143,8 @@ export const CitasDecoradas = Extension.create<OpcionesCitas>({
                     class: valida ? "cita" : "cita cita-invalida",
                     "data-referencia": referencia,
                     title: valida
-                      ? "Cita con evidencia validada. Click para abrir el registro."
-                      : "ID no encontrado en la evidencia validada de esta corrida.",
+                      ? "Validated citation. Click to open the source record."
+                      : "ID not found in this dataset's validated evidence.",
                   }),
                 );
               }

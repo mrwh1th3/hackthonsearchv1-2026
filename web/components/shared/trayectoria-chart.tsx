@@ -8,7 +8,7 @@ const EVENTO_LABEL: Record<string, string> = {
   primer_cfdi: "Primer CFDI",
   pico: "Pico",
   silencio: "Silencio",
-  publicacion_69b: "Publicación 69-B",
+  publicacion_69b: "69-B publication",
 };
 
 /**

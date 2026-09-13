@@ -7,7 +7,7 @@ describe("formato de fechas con zona explícita", () => {
     // en UTC —una Vercel Function— se enseñaría como 1 de febrero. Este es el
     // bug que el módulo existe para evitar.
     const corte = "2026-01-31T23:59:59-06:00";
-    expect(soloFecha(corte)).toBe("31/1/2026");
+    expect(soloFecha(corte)).toBe("1/31/2026");
     expect(new Date(corte).toISOString().slice(0, 10)).toBe("2026-02-01");
   });
 
@@ -15,9 +15,9 @@ describe("formato de fechas con zona explícita", () => {
     const antes = process.env.TZ;
     try {
       process.env.TZ = "UTC";
-      expect(soloFecha("2026-01-31T23:59:59-06:00")).toBe("31/1/2026");
+      expect(soloFecha("2026-01-31T23:59:59-06:00")).toBe("1/31/2026");
       process.env.TZ = "Asia/Tokyo";
-      expect(soloFecha("2026-01-31T23:59:59-06:00")).toBe("31/1/2026");
+      expect(soloFecha("2026-01-31T23:59:59-06:00")).toBe("1/31/2026");
     } finally {
       process.env.TZ = antes;
     }
@@ -25,7 +25,7 @@ describe("formato de fechas con zona explícita", () => {
 
   it("acepta una zona distinta cuando el perfil la fija", () => {
     // El mismo instante, visto desde una zona al este, ya es otro día.
-    expect(soloFecha("2026-01-31T23:59:59-06:00", "UTC")).toBe("1/2/2026");
+    expect(soloFecha("2026-01-31T23:59:59-06:00", "UTC")).toBe("2/1/2026");
   });
 
   it("un valor ausente o ilegible sale como guion, nunca como Invalid Date", () => {

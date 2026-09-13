@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   const estate = rutaEstate(corrida.dataset_hash);
   if (!estate) {
     return NextResponse.json(
-      { error: "sin_estate", detalle: "Esta corrida no se cargó desde un estate SQLite; no hay archivo que previsualizar." },
+      { error: "sin_estate", detalle: "No SQLite estate is available to preview for this dataset." },
       { status: 409 },
     );
   }

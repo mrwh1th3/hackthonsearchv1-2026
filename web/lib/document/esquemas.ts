@@ -17,7 +17,7 @@ import { z } from "zod";
 
 const RE_UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-const uuid = z.string().regex(RE_UUID, "uuid inválido");
+const uuid = z.string().regex(RE_UUID, "invalid UUID");
 const version = z.number().int().min(1).max(2147483647);
 
 export const esquemaDescartar = z

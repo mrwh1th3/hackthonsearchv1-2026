@@ -3,7 +3,7 @@ import { obtenerEjecucionesPrivadas } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
 import { AnalisisCanvas } from "./analisis-canvas";
 
-export const metadata = { title: "Forense · Análisis en proceso" };
+export const metadata = { title: "Inspector · Investigation in progress" };
 export const dynamic = "force-dynamic";
 
 /**
@@ -33,7 +33,7 @@ export default async function AnalisisPage({ params }: { params: Promise<{ casoI
     <section className="flex h-[100dvh] max-h-[100dvh] flex-col gap-2.5 overflow-hidden px-[22px] pb-[18px] pt-5">
       <AnalisisCanvas
         casoId={casoId}
-        etiqueta={corrida?.nombre ?? detalle?.caso.rfc_principal ?? "Análisis"}
+        etiqueta={corrida?.nombre ?? detalle?.caso.rfc_principal ?? "Analysis"}
         enVivo={corrida?.corrida_origen_id != null}
         inicial={{ caso: detalle?.caso ?? null, tareas: detalle?.tareas ?? [], eventos, runtime, senales }}
       />

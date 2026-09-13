@@ -18,7 +18,10 @@
     "web:typecheck": "npm --prefix web run typecheck",
     "web:lint": "npm --prefix web run lint",
     "prepare": "husky",
-    "db:test": "PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh"
+    "db:test": "PATH=/opt/homebrew/opt/postgresql@17/bin:$PATH bash db/tests/run.sh",
+    "verify:judge": "python3 scripts/verify-judge-delivery.py",
+    "test:labs": "python3 -m unittest discover -s labs/tests -v",
+    "lab:demo": "python3 -m labs.runner run --engine-output labs/tests/fixtures/engine.json --giro construccion --provider mock"
   },
   "devDependencies": {
     "husky": "^9.1.7"

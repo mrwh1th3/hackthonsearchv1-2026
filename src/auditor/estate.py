@@ -52,8 +52,15 @@ class Estate:
             self.clabe_owner[c] = "COMPANY"
         dates = [r[0] for r in self.q("SELECT max(date) FROM bank_txns")]
         span = self.q("SELECT min(issue_date), max(issue_date) FROM invoices")[0]
-        # sin banco, el horizonte es la última factura (determinista); nunca la fecha del reloj
-        self.bank_horizon = d(dates[0]) if dates and dates[0] else (d(span[1]) if span[1] else date.today())
+        # Sin banco, usar fechas del estate, nunca el reloj de la máquina. El epoch
+        # es sólo un sentinel estable para un estate sin fechas, no un período inferido.
+        horizon = dates[0] if dates and dates[0] else span[1]
+        if not horizon:
+            known = [r[0] for table, field in (("ledger", "date"), ("purchase_orders", "date"),
+                                               ("contracts", "start_date"))
+                     for r in self.q(f"SELECT max({field}) FROM {table}") if r[0]]
+            horizon = max(known) if known else None
+        self.bank_horizon = d(horizon) if horizon else date(1970, 1, 1)
         self.period = (span[0], span[1])
 
     def q(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:

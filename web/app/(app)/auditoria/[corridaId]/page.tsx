@@ -3,7 +3,7 @@ import { getDataSource } from "@/lib/data";
 import { requerirSesionServidor } from "@/lib/auth/session";
 import { AuditorResultadoCompleto } from "@/components/shared/auditor-resultado";
 
-export const metadata = { title: "Forense · Resultados del auditor" };
+export const metadata = { title: "Inspector · Audit results" };
 export const dynamic = "force-dynamic";
 
 /**
@@ -28,7 +28,7 @@ export default async function AuditoriaPage({ params }: { params: Promise<{ corr
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link href={`/?corrida=${corridaId}`} className="text-[12.5px] text-text-muted hover:underline">
-            ← Volver a la corrida
+            ← Back to dataset
           </Link>
           <h1 className="mt-1 text-[24px] font-medium tracking-tight text-text">{corrida?.nombre ?? "Corrida"}</h1>
         </div>

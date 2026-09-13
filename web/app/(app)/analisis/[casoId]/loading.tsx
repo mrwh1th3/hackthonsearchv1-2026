@@ -1,5 +1,5 @@
 import { RouteLoading } from "@/components/shared/route-loading";
 
 export default function Loading() {
-  return <RouteLoading texto="Abriendo análisis…" />;
+  return <RouteLoading texto="Opening investigation…" />;
 }

@@ -123,12 +123,12 @@ describe("DocumentWorkspace", () => {
   it("el índice lista las diez secciones y deshabilita las que el documento no trae", async () => {
     render(workspace(desdeMarkdown(redactorFixture.markdown)));
 
-    const indice = await screen.findByRole("navigation", { name: /índice del expediente/i });
+    const indice = await screen.findByRole("navigation", { name: /Report contents/i });
     expect(within(indice).getAllByRole("button")).toHaveLength(11); // plegado + 10 secciones
 
-    expect(within(indice).getByRole("button", { name: /trayectoria/i })).toBeDisabled();
-    expect(within(indice).getByRole("button", { name: /cadena de explicación/i })).toBeDisabled();
-    expect(within(indice).getByRole("button", { name: /dictamen/i })).toBeEnabled();
+    expect(within(indice).getByRole("button", { name: /Timeline/i })).toBeDisabled();
+    expect(within(indice).getByRole("button", { name: /Evidence chain/i })).toBeDisabled();
+    expect(within(indice).getByRole("button", { name: /Conclusion/i })).toBeEnabled();
   });
 
   it("autoguarda el borrador 1 s después de escribir, contra la versión base y sin crear versión", async () => {
@@ -167,7 +167,7 @@ describe("DocumentWorkspace", () => {
     // El autoguardado no versiona: el chip de versión del chat sigue en v1.
     // (La píldora "v1 · validado" de la cabecera se retiró el 2026-09-12.)
     expect(screen.getAllByText(/^v1$/).length).toBeGreaterThan(0);
-    expect(await screen.findByText(/^Guardado /)).toBeInTheDocument();
+    expect(await screen.findByText(/^Saved /)).toBeInTheDocument();
   }, 15000);
 
   it("al montar adopta la versión vigente si el expediente ya avanzó (recarga tras Aplicar)", async () => {
@@ -220,9 +220,9 @@ describe("DocumentWorkspace", () => {
     const usuario = userEvent.setup();
     render(workspace(desdeMarkdown(redactorFixture.markdown)));
 
-    const grupo = await screen.findByRole("group", { name: /modo de edición/i });
-    await usuario.click(within(grupo).getByRole("button", { name: "sugerir" }));
-    expect(await screen.findByText(/el documento no se edita a mano/i)).toBeInTheDocument();
+    const grupo = await screen.findByRole("group", { name: /Editing mode/i });
+    await usuario.click(within(grupo).getByRole("button", { name: "Suggest" }));
+    expect(await screen.findByText(/Select text and request changes in chat/i)).toBeInTheDocument();
   });
 });
 
@@ -261,11 +261,11 @@ describe("ReportChat", () => {
     );
 
     render(<ReportChat {...props} seleccion={null} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "¿Qué sostiene la sección 5?");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "¿Qué sostiene la sección 5?");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
 
     expect(await screen.findByText("Respuesta sin cambios.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
     expect(llamadas).toEqual(["/api/reportes/propuestas"]);
   });
 
@@ -292,16 +292,16 @@ describe("ReportChat", () => {
 
     verificada = true;
     const vista = render(<ReportChat {...props} seleccion={seleccion} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Hazlo más claro");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
-    await screen.findByRole("button", { name: "Aplicar" });
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "Make this clearer");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
+    await screen.findByRole("button", { name: "Apply" });
     expect(screen.queryByTestId("seleccion-no-verificada")).not.toBeInTheDocument();
     vista.unmount();
 
     verificada = false;
     render(<ReportChat {...props} seleccion={seleccion} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Hazlo más claro");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "Make this clearer");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
     expect(await screen.findByTestId("seleccion-no-verificada")).toBeInTheDocument();
   });
 
@@ -335,11 +335,11 @@ describe("ReportChat", () => {
     );
 
     render(<ReportChat {...props} seleccion={seleccion} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Hazlo más claro");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
-    await usuario.click(await screen.findByRole("button", { name: "Aplicar" }));
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "Make this clearer");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
+    await usuario.click(await screen.findByRole("button", { name: "Apply" }));
 
-    expect(await screen.findByText(/no dejó registro en la bitácora/i)).toBeInTheDocument();
+    expect(await screen.findByText(/has no activity record/i)).toBeInTheDocument();
     expect(await screen.findByTestId("sin-bitacora")).toBeInTheDocument();
   });
 
@@ -374,12 +374,12 @@ describe("ReportChat", () => {
     );
 
     render(<ReportChat {...props} seleccion={seleccion} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Hazlo más claro");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
-    await usuario.dblClick(await screen.findByRole("button", { name: "Aplicar" }));
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "Make this clearer");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
+    await usuario.dblClick(await screen.findByRole("button", { name: "Apply" }));
 
     await waitFor(() => expect(aplicaciones).toHaveLength(1));
-    expect(await screen.findByText(/versión 2 creada/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Version 2 created/i)).toBeInTheDocument();
     expect(props.onAplicado).toHaveBeenCalledTimes(1);
   });
 
@@ -401,12 +401,12 @@ describe("ReportChat", () => {
     );
 
     render(<ReportChat {...props} seleccion={seleccion} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Ajusta el resumen");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
-    await usuario.click(await screen.findByRole("button", { name: "Aplicar" }));
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "Ajusta el resumen");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
+    await usuario.click(await screen.findByRole("button", { name: "Apply" }));
 
-    expect(await screen.findByText(/cambió a la versión 3/i)).toBeInTheDocument();
-    expect(await screen.findByText(/en conflicto/i)).toBeInTheDocument();
+    expect(await screen.findByText(/changed to version 3/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Conflict:/i)).toBeInTheDocument();
   });
 
   it("Descartar no marca nada hasta que el BFF confirma; un 503 devuelve la propuesta a pendiente", async () => {
@@ -434,24 +434,24 @@ describe("ReportChat", () => {
     );
 
     render(<ReportChat {...props} seleccion={seleccion} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Quita el párrafo");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
-    await usuario.click(await screen.findByRole("button", { name: "Descartar" }));
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "Quita el párrafo");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
+    await usuario.click(await screen.findByRole("button", { name: "Dismiss" }));
 
     // Mientras el BFF no responde NO se afirma que quedó descartada.
-    expect(screen.queryByText(/descartada: el documento quedó sin cambios/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Descartar" })).toBeDisabled();
+    expect(screen.queryByText(/Dismissed: the document is unchanged/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeDisabled();
 
     descarteEnEspera.resolver?.(respuestaJson({ error: "backend_no_configurado" }, 503));
-    expect(await screen.findByText(/no hay backend de edición configurado/i)).toBeInTheDocument();
+    expect(await screen.findByText(/editing service is not configured/i)).toBeInTheDocument();
     // El fallo devuelve la propuesta a pendiente: sigue siendo aplicable.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Descartar" })).toBeEnabled());
-    expect(screen.queryByText(/descartada: el documento quedó sin cambios/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Dismiss" })).toBeEnabled());
+    expect(screen.queryByText(/Dismissed: the document is unchanged/i)).not.toBeInTheDocument();
 
     // Con el BFF confirmando, entonces sí se marca.
     fallar = false;
-    await usuario.click(screen.getByRole("button", { name: "Descartar" }));
-    expect(await screen.findByText(/descartada: el documento quedó sin cambios/i)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(await screen.findByText(/Dismissed: the document is unchanged/i)).toBeInTheDocument();
   });
 
   it("sin backend configurado lo dice, no finge una respuesta", async () => {
@@ -459,9 +459,9 @@ describe("ReportChat", () => {
     vi.stubGlobal("fetch", vi.fn(async () => respuestaJson({ error: "backend_no_configurado" }, 503)));
 
     render(<ReportChat {...props} seleccion={null} />);
-    await usuario.type(screen.getByLabelText(/instrucción para el editor/i), "Resume");
-    await usuario.click(screen.getByRole("button", { name: /enviar/i }));
+    await usuario.type(screen.getByLabelText(/Instruction for the editor/i), "Resume");
+    await usuario.click(screen.getByRole("button", { name: /Send/i }));
 
-    expect(await screen.findByText(/no hay backend de edición configurado/i)).toBeInTheDocument();
+    expect(await screen.findByText(/editing service is not configured/i)).toBeInTheDocument();
   });
 });

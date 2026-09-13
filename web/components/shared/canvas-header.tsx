@@ -4,21 +4,7 @@ import { Menu } from "lucide-react";
 import type { ReactNode } from "react";
 import { useInspectorPanel } from "./app-shell";
 
-/**
- * Cabecera de las pantallas de lienzo completo del diseño
- * (`design-ref/Agents.dc.html`, bloques `boardOpen` y `resultsOpen`, líneas
- * 200-215 y 232-246). Estructura idéntica: `height:38px`, wordmark a la
- * izquierda que abre el panel (`openLeft`), pill del dataset **centrado en
- * absoluto** (`left:50%; translateX(-50%)`), y las acciones al final tras un
- * `flex:1`.
- *
- * El pill es el mismo del composer: `height:30px`, `border-radius:999px`,
- * borde `--border-strong`, fondo `--surface-raised`, punto de 6px. El punto
- * es redondo cuando la corrida es clonada por inyección en vivo y cuadrado
- * (radio 2px) cuando no, tal cual `selectedDot` del original — aquí con la
- * distinción real `corrida_origen_id != null` (CLAUDE.md regla 12) en vez del
- * booleano inventado `dynamic`.
- */
+/** Shared Inspector header. Wrapping keeps the dataset and actions usable on narrow screens. */
 export function CanvasHeader({
   etiqueta,
   enVivo = false,
@@ -30,37 +16,37 @@ export function CanvasHeader({
 }) {
   const panel = useInspectorPanel();
   return (
-    <div className="relative flex h-[38px] flex-none items-center gap-3">
+    <header className="relative flex min-h-[48px] flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b border-border pb-3">
       <button
         type="button"
         onClick={panel.abrir}
-        aria-label="Abrir navegación"
-        className="flex h-[26px] w-[26px] flex-none items-center justify-center border-none bg-transparent p-0 text-text"
+        aria-label="Open navigation"
+        aria-expanded={panel.abierto}
+        className="flex h-9 w-9 flex-none items-center justify-center rounded-control border border-border bg-surface p-0 text-text transition-colors hover:bg-surface-hover"
       >
         <Menu size={22} strokeWidth={1.8} aria-hidden />
       </button>
-      <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-2.5 sm:flex">
-        <span className="flex h-[30px] max-w-[200px] flex-none items-center gap-1.5 truncate rounded-[var(--radius-pill)] border border-border-strong bg-surface-raised px-3 text-[12.5px] text-text">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <span title={etiqueta} className="flex h-[30px] min-w-0 max-w-[260px] items-center gap-1.5 rounded-[var(--radius-pill)] border border-border bg-surface-raised px-3 text-[12.5px] text-text">
           <span
             aria-hidden
             className="h-1.5 w-1.5 flex-none bg-primary"
             style={{ borderRadius: enVivo ? "50%" : "2px" }}
           />
-          {etiqueta}
+          <span className="truncate">{etiqueta}</span>
         </span>
       </div>
-      <div className="flex-1" />
-      {acciones}
-    </div>
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{acciones}</div>
+    </header>
   );
 }
 
 /** Botón oscuro del diseño (`View results`): 32px, radio 10px, `#141413`. */
-export function CanvasPrimaryAction({ children, ...props }: React.ComponentProps<"button">) {
+export function CanvasPrimaryAction({ children, className = "", ...props }: React.ComponentProps<"button">) {
   return (
     <button
       {...props}
-      className="h-8 flex-none rounded-[10px] bg-primary px-3.5 text-[12.5px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover"
+      className={`h-9 flex-none rounded-control bg-primary px-3.5 text-[12.5px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover disabled:opacity-50 ${className}`}
     >
       {children}
     </button>

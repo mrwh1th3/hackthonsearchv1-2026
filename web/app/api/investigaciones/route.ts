@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     solicitud.origen = "rfc";
     solicitud.valor = inv.contexto.rfcs[0];
   } else {
-    return NextResponse.json({ error: "sin_objetivo", detalle: "Hace falta un cluster o al menos un RFC." }, { status: 422 });
+    return NextResponse.json({ error: "sin_objetivo", detalle: "Select a group or at least one tax ID." }, { status: 422 });
   }
 
   const reenvio = await reenviarAWebhook(config, "investigar", solicitud);

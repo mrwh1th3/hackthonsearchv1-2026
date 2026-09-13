@@ -60,7 +60,7 @@ export function CasoDetalleCompleto({
                 {expandido && (
                   <span className="mt-[5px] flex flex-col gap-[3px] rounded-[10px] border border-border bg-surface-raised px-[11px] py-[9px]">
                     <Paso k="Referencias" v={e.payload.referencias.join(", ") || "—"} />
-                    <Paso k="Operación" v={e.payload.operacion_id ?? "—"} />
+                    <Paso k="Operation" v={e.payload.operacion_id ?? "—"} />
                     <Paso k="Tarea" v={e.tarea_id ?? "—"} />
                   </span>
                 )}
@@ -69,14 +69,14 @@ export function CasoDetalleCompleto({
           ))}
           {bitacora.length === 0 && (
             <p className="m-0 py-3 text-[12.5px] text-text-subtle">
-              Sin eventos persistidos para este caso: si un paso no escribió en la bitácora, no se pinta.
+              No saved activity for this case yet.
             </p>
           )}
         </div>
       </div>
 
       {pistas.map((p) => {
-        const veredicto = p.evaluacion_caso?.estado ?? (p.estado === "no_evaluable" ? "no evaluable" : "sin evaluar");
+        const veredicto = p.evaluacion_caso?.estado ?? (p.estado === "no_evaluable" ? "no evaluable" : "not checked");
         const descartada = veredicto.startsWith("refutada") || p.estado === "no_evaluable";
         const citas = evidencia.filter((e) => e.pista_codigo === p.codigo).slice(0, 6);
         return (
@@ -85,7 +85,7 @@ export function CasoDetalleCompleto({
               <NombreFamilia familia={p.familia} />
               <span className={cn("font-mono text-[13.5px] font-medium text-text", descartada && "line-through")}>{p.codigo}</span>
               {caso.nivel && <NivelBadge nivel={caso.nivel} />}
-              <span className="text-[11.5px] text-text-subtle" title="puntaje de riesgo calculado por el sistema">puntaje de riesgo {p.score.toFixed(2)}</span>
+              <span className="text-[11.5px] text-text-subtle" title="Calculated risk score">risk score {p.score.toFixed(2)}</span>
               <span
                 className={cn(
                   "ml-auto rounded-[var(--radius-pill)] border px-2 py-0.5 text-[10.5px] uppercase tracking-wide",
@@ -97,14 +97,14 @@ export function CasoDetalleCompleto({
             </div>
             <span className="text-[12.5px] leading-relaxed text-text-subtle">{p.resumen}</span>
             {p.motivo_no_evaluable && <span className="text-[11.5px] text-text-subtle">Motivo: {p.motivo_no_evaluable}</span>}
-            {p.evaluacion_caso?.motivo && <span className="text-[11.5px] text-text-subtle">Veredicto del caso: {p.evaluacion_caso.motivo}</span>}
+            {p.evaluacion_caso?.motivo && <span className="text-[11.5px] text-text-subtle">Case conclusion: {p.evaluacion_caso.motivo}</span>}
             {(citas.length > 0 || p.referencias.length > 0) && (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {citas.length > 0
                   ? citas.map((c) => (
                       <span
                         key={c.id}
-                        title={`Técnica: ${c.valida_tecnica ? "válida" : "no válida"} · Refutada: ${c.refutada ? "sí" : "no"} · ${c.validada ? "validada" : "sin validar"}`}
+                        title={`Technical: ${c.valida_tecnica ? "valid" : "invalid"} · Refutada: ${c.refutada ? "yes" : "no"} · ${c.validada ? "validada" : "unverified"}`}
                         className={cn(
                           "rounded-[6px] border px-1.5 py-0.5 font-mono text-[10.5px]",
                           c.valida_tecnica && !c.refutada ? "border-border bg-surface text-text-muted" : "border-border bg-surface-muted text-text-subtle line-through",
@@ -125,13 +125,13 @@ export function CasoDetalleCompleto({
       })}
       {pistas.length === 0 && (
         <p className="m-0 rounded-[var(--radius-card-sm)] border border-border bg-surface px-3.5 py-4 text-[12.5px] text-text-subtle">
-          Este caso todavía no tiene pistas evaluadas. Ausencia de datos no es «sin hallazgos».
+          No signals have been reviewed yet. Missing data is not a finding of no fraud.
         </p>
       )}
 
       {defensa.length > 0 && (
         <div className="flex flex-col gap-1.5 rounded-[var(--radius-card-sm)] border border-border bg-surface px-3.5 py-3">
-          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Defensa — descarte de falsos positivos</span>
+          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Alternative explanations · avoiding false positives</span>
           {defensa.map((d) => (
             <p key={`${d.trampa_codigo}-${d.pista_objetivo}`} className="m-0 text-[12.5px] leading-relaxed text-text-muted">
               <span className="font-mono text-text-subtle">{d.pista_objetivo}</span> · {d.resultado.replaceAll("_", " ")} — {d.argumento}
@@ -142,10 +142,10 @@ export function CasoDetalleCompleto({
 
       {dictamen && (
         <div className="flex flex-col gap-1.5 rounded-[var(--radius-card-sm)] border border-border bg-surface px-3.5 py-3">
-          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Dictamen</span>
+          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Conclusion</span>
           <div className="flex items-center gap-2">
             <NivelBadge nivel={dictamen.nivel} />
-            <span className="text-[12.5px] text-text">{dictamen.familias.join(" · ") || "sin familias"}</span>
+            <span className="text-[12.5px] text-text">{dictamen.familias.join(" · ") || "no signal categories"}</span>
           </div>
           <p className="m-0 text-[12.5px] leading-relaxed text-text-muted">Regla aplicada: {dictamen.regla}</p>
         </div>
@@ -153,24 +153,24 @@ export function CasoDetalleCompleto({
 
       {contraste && (
         <div className="flex flex-col gap-1.5 rounded-[var(--radius-card-sm)] border border-border bg-surface px-3.5 py-3">
-          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Contraste — por qué esta sí y aquella no</span>
+          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Comparison — why one was flagged and the other dismissed</span>
           <p className="m-0 text-[12.5px] leading-relaxed text-text">
             Comparable{" "}
             <Link href={`/entidades/${encodeURIComponent(contraste.rfc_comparable)}`} className="font-mono text-focus hover:underline">
               {contraste.rfc_comparable}
             </Link>{" "}
-            ({contraste.giro_compartido}) compartió {contraste.pistas_solapadas.join(", ")} y cerró en{" "}
+            ({contraste.giro_compartido}) shared {contraste.pistas_solapadas.join(", ")} and ended at{" "}
             <NivelBadge nivel={contraste.resultado_comparable} className="align-middle" />.
           </p>
           <p className="m-0 text-[11.5px] text-text-subtle">
-            Razón: {contraste.razon_tipificada.replaceAll("_", " ")}. {contraste.explicacion}
+            Reason: {contraste.razon_tipificada.replaceAll("_", " ")}. {contraste.explicacion}
           </p>
         </div>
       )}
 
       {trayectoria.length > 0 && (
         <div className="flex flex-col gap-1.5 rounded-[var(--radius-card-sm)] border border-border bg-surface px-3.5 py-3">
-          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Trayectoria de {caso.rfc_principal}</span>
+          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Timeline for {caso.rfc_principal}</span>
           <ul className="m-0 flex flex-col gap-1 p-0">
             {trayectoria.map((t) => (
               <li key={t.periodo} className="flex items-center justify-between gap-3 text-[12px] text-text-muted">

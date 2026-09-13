@@ -10,7 +10,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ corrida
   if (!session) return NextResponse.redirect(new URL("/login", _req.url));
   const { corridaId } = await params;
   const html = await getDataSource().getAuditorExpedienteHtml(corridaId);
-  if (!html) return new NextResponse("Esta corrida no tiene expediente del auditor.", { status: 404 });
+  if (!html) return new NextResponse("No audit report is available for this dataset.", { status: 404 });
   return new NextResponse(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",

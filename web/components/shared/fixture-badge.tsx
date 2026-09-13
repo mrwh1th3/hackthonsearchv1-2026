@@ -18,8 +18,8 @@ export function FixtureBadge({
 }) {
   const label =
     origen === "contrato"
-      ? `Datos de demostración · contratos v${contractVersion}`
-      : "Datos de demostración · fixture local de UI";
+      ? `Demo data · contracts v${contractVersion}`
+      : "Demo data · local UI fixture";
   return (
     <span
       className={cn(

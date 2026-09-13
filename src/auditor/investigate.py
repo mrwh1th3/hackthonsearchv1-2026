@@ -531,10 +531,10 @@ class Investigator:
         for c in cands:
             lim, win = c["lim"], c["win"]
             if c["mode"] == "approver":
-                above = [p for p in t.approvals_by(c["person"]) if p["amount"] >= lim]
+                above = [p for p in t.approvals_by(c["person"]) if p["amount"] > lim]
                 if above:
-                    exculpated.append((c, f"approver {c['person']} also signed {len(above)} orders of MXN {lim:,.0f} "
-                                          f"or more (e.g. {above[0]['po_id']} for {mxn(above[0]['amount'])}); "
+                    exculpated.append((c, f"approver {c['person']} also signed {len(above)} orders above MXN {lim:,.0f} "
+                                          f"(e.g. {above[0]['po_id']} for {mxn(above[0]['amount'])}); "
                                           f"MXN {lim:,.0f} is not a limit they needed to evade"))
                     continue
             chosen = c
@@ -554,7 +554,7 @@ class Investigator:
         evidence = [f"{len(win)} orders of {NEAR_LIMIT_RATIO:.0%}–100% of MXN {lim:,.0f} within {span} days, "
                     f"together {mxn(total_po)} on the purchase orders"]
         if mode == "approver":
-            evidence.append(f"approver {pref} signed every order and never signed one of MXN {lim:,.0f} or more — "
+            evidence.append(f"approver {pref} signed every order and never signed one above MXN {lim:,.0f} — "
                             f"that is the limit of their authority")
         else:
             evidence.append(f"requester {pref} raised every order and each went to a different approver "

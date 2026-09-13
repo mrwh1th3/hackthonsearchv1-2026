@@ -5,9 +5,9 @@ import { parsearMarkdownLite, partirInline } from "./markdown-lite";
 
 describe("parsearMarkdownLite", () => {
   it("detecta encabezados de nivel 1 y 2", () => {
-    const bloques = parsearMarkdownLite("# Título\n\n## Subtítulo\n");
+    const bloques = parsearMarkdownLite("# Title\n\n## Subtítulo\n");
     expect(bloques).toEqual([
-      { tipo: "encabezado", nivel: 1, texto: "Título" },
+      { tipo: "encabezado", nivel: 1, texto: "Title" },
       { tipo: "encabezado", nivel: 2, texto: "Subtítulo" },
     ]);
   });

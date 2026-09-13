@@ -4,8 +4,8 @@ import type { Notificacion } from "@/lib/data";
 import { fechaHora } from "@/lib/date/formato";
 
 const TIPO_LABEL: Record<Notificacion["tipo"], string> = {
-  investigacion_completa: "Investigación completa",
-  llamada_resultado: "Resultado de llamada",
+  investigacion_completa: "Full investigation",
+  llamada_resultado: "Call result",
   error: "Error",
 };
 
@@ -17,7 +17,7 @@ const TIPO_LABEL: Record<Notificacion["tipo"], string> = {
  */
 export function NotificationCenter({ notificaciones }: { notificaciones: Notificacion[] }) {
   if (notificaciones.length === 0) {
-    return <p className="rounded-[var(--radius-card)] border border-border bg-surface p-6 text-center text-sm text-text-subtle">Sin notificaciones todavía.</p>;
+    return <p className="rounded-[var(--radius-card)] border border-border bg-surface p-6 text-center text-sm text-text-subtle">No notifications yet.</p>;
   }
   return (
     <ul className="flex flex-col gap-2">

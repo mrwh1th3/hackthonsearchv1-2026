@@ -22,23 +22,23 @@ describe("narrarInvestigacion — timeline de decisiones en lenguaje llano", () 
 
   it("une la consulta con su resultado en un solo paso legible", async () => {
     const { pasos } = await pasosDemo();
-    const consulta = pasos.find((p) => p.titulo.startsWith("Se revisaron las facturas"));
-    expect(consulta?.titulo).toContain("enero 2026");
-    expect(consulta?.detalle).toBe("Se encontraron 12 facturas.");
-    expect(pasos.some((p) => p.titulo === "Se obtuvo el resultado de una consulta")).toBe(false);
+    const consulta = pasos.find((p) => p.titulo.startsWith("Reviewed invoices"));
+    expect(consulta?.titulo).toContain("January 2026");
+    expect(consulta?.detalle).toBe("Found 12 invoices.");
+    expect(pasos.some((p) => p.titulo === "A check returned its result")).toBe(false);
   });
 
   it("explica por qué se abrió el caso con los criterios reales de sus pistas", async () => {
     const { pasos } = await pasosDemo();
-    expect(pasos[0].titulo).toMatch(/^Se abrió la revisión de /);
-    expect(pasos[0].detalle).toContain("Capacidad para operar");
+    expect(pasos[0].titulo).toMatch(/^Review opened for /);
+    expect(pasos[0].detalle).toContain("Capacity to deliver");
   });
 
   it("termina en la conclusión del dictamen, nunca 'definitivo' (regla 7)", async () => {
     const { pasos } = await pasosDemo();
     const ultimo = pasos.at(-1)!;
     expect(ultimo.tono).toBe("conclusion");
-    expect(ultimo.titulo).toBe("Conclusión: Presunción de operaciones simuladas");
+    expect(ultimo.titulo).toBe("Conclusion: Suspected simulated transactions");
     expect(pasos.map((p) => `${p.titulo} ${p.detalle ?? ""}`).join(" ").toLowerCase()).not.toContain("definitiv");
   });
 

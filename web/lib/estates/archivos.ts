@@ -90,9 +90,9 @@ export function hashConjunto(formato: FormatoConjunto, archivos: { nombre: strin
 }
 
 export function validarConjunto(entradas: ArchivoEntrada[]): Conjunto {
-  if (entradas.length === 0) throw new ErrorSubida(400, "falta_archivo", "Selecciona al menos un archivo.");
+  if (entradas.length === 0) throw new ErrorSubida(400, "falta_archivo", "Select at least one file.");
   if (entradas.length > MAX_ARCHIVOS) {
-    throw new ErrorSubida(400, "demasiados_archivos", `Máximo ${MAX_ARCHIVOS} archivos por dataset.`);
+    throw new ErrorSubida(400, "demasiados_archivos", `Maximum ${MAX_ARCHIVOS} files per dataset.`);
   }
   let bytesTotales = 0;
   const vistos = new Set<string>();
@@ -103,14 +103,14 @@ export function validarConjunto(entradas: ArchivoEntrada[]): Conjunto {
     }
     bytesTotales += e.bytes.length;
     if (bytesTotales > MAX_BYTES_TOTAL) {
-      throw new ErrorSubida(413, "conjunto_muy_grande", `El dataset supera ${MAX_BYTES_TOTAL / (1024 * 1024)} MB en total.`);
+      throw new ErrorSubida(413, "conjunto_muy_grande", `El dataset supera ${MAX_BYTES_TOTAL / (1024 * 1024)} MB total.`);
     }
     if (!EXTENSIONES[extension(nombre)]) {
       throw new ErrorSubida(400, "extension_no_admitida", `${nombre}: solo se aceptan .db, .sqlite, .sqlite3, .csv, .xlsx o .zip.`);
     }
     const tipo = tipoPorContenido(nombre, e.bytes);
     if (!tipo) {
-      throw new ErrorSubida(400, "contenido_no_coincide", `${nombre}: el contenido no corresponde a un archivo ${extension(nombre)} válido.`);
+      throw new ErrorSubida(400, "contenido_no_coincide", `${nombre}: the contents do not match a valid ${extension(nombre)} file.`);
     }
     const clave = nombre.toLowerCase();
     if (vistos.has(clave)) throw new ErrorSubida(400, "nombres_duplicados", `Hay dos archivos llamados ${nombre}.`);
@@ -125,13 +125,13 @@ export function validarConjunto(entradas: ArchivoEntrada[]): Conjunto {
     throw new ErrorSubida(
       400,
       "mezcla_invalida",
-      "Un dataset es un SQLite, un ZIP, un conjunto de CSV o un conjunto de XLSX; no se pueden mezclar tipos.",
+      "Choose one SQLite, one ZIP, multiple CSV files or multiple XLSX files. File types cannot be mixed.",
     );
   } else if (tipos.has("sqlite")) {
-    if (n > 1) throw new ErrorSubida(400, "mezcla_invalida", "Sube un solo archivo SQLite por dataset.");
+    if (n > 1) throw new ErrorSubida(400, "mezcla_invalida", "Upload one SQLite file per dataset.");
     formato = "sqlite";
   } else if (tipos.has("zip")) {
-    if (n > 1) throw new ErrorSubida(400, "mezcla_invalida", "Sube un solo ZIP por dataset.");
+    if (n > 1) throw new ErrorSubida(400, "mezcla_invalida", "Upload one ZIP per dataset.");
     formato = "zip";
   } else if (tipos.has("xlsx")) {
     formato = n > 1 ? "xlsx_dir" : "xlsx";

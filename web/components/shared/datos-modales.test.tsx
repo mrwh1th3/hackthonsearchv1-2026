@@ -33,8 +33,8 @@ function corrida(over: Partial<Corrida> = {}): Corrida {
 describe("Pop-ups de datos del diseño Inspector", () => {
   it("el pop-up de tipo de dataset ofrece estático e inyección en vivo, y ninguna cadena de conexión", () => {
     render(<TipoDatasetModal onClose={vi.fn()} />);
-    expect(screen.getByText("Estático")).toBeInTheDocument();
-    expect(screen.getByText("Inyección en vivo")).toBeInTheDocument();
+    expect(screen.getByText("File upload")).toBeInTheDocument();
+    expect(screen.getByText("Live injection")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/postgres:\/\//)).not.toBeInTheDocument();
   });
 
@@ -107,10 +107,10 @@ function stubXhr(status: number, body: unknown) {
 describe("Añadir dataset — multi-formato (2026-09-13)", () => {
   it("el selector acepta SQLite, CSV, XLSX y ZIP, y varios archivos a la vez", () => {
     render(<TipoDatasetModal onClose={vi.fn()} />);
-    const input = screen.getByLabelText("Subir dataset") as HTMLInputElement;
+    const input = screen.getByLabelText("Upload dataset") as HTMLInputElement;
     expect(input.multiple).toBe(true);
     expect(input.accept).toBe(".db,.sqlite,.sqlite3,.csv,.xlsx,.zip");
-    expect(screen.getByText(/varios CSV cuentan como un solo dataset/i)).toBeInTheDocument();
+    expect(screen.getByText(/Multiple CSVs form one dataset/i)).toBeInTheDocument();
   });
 
   it("varios CSV van en un solo POST y, al cargar, se muestra el resumen de estructura antes de abrir la corrida", async () => {
@@ -135,22 +135,22 @@ describe("Añadir dataset — multi-formato (2026-09-13)", () => {
     const onCargado = vi.fn();
     const onClose = vi.fn();
     render(<TipoDatasetModal onClose={onClose} onCargado={onCargado} />);
-    await user.upload(screen.getByLabelText("Subir dataset"), [
+    await user.upload(screen.getByLabelText("Upload dataset"), [
       new File(["rfc\n"], "vendors.csv", { type: "text/csv" }),
       new File(["uuid\n"], "facturas.csv", { type: "text/csv" }),
     ]);
 
-    expect(await screen.findByText("Dataset cargado")).toBeInTheDocument();
+    expect(await screen.findByText("Dataset uploaded")).toBeInTheDocument();
     expect(enviados).toHaveLength(1);
     expect(enviados[0].getAll("archivos").map((f) => (f as File).name)).toEqual(["vendors.csv", "facturas.csv"]);
-    expect(screen.getByText("Mapeos de baja confianza")).toBeInTheDocument();
+    expect(screen.getByText("Mappings to review")).toBeInTheDocument();
     expect(screen.getByText("kickback: falta bank_txns.from_clabe")).toBeInTheDocument();
     expect(screen.getByText("phantom_vendor: sin ledger.entry_id")).toBeInTheDocument();
-    expect(screen.getByText(/vendors\.bank_clabe: 4 por pérdida de precisión/)).toBeInTheDocument();
+    expect(screen.getByText(/vendors\.bank_clabe: 4 due to precision loss/)).toBeInTheDocument();
     expect(screen.getByText("← facturas")).toBeInTheDocument();
     expect(onCargado).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Abrir corrida" }));
+    await user.click(screen.getByRole("button", { name: "Open dataset" }));
     expect(onCargado).toHaveBeenCalledWith("c1");
     expect(onClose).toHaveBeenCalled();
     vi.unstubAllGlobals();
@@ -161,7 +161,7 @@ describe("Añadir dataset — multi-formato (2026-09-13)", () => {
     stubXhr(422, { error: "estructura_invalida", detalle: "required fields invoices.total could not be located." });
     const onCargado = vi.fn();
     render(<TipoDatasetModal onClose={vi.fn()} onCargado={onCargado} />);
-    await user.upload(screen.getByLabelText("Subir dataset"), new File(["x\n"], "facturas.csv", { type: "text/csv" }));
+    await user.upload(screen.getByLabelText("Upload dataset"), new File(["x\n"], "facturas.csv", { type: "text/csv" }));
     expect(await screen.findByText(/invoices\.total could not be located/)).toBeInTheDocument();
     expect(onCargado).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
@@ -191,11 +191,11 @@ describe("Administrar datos — borrar corrida (2026-09-12)", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AdministrarDatosModal corridas={[corrida()]} onClose={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: /borrar demo enero 2026/i }));
+    await user.click(screen.getByRole("button", { name: /Delete demo enero 2026/i }));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Borrar" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(fetchMock).toHaveBeenCalledWith("/api/corridas/00000000-0000-4000-8000-000000000001", { method: "DELETE" });
     await waitFor(() => expect(screen.queryByText("Demo enero 2026")).not.toBeInTheDocument());
@@ -209,8 +209,8 @@ describe("Administrar datos — borrar corrida (2026-09-12)", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AdministrarDatosModal corridas={[corrida()]} onClose={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: /borrar demo enero 2026/i }));
-    await user.click(screen.getByRole("button", { name: "Borrar" }));
+    await user.click(screen.getByRole("button", { name: /Delete demo enero 2026/i }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(await screen.findByText("corrida no existe")).toBeInTheDocument();
     expect(screen.getByText("Demo enero 2026")).toBeInTheDocument();

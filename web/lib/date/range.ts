@@ -197,11 +197,11 @@ export function resolveDateRangePreset(params: ResolveDateRangeParams): RangoRes
 export const RANGO_PRESET_LABEL: Record<RangoPreset, string> = {
   hoy: "Hoy",
   ayer: "Ayer",
-  "7d": "7 días",
-  "30d": "30 días",
-  "90d": "90 días",
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
   mes_actual: "Mes actual",
   mes_anterior: "Mes anterior",
-  todo_el_dataset: "Todo el dataset",
+  todo_el_dataset: "Full dataset",
   personalizado: "Personalizado",
 };

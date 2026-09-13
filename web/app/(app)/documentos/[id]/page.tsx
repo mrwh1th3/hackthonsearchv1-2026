@@ -7,9 +7,11 @@ import { aMarkdown } from "@/lib/document/markdown";
 import { emparejarHallazgos, emparejarLeads } from "@/lib/analisis/emparejar-auditor";
 import { derivarCadenaExplicacion } from "@/lib/analisis/cadena-explicacion";
 import { generarDocumentoBase, type EntradaDocumentoBase } from "@/lib/expediente/documento-base";
+import { leerSubmissionEntregable } from "@/lib/auditoria/submission";
+import { rutaLegible } from "@/lib/auditoria/runner";
 import { InvestigacionVista } from "./investigacion-vista";
 
-export const metadata = { title: "Forense · Investigación" };
+export const metadata = { title: "Inspector · Investigation" };
 export const dynamic = "force-dynamic";
 
 /**
@@ -97,6 +99,16 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   ]);
   const casos = casosCargados.map((c) => ({ ...c, auditorResultado }));
 
+  // `submission.json` de la corrida junto a "Reporte completo" (descarga directa, sin editor). La ruta en disco
+  // solo se muestra si de ahí salen los bytes que se descargan (`lib/auditoria/submission.ts`).
+  const entregaSubmission = auditorResultado ? await leerSubmissionEntregable(inv.corrida_id, ds).catch(() => null) : null;
+  const descargaSubmission = entregaSubmission
+    ? {
+        href: `/auditoria/${inv.corrida_id}/submission`,
+        ruta: entregaSubmission.origen === "disco" && entregaSubmission.ruta ? rutaLegible(entregaSubmission.ruta) : null,
+      }
+    : null;
+
   // Pizarrón de los 5 agentes IA (`forense.anotaciones_agente`, migración
   // 028): por `investigacion_id`, NO por `caso_id` — el caso del
   // complemento IA (`origen='ia_complemento'`) no está en `inv.caso_ids`
@@ -161,7 +173,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   return (
     <section className="flex h-[100dvh] max-h-[100dvh] flex-col gap-2.5 overflow-hidden px-[22px] pb-[18px] pt-5">
       <InvestigacionVista
-        etiqueta={detalle?.caso.rfc_principal ?? (inv.titulo ?? "Investigación")}
+        etiqueta={detalle?.caso.rfc_principal ?? (inv.titulo ?? "Investigation")}
         enVivo={corrida?.corrida_origen_id != null}
         investigacion={inv}
         detalle={detalle}
@@ -178,6 +190,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
         casos={casos}
         tokensCorrida={estadisticas?.operacion.tokens_total ?? null}
         anotacionesIA={anotacionesIA}
+        descargaSubmission={descargaSubmission}
       />
     </section>
   );

@@ -111,13 +111,13 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
         setFase(f >= 1 ? { tipo: "procesando" } : { tipo: "subiendo", fraccion: f }),
       );
       if (status < 200 || status >= 300 || typeof body.corrida_id !== "string") {
-        setError(String(body.detalle ?? body.error ?? `No se pudo cargar (${status})`));
+        setError(String(body.detalle ?? body.error ?? `Upload failed (${status})`));
         setFase({ tipo: "inicio" });
         return;
       }
       setFase({ tipo: "listo", corridaId: body.corrida_id, estructura: (body.estructura as ResumenEstructura) ?? null });
     } catch {
-      setError("No se pudo conectar con el servidor.");
+      setError("Could not connect to the server.");
       setFase({ tipo: "inicio" });
     }
   }
@@ -126,30 +126,30 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
     return (
       <Portal>
         <div
-          className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(20,20,19,.22)] p-5"
+          className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(32,40,30,.22)] p-4 backdrop-blur-[5px] sm:p-6"
           role="dialog"
           aria-modal
-          aria-label="Dataset cargado"
+          aria-label="Dataset uploaded"
         >
-          <div className="flex max-h-full w-[520px] max-w-full flex-col gap-3.5 overflow-hidden rounded-[18px] border border-border bg-surface p-5 shadow-[0_18px_60px_rgba(20,20,19,.16)]">
+          <div className="flex max-h-full w-[520px] max-w-full flex-col gap-3.5 overflow-hidden rounded-[20px] border border-border/70 bg-surface p-6 shadow-[0_24px_80px_rgba(28,36,25,.16)]">
             <div className="flex flex-col gap-[3px]">
-              <h3 className="m-0 text-[15px] font-semibold tracking-tight text-text">Dataset cargado</h3>
+              <h3 className="m-0 font-display text-[20px] font-medium tracking-[-.035em] text-text">Dataset uploaded</h3>
               <span className="truncate text-[12px] text-text-subtle">{nombres.join(", ")}</span>
             </div>
             <div className="min-h-0 overflow-y-auto">
               {fase.estructura ? (
                 <EstructuraResumen estructura={fase.estructura} />
               ) : (
-                <p className="m-0 text-[12px] text-text-subtle">El servidor no devolvió reporte de estructura.</p>
+                <p className="m-0 text-[12px] text-text-subtle">No structure report was returned.</p>
               )}
             </div>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={cerrar}
-                className="h-[32px] rounded-[var(--radius-control)] bg-primary px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover"
+                className="insp-focus-ring h-9 rounded-[12px] bg-[var(--brand-strong)] px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:brightness-110"
               >
-                Abrir corrida
+                Open dataset
               </button>
             </div>
           </div>
@@ -160,38 +160,38 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
 
   const etiqueta =
     fase.tipo === "subiendo"
-      ? `Subiendo… ${Math.round(fase.fraccion * 100)}%`
+      ? `Uploading… ${Math.round(fase.fraccion * 100)}%`
       : fase.tipo === "procesando"
-        ? "Leyendo estructura y cargando…"
-        : "SQLite, CSV, XLSX o ZIP";
+        ? "Reading structure and importing…"
+        : "SQLite, CSV, XLSX or ZIP";
   return (
     <Portal>
     <div
       onClick={ocupado ? undefined : onClose}
-      className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(20,20,19,.22)] p-5"
+      className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(32,40,30,.22)] p-4 backdrop-blur-[5px] sm:p-6"
       role="dialog"
       aria-modal
-      aria-label="Tipo de dataset"
+      aria-label="Dataset type"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex w-[360px] max-w-full flex-col gap-3.5 rounded-[18px] border border-border bg-surface p-5 shadow-[0_18px_60px_rgba(20,20,19,.16)]"
+        className="flex w-[360px] max-w-full flex-col gap-3.5 rounded-[20px] border border-border/70 bg-surface p-6 shadow-[0_24px_80px_rgba(28,36,25,.16)]"
       >
-        <h3 className="m-0 text-[15px] font-semibold tracking-tight text-text">Tipo de dataset</h3>
+        <h3 className="m-0 font-display text-[20px] font-medium tracking-[-.035em] text-text">Dataset type</h3>
         <div className="flex gap-2.5">
           <span
             aria-disabled
-            className="flex flex-1 flex-col items-center gap-2.5 rounded-[var(--radius-card-sm)] border border-dashed border-border px-3.5 py-5 text-[13.5px] font-medium text-text-subtle"
+            className="flex flex-1 flex-col items-center gap-2.5 rounded-[var(--radius-card-sm)] border border-dashed border-border/80 bg-surface-raised px-3.5 py-5 text-[13.5px] font-medium text-text-subtle"
           >
             <span aria-hidden className="box-border h-3.5 w-3.5 rounded-[3px] border-[1.6px] border-border" />
-            Estático
+            File upload
           </span>
           <span
             aria-disabled
-            className="flex flex-1 flex-col items-center gap-2.5 rounded-[var(--radius-card-sm)] border border-dashed border-border px-3.5 py-5 text-[13.5px] font-medium text-text-subtle"
+            className="flex flex-1 flex-col items-center gap-2.5 rounded-[var(--radius-card-sm)] border border-dashed border-border/80 bg-surface-raised px-3.5 py-5 text-[13.5px] font-medium text-text-subtle"
           >
             <span aria-hidden className="box-border h-3.5 w-3.5 rounded-full border-[1.6px] border-border" />
-            Inyección en vivo
+            Live injection
           </span>
         </div>
         <label
@@ -205,8 +205,8 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
             setArrastrando(false);
             void subir(Array.from(e.dataTransfer.files ?? []));
           }}
-          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[var(--radius-card-sm)] border px-3.5 py-4 text-center transition-colors duration-150 hover:bg-surface-hover ${
-            arrastrando ? "border-primary bg-surface-hover" : "border-border-strong"
+          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[14px] border px-3.5 py-5 text-center transition-colors duration-150 hover:bg-[var(--brand-soft)] focus-within:border-[var(--focus)] focus-within:ring-2 focus-within:ring-[var(--brand-soft)] ${
+            arrastrando ? "border-[var(--brand)] bg-[var(--brand-soft)]" : "border-border bg-surface-raised"
           } ${ocupado ? "pointer-events-none opacity-60" : ""}`}
         >
           <span className="text-[13.5px] font-medium text-text" aria-live="polite">
@@ -215,7 +215,7 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
           <span className="text-[12px] leading-relaxed text-text-subtle">
             {ocupado
               ? nombres.join(", ")
-              : "Suelta o elige un .db, un .zip, un .xlsx (hoja por tabla) o varios .csv (una tabla por archivo). Varios CSV cuentan como un solo dataset."}
+              : "Drop a SQLite database, ZIP, Excel workbook or CSV tables. Multiple CSVs form one dataset."}
           </span>
           {fase.tipo === "subiendo" && (
             <span
@@ -225,7 +225,7 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
               aria-valuenow={Math.round(fase.fraccion * 100)}
               className="block h-1 w-full overflow-hidden rounded-full bg-surface-muted"
             >
-              <span className="block h-full bg-primary transition-[width] duration-150" style={{ width: `${Math.round(fase.fraccion * 100)}%` }} />
+              <span className="block h-full bg-[var(--brand)] transition-[width] duration-150" style={{ width: `${Math.round(fase.fraccion * 100)}%` }} />
             </span>
           )}
           <input
@@ -234,7 +234,7 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
             multiple
             className="sr-only"
             disabled={ocupado}
-            aria-label="Subir dataset"
+            aria-label="Upload dataset"
             onChange={(e) => {
               const archivos = Array.from(e.target.files ?? []);
               e.target.value = "";
@@ -293,10 +293,10 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
         setEstructura(
           res.ok && body.estructura
             ? { datos: body.estructura as ResumenEstructura }
-            : { error: body.detalle ?? body.error ?? `No se pudo leer la estructura (${res.status})` },
+            : { error: body.detalle ?? body.error ?? `Could not read the structure (${res.status})` },
         );
       })
-      .catch(() => vigente && setEstructura({ error: "No se pudo conectar con el servidor." }));
+      .catch(() => vigente && setEstructura({ error: "Could not connect to the server." }));
     return () => {
       vigente = false;
     };
@@ -311,10 +311,10 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!vigente) return;
-        if (!res.ok) setError(body.detalle ?? body.error ?? `No se pudo leer el dataset (${res.status})`);
+        if (!res.ok) setError(body.detalle ?? body.error ?? `Could not read the dataset (${res.status})`);
         else setDatos(body as PreviewRespuesta);
       })
-      .catch(() => vigente && setError("No se pudo conectar con el servidor."))
+      .catch(() => vigente && setError("Could not connect to the server."))
       .finally(() => vigente && setCargando(false));
     return () => {
       vigente = false;
@@ -328,35 +328,35 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
     <Portal>
       <div
         onClick={onClose}
-        className="fixed inset-0 z-10 flex bg-[rgba(20,20,19,.22)] p-5"
+        className="fixed inset-0 z-10 flex bg-[rgba(32,40,30,.22)] p-4 backdrop-blur-[5px] sm:p-6"
         role="dialog"
         aria-modal
-        aria-label={`Preview de ${corrida.nombre}`}
+        aria-label={`Preview of ${corrida.nombre}`}
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-card-lg)] border border-border bg-surface shadow-[0_18px_60px_rgba(20,20,19,.16)]"
+          className="mx-auto flex min-w-0 max-w-[1240px] flex-1 flex-col overflow-hidden rounded-[20px] border border-border/70 bg-surface shadow-[0_24px_80px_rgba(28,36,25,.16)]"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-surface-raised px-5 py-4">
             <div className="flex min-w-0 flex-col gap-[3px]">
-              <h2 className="m-0 truncate text-[15px] font-semibold tracking-tight text-text">{corrida.nombre}</h2>
-              <span className="text-[12px] text-text-subtle">Preview de solo lectura · {corrida.dataset}</span>
+              <h2 className="m-0 truncate font-display text-[20px] font-medium tracking-[-.035em] text-text">{corrida.nombre}</h2>
+              <span className="text-[12px] text-text-subtle">Read-only preview · {corrida.dataset}</span>
             </div>
             <div className="flex gap-2">
               <button
                 type="button"
                 aria-pressed={verEstructura}
                 onClick={() => setVerEstructura((v) => !v)}
-                className="h-[32px] rounded-[var(--radius-control)] border border-border bg-surface px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:bg-surface-hover"
+                className="insp-focus-ring h-9 rounded-[12px] border border-border/80 bg-surface px-4 text-[13px] font-medium text-text-muted transition-colors duration-150 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]"
               >
                 {verEstructura ? "Ver datos" : "Estructura"}
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="h-[32px] rounded-[var(--radius-control)] bg-primary px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover"
+                className="insp-focus-ring h-9 rounded-[12px] bg-[var(--brand-strong)] px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:brightness-110"
               >
-                Cerrar
+                Close
               </button>
             </div>
           </div>
@@ -370,13 +370,13 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
               ) : estructura?.error ? (
                 <p className="m-0 p-7 text-center text-[13px] text-text-subtle">{estructura.error}</p>
               ) : (
-                <p className="m-0 p-7 text-center text-[13px] text-text-subtle">Cargando…</p>
+                <p className="m-0 p-7 text-center text-[13px] text-text-subtle">Loading…</p>
               )}
             </div>
           )}
 
           {!verEstructura && datos && (
-            <div role="tablist" aria-label="Tablas del dataset" className="flex gap-1 overflow-x-auto border-b border-[var(--border)] px-2.5 py-2">
+            <div role="tablist" aria-label="Dataset tables" className="flex gap-1 overflow-x-auto border-b border-[var(--border)] px-2.5 py-2">
               {datos.tablas.map((t) => (
                 <button
                   key={t.nombre}
@@ -387,10 +387,10 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
                     setTabla(t.nombre);
                     setOffset(0);
                   }}
-                  className={`flex-none whitespace-nowrap rounded-[var(--radius-control)] border px-2.5 py-1 text-[12.5px] transition-colors duration-150 ${
+                  className={`insp-focus-ring flex-none whitespace-nowrap rounded-[10px] border px-3 py-1.5 text-[12px] transition-colors duration-150 ${
                     t.nombre === tabla
-                      ? "border-border-strong bg-surface-hover font-medium text-text"
-                      : "border-transparent text-text-muted hover:bg-surface-hover"
+                      ? "border-[var(--brand)]/25 bg-[var(--brand-soft)] font-medium text-[var(--brand-strong)]"
+                      : "border-transparent text-text-muted hover:bg-[var(--brand-soft)]"
                   }`}
                 >
                   {t.nombre} <span className="tabular-nums text-text-subtle">{t.filas.toLocaleString("es-MX")}</span>
@@ -441,7 +441,7 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
               </table>
             ) : null}
             {cargando && !error && (
-              <p className="m-0 p-7 text-center text-[13px] text-text-subtle">Cargando…</p>
+              <p className="m-0 p-7 text-center text-[13px] text-text-subtle">Loading…</p>
             )}
           </div>
 
@@ -455,7 +455,7 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
                   type="button"
                   disabled={offset === 0 || cargando}
                   onClick={() => setOffset(Math.max(0, offset - PAGINA))}
-                  className="h-[28px] rounded-[var(--radius-control)] border border-border bg-surface px-2.5 text-text-muted transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
+                  className="insp-focus-ring h-8 rounded-[10px] border border-border/80 bg-surface px-3 text-text-muted transition-colors duration-150 hover:bg-[var(--brand-soft)] disabled:opacity-50"
                 >
                   Anterior
                 </button>
@@ -463,7 +463,7 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
                   type="button"
                   disabled={hasta >= total || cargando}
                   onClick={() => setOffset(offset + PAGINA)}
-                  className="h-[28px] rounded-[var(--radius-control)] border border-border bg-surface px-2.5 text-text-muted transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
+                  className="insp-focus-ring h-8 rounded-[10px] border border-border/80 bg-surface px-3 text-text-muted transition-colors duration-150 hover:bg-[var(--brand-soft)] disabled:opacity-50"
                 >
                   Siguiente
                 </button>
@@ -501,13 +501,13 @@ export function AdministrarDatosModal({
       const res = await fetch(`/api/corridas/${c.id}`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setErrorBorrado(body.detalle ?? body.error ?? `No se pudo borrar (${res.status})`);
+        setErrorBorrado(body.detalle ?? body.error ?? `Could not delete (${res.status})`);
         return;
       }
       setBorradas((prev) => new Set(prev).add(c.id));
       router.refresh();
     } catch {
-      setErrorBorrado("No se pudo conectar con el servidor.");
+      setErrorBorrado("Could not connect to the server.");
     } finally {
       setBorrando(null);
       setConfirmando(null);
@@ -531,59 +531,59 @@ export function AdministrarDatosModal({
 
   return (
     <Portal>
-    <div className="fixed inset-0 z-[9] flex bg-[rgba(20,20,19,.18)] p-2.5" role="dialog" aria-modal aria-label="Administrar datos">
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-card-lg)] border border-border bg-surface shadow-[0_18px_60px_rgba(20,20,19,.14)]">
-        <div className="flex flex-wrap items-center justify-between gap-3.5 border-b border-[var(--border)] p-2.5">
+    <div className="fixed inset-0 z-[9] flex bg-[rgba(32,40,30,.22)] p-4 backdrop-blur-[5px] sm:p-6" role="dialog" aria-modal aria-label="Manage datasets">
+      <div className="mx-auto flex min-w-0 max-w-[1240px] flex-1 flex-col overflow-hidden rounded-[20px] border border-border/70 bg-surface shadow-[0_24px_80px_rgba(28,36,25,.16)]">
+        <div className="flex flex-wrap items-center justify-between gap-3.5 border-b border-border/70 bg-surface-raised px-5 py-4">
           <div className="flex flex-col gap-[3px]">
-            <h2 className="m-0 text-[17px] font-semibold tracking-tight text-text">Administrar datos</h2>
+            <h2 className="m-0 font-display text-[22px] font-medium tracking-[-.035em] text-text">Manage datasets</h2>
             <span className="text-[12.5px] text-text-subtle">
               {corridas.length} corrida{corridas.length === 1 ? "" : "s"} · inyecciones primero
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex h-[34px] items-center gap-2 rounded-[var(--radius-control)] border border-border bg-surface px-2.5 transition-colors focus-within:border-primary">
+            <div className="flex h-9 items-center gap-2 rounded-[12px] border border-border/80 bg-surface px-3 transition-colors focus-within:border-[var(--focus)] focus-within:ring-2 focus-within:ring-[var(--brand-soft)]">
               <Search size={13} className="text-placeholder" aria-hidden />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar corridas"
-                aria-label="Buscar corridas en administrar datos"
+                placeholder="Search datasets"
+                aria-label="Search datasets"
                 className="w-[150px] border-none bg-transparent text-[12.5px] text-text outline-none"
               />
             </div>
             <button
               type="button"
               onClick={() => setTipoAbierto(true)}
-              className="h-[34px] rounded-[var(--radius-control)] border border-border bg-surface px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:bg-surface-hover"
+              className="insp-focus-ring h-9 rounded-[12px] border border-border/80 bg-surface px-4 text-[13px] font-medium text-text-muted transition-colors duration-150 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]"
             >
-              Añadir dataset
+              Add dataset
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="h-[34px] rounded-[var(--radius-control)] bg-primary px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover"
+              className="insp-focus-ring h-9 rounded-[12px] bg-[var(--brand-strong)] px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:brightness-110"
             >
               Listo
             </button>
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2.5">
+        <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-4">
           {filas.map((c) => (
             <div
               key={c.id}
-              className="flex flex-wrap items-center gap-3 rounded-[var(--radius-card-sm)] border border-[var(--border)] bg-surface-raised px-3.5 py-2.5"
+              className="flex flex-wrap items-center gap-3 rounded-[14px] border border-border/70 bg-surface-raised px-4 py-3"
             >
               <span
                 aria-hidden
-                className="h-2 w-2 flex-none bg-primary"
+                className="h-2 w-2 flex-none bg-[var(--brand)]"
                 style={{ borderRadius: c.corrida_origen_id != null ? "50%" : "2px" }}
               />
               <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">{c.nombre}</span>
               {c.corrida_origen_id != null && (
                 <span className="flex flex-none items-center gap-1.5 rounded-[5px] border border-live-border bg-live-bg px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide text-live-fg">
                   <span aria-hidden className="h-[5px] w-[5px] rounded-full bg-live-dot" />
-                  Inyección en vivo
+                  Live injection
                 </span>
               )}
               <span className="flex-none whitespace-nowrap text-[12px] text-text-subtle">{c.dataset}</span>
@@ -592,7 +592,7 @@ export function AdministrarDatosModal({
               <button
                 type="button"
                 onClick={() => setPreview(c)}
-                className="h-[30px] flex-none rounded-[var(--radius-control)] border border-border bg-surface px-2.5 text-[12.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover"
+                className="insp-focus-ring h-8 flex-none rounded-[10px] border border-border/80 bg-surface px-3 text-[12px] text-text-muted transition-colors duration-150 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]"
               >
                 Inspeccionar
               </button>
@@ -600,9 +600,9 @@ export function AdministrarDatosModal({
                 type="button"
                 onClick={() => setConfirmando(c)}
                 disabled={borrando === c.id}
-                aria-label={`Borrar ${c.nombre}`}
-                title="Borrar dataset"
-                className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-[var(--radius-control)] border border-border bg-surface text-error transition-colors duration-150 hover:bg-error/10 disabled:opacity-50"
+                aria-label={`Delete ${c.nombre}`}
+                title="Delete dataset"
+                className="insp-focus-ring flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border border-border/80 bg-surface text-error transition-colors duration-150 hover:bg-error/10 disabled:opacity-50"
               >
                 <Trash2 size={14} aria-hidden />
               </button>
@@ -610,7 +610,7 @@ export function AdministrarDatosModal({
           ))}
           {filas.length === 0 && (
             <p className="m-0 py-7 text-center text-[13px] text-text-subtle">
-              {corridas.length === 0 ? "Sin corridas todavía. Añade un dataset para empezar." : "Ninguna corrida coincide."}
+              {corridas.length === 0 ? "Upload a dataset to get started." : "Ninguna corrida coincide."}
             </p>
           )}
           {errorBorrado && <p className="m-0 px-1 text-[12px] text-error">{errorBorrado}</p>}
@@ -622,35 +622,35 @@ export function AdministrarDatosModal({
     {confirmando && (
       <div
         onClick={() => (borrando ? null : setConfirmando(null))}
-        className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(20,20,19,.22)] p-5"
+        className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(32,40,30,.22)] p-4 backdrop-blur-[5px] sm:p-6"
         role="alertdialog"
         aria-modal
-        aria-label={`Confirmar borrado de ${confirmando.nombre}`}
+        aria-label={`Confirm deletion of ${confirmando.nombre}`}
       >
         <div
           onClick={(e) => e.stopPropagation()}
-          className="flex w-[360px] max-w-full flex-col gap-3 rounded-[18px] border border-border bg-surface p-5 shadow-[0_18px_60px_rgba(20,20,19,.16)]"
+          className="flex w-[360px] max-w-full flex-col gap-3 rounded-[20px] border border-border/70 bg-surface p-6 shadow-[0_24px_80px_rgba(28,36,25,.16)]"
         >
-          <h3 className="m-0 text-[15px] font-semibold tracking-tight text-text">Borrar “{confirmando.nombre}”</h3>
+          <h3 className="m-0 font-display text-[20px] font-medium tracking-[-.035em] text-text">Delete “{confirmando.nombre}”</h3>
           <p className="m-0 text-[13px] leading-relaxed text-text-subtle">
-            Se borra la corrida completa: sus CFDI, movimientos, pistas, clusters, casos e investigaciones. No se puede deshacer.
+            This deletes the dataset and its invoices, transactions, checks, cases and investigations. This cannot be undone.
           </p>
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setConfirmando(null)}
               disabled={borrando === confirmando.id}
-              className="h-[32px] rounded-[var(--radius-control)] border border-border bg-surface px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
+              className="insp-focus-ring h-9 rounded-[12px] border border-border/80 bg-surface px-4 text-[13px] font-medium text-text-muted transition-colors duration-150 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)] disabled:opacity-50"
             >
-              Cancelar
+              Cancel
             </button>
             <button
               type="button"
               onClick={() => borrarCorrida(confirmando)}
               disabled={borrando === confirmando.id}
-              className="h-[32px] rounded-[var(--radius-control)] bg-error px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:opacity-90 disabled:opacity-50"
+              className="insp-focus-ring h-9 rounded-[12px] bg-error px-4 text-[13px] font-medium text-white transition-colors duration-150 hover:opacity-90 disabled:opacity-50"
             >
-              {borrando === confirmando.id ? "Borrando…" : "Borrar"}
+              {borrando === confirmando.id ? "Borrando…" : "Delete"}
             </button>
           </div>
         </div>

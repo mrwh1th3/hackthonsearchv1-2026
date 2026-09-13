@@ -1,25 +1,18 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Pause, X } from "lucide-react";
+import { ArrowUpRight, GitBranch, Pause, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { BoardTimeline } from "@/components/shared/board-timeline";
 import { CanvasHeader } from "@/components/shared/canvas-header";
+import { ArbolFlujo, Flecha } from "@/components/shared/arbol-flujo";
 import { MapaLogico } from "@/components/shared/mapa-logico";
 import type { Caso, EventoForense, Senal, Tarea } from "@/lib/data";
 import { mapSenal } from "@/lib/data/supabase";
 import { useCanalForense } from "@/lib/realtime/usar-canal";
-import {
-  construirArbol,
-  duracion,
-  formatoTokens,
-  nombreAgente,
-  type EstadoNodo,
-  type EtapaArbol,
-  type NodoAgente,
-} from "@/lib/analisis/arbol";
+import { construirArbol, duracion, formatoTokens, nombreAgente, type NodoAgente } from "@/lib/analisis/arbol";
 import { fechaHora } from "@/lib/date/formato";
 import { cn } from "@/lib/utils";
 import type { EjecucionAgenteInfo } from "@/lib/data/privado";
@@ -55,6 +48,7 @@ const INTERVALO_MS = 3000;
  */
 function useEstadoAnalisis(casoId: string, inicial: EstadoAnalisis, sondear: boolean) {
   const [estado, setEstado] = useState(inicial);
+  const [errorActualizacion, setErrorActualizacion] = useState(false);
   const terminadoRef = useRef(false);
 
   // Preview de desarrollo: pinta el estado inicial tal cual, sin pedir nada.
@@ -75,9 +69,13 @@ function useEstadoAnalisis(casoId: string, inicial: EstadoAnalisis, sondear: boo
       if (document.visibilityState !== "hidden" || ciclo % 4 === 0) {
         try {
           const res = await fetch(`/api/analisis/${encodeURIComponent(casoId)}`, { cache: "no-store" });
-          if (res.ok && !cancelado) setEstado((await res.json()) as EstadoAnalisis);
+          if (!cancelado) {
+            if (res.ok) { setEstado((await res.json()) as EstadoAnalisis); setErrorActualizacion(false); }
+            else setErrorActualizacion(true);
+          }
         } catch {
-          // Red caída: se reintenta en el siguiente intervalo sin tocar lo ya pintado.
+          if (!cancelado) setErrorActualizacion(true);
+          // Keep the last persisted state while retrying.
         }
       }
       if (!cancelado) temporizador = setTimeout(sondear, INTERVALO_MS);
@@ -89,7 +87,7 @@ function useEstadoAnalisis(casoId: string, inicial: EstadoAnalisis, sondear: boo
     };
   }, [casoId, sondear]);
 
-  return { estado, terminadoRef };
+  return { estado, terminadoRef, errorActualizacion };
 }
 
 /** Reloj de pantalla para el tiempo transcurrido; los instantes de inicio/fin sí son persistidos. */
@@ -110,118 +108,6 @@ function Puntos() {
       <span className="h-[5px] w-[5px] rounded-full bg-current" />
       <span className="h-[5px] w-[5px] rounded-full bg-current" />
     </span>
-  );
-}
-
-const ESTADO_NODO: Record<EstadoNodo, { texto: string; punto: string }> = {
-  pendiente: { texto: "Pendiente", punto: "bg-border-stronger" },
-  ejecutando: { texto: "En proceso", punto: "bg-live-dot" },
-  completada: { texto: "Completado", punto: "bg-text" },
-  omitida: { texto: "Omitido", punto: "bg-border-strong" },
-  error: { texto: "Error", punto: "bg-error" },
-};
-
-/** Flecha vertical: línea de 1px y punta, del color de borde fuerte del diseño. */
-function Flecha({ alto = 22 }: { alto?: number }) {
-  return (
-    <span aria-hidden className="flex flex-none flex-col items-center">
-      <span className="w-px bg-border-stronger" style={{ height: alto }} />
-      <span className="h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-border-stronger" />
-    </span>
-  );
-}
-
-function TarjetaAgente({ nodo, ahora, onAbrir }: { nodo: NodoAgente; ahora: number; onAbrir: () => void }) {
-  const e = ESTADO_NODO[nodo.estado];
-  const fin = nodo.detenido ? new Date(nodo.detenido).getTime() : ahora;
-  const rt = nodo.runtime;
-  // Tokens reales de `llm_solicitudes` si el runtime ya instrumentó esta
-  // tarea; si no, se cae al conteo de bitácora (`nodo.tokens`) que ya existía.
-  const tokensMostrados = rt && (rt.tokens_in != null || rt.tokens_out != null) ? (rt.tokens_in ?? 0) + (rt.tokens_out ?? 0) : nodo.tokens;
-  // Contador en vivo de runtime: `creado` → `actualizado` si ya paró
-  // (terminado/error/timeout/cancelada), o `creado` → `ahora` mientras sigue
-  // activo — independiente del reloj de la tarea (`nodo.iniciado`/`detenido`),
-  // porque el runtime puede seguir corriendo tras el último evento de bitácora.
-  const elapsedRuntime = rt ? duracion(rt.creado, runtimeActivo(rt.estado_interno) && !rt.cancelada ? ahora : new Date(rt.actualizado).getTime()) : null;
-  return (
-    <button
-      type="button"
-      onClick={onAbrir}
-      className={cn(
-        "insp-focus-ring flex w-[176px] flex-col gap-1 rounded-[13px] border bg-surface px-3 py-2.5 text-left transition-colors duration-150 hover:border-border-stronger hover:bg-surface-hover",
-        nodo.estado === "ejecutando" ? "border-border-strong shadow-[0_1px_3px_rgba(20,20,19,.06)]" : "border-border",
-      )}
-    >
-      <span className="flex items-center gap-1.5">
-        <span className={cn("h-1.5 w-1.5 flex-none rounded-full", e.punto, nodo.estado === "ejecutando" && "animate-pulse")} />
-        <span className="truncate text-[12.5px] font-medium capitalize text-text">{nombreAgente(nodo.agente)}</span>
-      </span>
-      <span className="text-[11.5px] text-text-subtle">
-        {e.texto}
-        {nodo.intento > 0 ? ` · intento ${nodo.intento + 1}` : ""}
-      </span>
-      <span className="text-[11px] text-text-subtle">
-        {duracion(nodo.iniciado, fin)} · {formatoTokens(tokensMostrados)} tokens
-      </span>
-      {elapsedRuntime && (
-        <span className="text-[10.5px] text-text-subtle" title="Tiempo de runtime: creado → actualizado (o ahora, si sigue activo)">
-          runtime: {elapsedRuntime}
-        </span>
-      )}
-      {rt?.toolEnCurso && (
-        <span className="flex items-center gap-1 text-[10.5px] text-live-fg">
-          <span className="h-1 w-1 flex-none animate-pulse rounded-full bg-live-dot" aria-hidden />
-          herramienta: {rt.toolEnCurso.nombre ?? "en curso"}
-        </span>
-      )}
-    </button>
-  );
-}
-
-/**
- * Una etapa del árbol: con varios agentes se abre en abanico (bus horizontal
- * arriba, una bajada con flecha por agente) y se vuelve a juntar abajo para
- * seguir a la siguiente etapa. Las líneas son medias líneas por hijo, sin
- * `gap`, para que el bus quede continuo a cualquier ancho.
- */
-function Etapa({ etapa, ahora, onAbrir, ultima }: { etapa: EtapaArbol; ahora: number; onAbrir: (n: NodoAgente) => void; ultima: boolean }) {
-  const n = etapa.nodos.length;
-  return (
-    <div className="flex flex-col items-center">
-      <span
-        className={cn(
-          "rounded-[var(--radius-pill)] border px-2.5 py-[3px] text-[11px] uppercase tracking-[.05em]",
-          etapa.pendiente ? "border-dashed border-border-dashed text-placeholder" : "border-border-strong bg-surface-raised text-text-subtle",
-        )}
-      >
-        {etapa.titulo}
-      </span>
-
-      {etapa.pendiente ? (
-        <>
-          <span aria-hidden className="h-4 w-px border-l border-dashed border-border-dashed" />
-          <span className="rounded-[13px] border border-dashed border-border-dashed px-4 py-2 text-[11.5px] text-placeholder">Sin tareas todavía</span>
-        </>
-      ) : (
-        <>
-          <span aria-hidden className="h-3 w-px bg-border-stronger" />
-          <div className="flex max-w-full overflow-x-auto">
-            {etapa.nodos.map((nodo, i) => (
-              <div key={nodo.id} className="relative flex flex-col items-center px-2">
-                {n > 1 && i > 0 && <span aria-hidden className="absolute left-0 right-1/2 top-0 h-px bg-border-stronger" />}
-                {n > 1 && i < n - 1 && <span aria-hidden className="absolute left-1/2 right-0 top-0 h-px bg-border-stronger" />}
-                <Flecha alto={12} />
-                <TarjetaAgente nodo={nodo} ahora={ahora} onAbrir={() => onAbrir(nodo)} />
-                {!ultima && <span aria-hidden className="h-3 w-px bg-border-stronger" />}
-                {!ultima && n > 1 && i > 0 && <span aria-hidden className="absolute bottom-0 left-0 right-1/2 h-px bg-border-stronger" />}
-                {!ultima && n > 1 && i < n - 1 && <span aria-hidden className="absolute bottom-0 left-1/2 right-0 h-px bg-border-stronger" />}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-      {!ultima && <Flecha alto={14} />}
-    </div>
   );
 }
 
@@ -258,18 +144,18 @@ function ModalAgente({
           {nodo && (
             <div className="relative flex max-h-[80vh] flex-col gap-4 rounded-[var(--radius-composer)] border border-border bg-surface p-5 shadow-xl">
               <Dialog.Close
-                aria-label="Cerrar"
+                aria-label="Close"
                 className="insp-focus-ring absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover"
               >
                 <X size={15} aria-hidden />
               </Dialog.Close>
               <div className="flex flex-col gap-1 pr-8">
                 <Dialog.Title className="m-0 text-[18px] font-semibold tracking-tight text-text">
-                  Subagente de {nombreAgente(nodo.agente)}
+                  Agent for {nombreAgente(nodo.agente)}
                 </Dialog.Title>
-                <p className="m-0 text-[13px] text-text-muted">Etapa de {nodo.etapa}</p>
+                <p className="m-0 text-[13px] text-text-muted">Stage of {nodo.etapa}</p>
                 <p className="m-0 text-[12px] text-text-subtle">
-                  {duracion(nodo.iniciado, fin)} en ejecución · {formatoTokens(nodo.tokens)} tokens consumidos
+                  {duracion(nodo.iniciado, fin)} Running · {formatoTokens(nodo.tokens)} tokens used
                 </p>
                 {nodo.runtime && (
                   <p className="m-0 text-[11.5px] text-text-subtle">
@@ -279,7 +165,7 @@ function ModalAgente({
                       : "tokens no disp."}{" "}
                     · {formatoCostoEstimado(estimarCostoUsd(nodo.runtime.model_id, nodo.runtime.tokens_in, nodo.runtime.tokens_out))} ·{" "}
                     {duracion(nodo.runtime.creado, runtimeActivo(nodo.runtime.estado_interno) && !nodo.runtime.cancelada ? ahora : new Date(nodo.runtime.actualizado).getTime())}{" "}
-                    de runtime
+                    runtime
                   </p>
                 )}
               </div>
@@ -303,7 +189,7 @@ function ModalAgente({
                           {t.args_hash && <span className="font-mono text-[10px] text-text-subtle">#{t.args_hash.slice(0, 8)}</span>}
                         </span>
                         <span className="text-[10.5px] text-text-subtle">
-                          {t.duracion_ms != null ? `${t.duracion_ms} ms` : "en curso"}
+                          {t.duracion_ms != null ? `${t.duracion_ms} ms` : "in progress"}
                           {t.resultado_resumen ? ` · ${t.resultado_resumen}` : ""}
                         </span>
                       </li>
@@ -317,8 +203,8 @@ function ModalAgente({
                 {hallazgos.length === 0 ? (
                   <p className="m-0 text-[12.5px] text-text-subtle">
                     {nodo.estado === "pendiente" || nodo.estado === "ejecutando"
-                      ? "Este agente todavía no ha anotado hallazgos en el pizarrón."
-                      : "Este agente no anotó hallazgos en el pizarrón."}
+                      ? "This investigator has not recorded findings yet."
+                      : "This investigator recorded no findings."}
                   </p>
                 ) : (
                   <ul className="m-0 flex max-h-[220px] list-none flex-col gap-1.5 overflow-y-auto p-0">
@@ -350,7 +236,7 @@ function ModalAgente({
                       <span className="text-[11.5px] text-text-subtle">{fechaHora(log.ts)}</span>
                     ) : (
                       <span className="flex items-center gap-1.5 text-[11.5px] text-text-subtle">
-                        En proceso <Puntos />
+                        In progress <Puntos />
                       </span>
                     )}
                   </li>
@@ -386,7 +272,7 @@ export function AnalisisCanvas({
   /** `false` solo en `/analisis/preview` (datos de ejemplo, sin BFF). */
   sondear?: boolean;
 }) {
-  const { estado, terminadoRef } = useEstadoAnalisis(casoId, inicial, sondear);
+  const { estado, terminadoRef, errorActualizacion } = useEstadoAnalisis(casoId, inicial, sondear);
   const arbol = useMemo(
     () => construirArbol(estado.caso, estado.tareas, estado.eventos, estado.runtime?.ejecuciones ?? []),
     [estado],
@@ -396,6 +282,7 @@ export function AnalisisCanvas({
   }, [arbol.terminado, terminadoRef]);
   const ahora = useAhora(!arbol.terminado);
   const [abiertoId, setAbiertoId] = useState<string | null>(null);
+  const [vistaAnalisis, setVistaAnalisis] = useState<"flujo" | "mapa" | "eventos">("flujo");
   const nodoAbierto = abiertoId ? (arbol.etapas.flatMap((e) => e.nodos).find((n) => n.id === abiertoId) ?? null) : null;
 
   const caso = estado.caso;
@@ -421,15 +308,6 @@ export function AnalisisCanvas({
   const investigacionAuditoria = caso?.origen === "auditoria" ? (caso.origen_valor ?? null) : null;
   const destinoResultados = investigacionAuditoria ? `/documentos/${investigacionAuditoria}?doc=0` : `/casos/${casoId}/expediente`;
 
-  // Control de la corrida: mismo motivo que en el modal — no existe todavía
-  // la ruta BFF → webhook de cancelación/pausa, así que no se finge.
-  function cancelar() {
-    toast.info("Cancelar el análisis todavía no está conectado al runtime; la investigación sigue en curso.");
-  }
-  function pausar() {
-    toast.info("Pausar el análisis todavía no está conectado al runtime; la investigación sigue en curso.");
-  }
-
   // Gate "Continuar" (pedido 2026-09-13): al entrar a una investigación
   // nueva no se muestra el mapa lógico de inmediato, hay que confirmar
   // primero. Es URL-addressable (`?continuar=1`), no estado local, para que
@@ -442,18 +320,19 @@ export function AnalisisCanvas({
     return (
       <>
         <CanvasHeader etiqueta={etiqueta} enVivo={enVivo} acciones={null} />
-        <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-[var(--radius-card-lg)] border border-border bg-surface-raised px-4 text-center">
-          <span className="text-[11px] uppercase tracking-[.05em] text-text-subtle">Mapa lógico</span>
-          <h1 className="m-0 text-[20px] font-medium text-text">Esta investigación va a mostrar su mapa lógico</h1>
+        <div className="insp-home relative flex min-h-0 flex-1 flex-col items-center justify-center gap-4 rounded-card-lg border border-border px-5 py-12 text-center">
+          <span className="mb-2 flex h-14 w-14 items-center justify-center rounded-card-lg border border-border bg-surface"><GitBranch size={24} strokeWidth={1.4} className="text-text-muted" aria-hidden /></span>
+          <span className="insp-eyebrow">TRAZABILIDAD DE LA INVESTIGACIÓN</span>
+          <h1 className="m-0 max-w-[520px] text-balance font-display text-[32px] font-medium leading-tight tracking-tight text-text">Your investigation map will appear here</h1>
           <p className="m-0 max-w-[420px] text-[12.5px] text-text-subtle">
-            El árbol de trabajo y el mapa lógico se actualizan en vivo mientras corre el análisis. Continúa cuando quieras verlo.
+            Follow the investigation as its steps are recorded.
           </p>
           <button
             type="button"
-            onClick={() => router.replace(`?continuar=1`)}
-            className="flex h-9 items-center rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+            onClick={() => { const params = new URLSearchParams(searchParams.toString()); params.set("continuar", "1"); router.replace(`?${params.toString()}`); }}
+            className="flex h-9 items-center rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-40"
           >
-            Continuar
+            Continue
           </button>
         </div>
       </>
@@ -479,19 +358,19 @@ export function AnalisisCanvas({
               href="/"
               className="flex h-8 flex-none items-center rounded-[10px] border border-border bg-surface px-3.5 text-[12.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover"
             >
-              Atrás
+              Back
             </Link>
           </div>
         }
       />
 
-      <div className="relative min-h-0 flex-1 overflow-y-auto rounded-[var(--radius-card-lg)] border border-border bg-surface-raised bg-[radial-gradient(#e6e3dd_1px,transparent_1px)] [background-size:22px_22px]">
-        <span className="absolute left-4 top-3.5 text-[11px] uppercase tracking-[.05em] text-text-subtle">Canvas</span>
+      <div className="relative min-h-0 flex-1 overflow-y-auto rounded-[var(--radius-card-lg)] border border-border bg-surface-raised bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:22px_22px]">
+        <div className="absolute inset-x-4 top-3.5 flex items-center justify-between gap-3"><span className="insp-eyebrow">EJECUCIÓN DEL MOTOR EXISTENTE</span><Link href={caso?.corrida_id ? `/?corrida=${encodeURIComponent(caso.corrida_id)}` : "/"} className="flex items-center gap-1 text-[11px] text-text-subtle hover:text-text">New investigation <ArrowUpRight size={12} aria-hidden /></Link></div>
 
-        <div className="mx-auto flex w-full max-w-[900px] flex-col items-center gap-6 px-4 pb-8 pt-12">
-          <header className="flex flex-col items-center gap-1.5 text-center">
-            <h1 className="m-0 flex items-end gap-2 text-[26px] font-medium tracking-tight text-text">
-              {arbol.terminado ? (caso?.estado === "error" ? "Análisis con error" : "Análisis terminado") : "Análisis en proceso"}
+        <div className="mx-auto flex w-full max-w-[1080px] flex-col items-center gap-6 px-4 pb-8 pt-16 sm:px-6">
+          <header className="flex w-full flex-col items-center gap-3 text-center">
+            <h1 className="m-0 flex items-end gap-2 font-display text-[32px] font-medium tracking-tight text-text">
+              {arbol.terminado ? (caso?.estado === "error" ? "Investigation interrupted" : "Investigation finished") : "Investigation in progress"}
               {!arbol.terminado && (
                 <span className="pb-[9px]">
                   <Puntos />
@@ -501,7 +380,7 @@ export function AnalisisCanvas({
             <p className="m-0 text-[12.5px] text-text-subtle">
               {arbol.runtimeSpan
                 ? `${duracion(arbol.runtimeSpan.desde, arbol.runtimeSpan.hasta ? new Date(arbol.runtimeSpan.hasta).getTime() : ahora)} de runtime`
-                : `${duracion(caso?.creado, fin)} de ejecución`}{" "}
+                : `${duracion(caso?.creado, fin)} elapsed`}{" "}
               ·{" "}
               {arbol.tokensRuntime
                 ? `${formatoTokens(arbol.tokensRuntime.in + arbol.tokensRuntime.out)} tokens (${formatoTokens(arbol.tokensRuntime.in)} in / ${formatoTokens(arbol.tokensRuntime.out)} out)`
@@ -510,41 +389,52 @@ export function AnalisisCanvas({
             </p>
           </header>
 
+          {errorActualizacion && <p role="status" className="w-full rounded-control border border-warn/20 bg-surface px-4 py-3 text-[12px] text-warn">Could not refresh. Showing the last saved state and retrying automatically.</p>}
+
+          <div className="grid w-full grid-cols-3 overflow-hidden rounded-card-sm border border-border bg-surface">
+            {[{ label: "Recorded events", value: estado.eventos.length }, { label: "Recorded signals", value: senales.length }, { label: "Ejecuciones IA", value: estado.runtime === undefined ? "—" : estado.runtime.ejecuciones.length }].map((item) => <div key={item.label} className="flex flex-col gap-1 border-r border-border p-4 last:border-r-0"><span className="text-[10px] leading-relaxed text-text-subtle">{item.label}</span><span className="font-display text-2xl font-medium tabular-nums text-text">{item.value}</span></div>)}
+          </div>
+          <nav aria-label="Execution view" className="flex w-full flex-wrap gap-1 rounded-card-sm border border-border bg-surface p-1">
+            {([{ id: "flujo", label: "Workflow tree" }, { id: "mapa", label: "Signal map" }, { id: "eventos", label: "Activity & evidence" }] as const).map((item) => <button key={item.id} type="button" aria-pressed={vistaAnalisis === item.id} onClick={() => setVistaAnalisis(item.id)} className={cn("rounded-control px-4 py-2.5 text-[12px] transition-colors", vistaAnalisis === item.id ? "bg-primary font-medium text-white" : "text-text-subtle hover:bg-surface-hover")}>{item.label}</button>)}
+          </nav>
+
+          {vistaAnalisis === "flujo" && <>
           <div className="flex w-full flex-col items-center gap-1">
-            <h2 className="m-0 text-[15px] font-medium text-text">Árbol de trabajo:</h2>
-            <p className="m-0 text-[12.5px] text-text-subtle">En etapa de {arbol.etapaActual}</p>
+            <h2 className="m-0 text-[15px] font-medium text-text">Workflow tree:</h2>
+            <p className="m-0 text-[12.5px] text-text-subtle">In stage {arbol.etapaActual}</p>
           </div>
 
           <div className="flex w-full flex-col items-center">
             {/* Entrada: el cluster que recibió el caso (persistido en `casos`). */}
             <div className="flex w-[260px] flex-col gap-1 rounded-[13px] border border-border-strong bg-surface px-3.5 py-2.5 text-center">
-              <span className="text-[11px] uppercase tracking-[.05em] text-text-subtle">Entrada</span>
+              <span className="text-[11px] uppercase tracking-[.05em] text-text-subtle">Input</span>
               {caso ? (
                 <>
                   <span className="truncate text-[13px] font-medium text-text">{caso.rfc_principal}</span>
                   <span className="text-[11.5px] text-text-subtle">
-                    Cluster de {1 + caso.rfcs_satelite.length} RFC · caso {caso.id.slice(0, 8)}
+                    Group of {1 + caso.rfcs_satelite.length} RFC · caso {caso.id.slice(0, 8)}
                   </span>
                 </>
               ) : (
-                <span className="text-[12px] text-text-subtle">Solicitud aceptada; esperando que se cree el caso</span>
+                <span className="text-[12px] text-text-subtle">Request accepted. Waiting for the case.</span>
               )}
             </div>
             <Flecha />
-            {arbol.etapas.map((etapa, i) => (
-              <Etapa key={etapa.id} etapa={etapa} ahora={ahora} ultima={i === arbol.etapas.length - 1} onAbrir={(n) => setAbiertoId(n.id)} />
-            ))}
+            <ArbolFlujo etapas={arbol.etapas} ahora={ahora} onAbrir={(n) => setAbiertoId(n.id)} />
           </div>
 
-          <MapaLogico mode={arbol.terminado ? "historico" : "en_curso"} senales={senales} />
+          <p className="max-w-[600px] text-center text-[11px] leading-relaxed text-text-subtle">Open a step to inspect its activity. Rule checks and AI calls are labeled separately.</p>
+          </>}
+          {vistaAnalisis === "mapa" && <MapaLogico mode={arbol.terminado ? "historico" : "en_curso"} senales={senales} />}
+          {vistaAnalisis === "eventos" && <section className="w-full rounded-card-sm border border-border bg-surface p-4 sm:p-5"><h2 className="mb-2 text-sm font-medium">Every step and its source</h2><p className="mb-5 text-xs leading-relaxed text-text-subtle">Select an event to inspect its evidence, identifiers and original record.</p><BoardTimeline eventos={estado.eventos} limite={20} /></section>}
 
           {arbol.terminado && caso?.estado === "dictaminado" && (
             <div className="flex w-full flex-col items-center gap-2.5 rounded-[13px] border border-border-strong bg-surface px-4 py-4 text-center">
-              <span className="text-[13.5px] font-medium text-text">El análisis terminó</span>
-              <span className="text-[12px] text-text-subtle">Revisa el árbol y los hallazgos; cuando quieras, continúa a los resultados.</span>
+              <span className="text-[13.5px] font-medium text-text">Investigation finished</span>
+              <span className="text-[12px] text-text-subtle">Explore the workflow or continue to the results.</span>
               <Link
                 href={destinoResultados}
-                className="flex h-9 items-center rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+                className="flex h-9 items-center rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-40"
               >
                 Continuar a resultados
               </Link>
@@ -552,22 +442,24 @@ export function AnalisisCanvas({
           )}
 
           {!arbol.terminado && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center gap-2"><p className="text-center text-[11px] text-text-subtle">Pause and cancellation are not available for this run.</p><div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={cancelar}
-                className="h-9 rounded-[10px] border border-border bg-surface px-4 text-[12.5px] text-text-muted transition-colors hover:bg-surface-hover"
+                disabled
+                title="Cancellation is unavailable for this run"
+                className="h-9 rounded-[10px] border border-border bg-surface px-4 text-[12.5px] text-text-muted transition-colors hover:bg-surface-hover disabled:opacity-40"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 type="button"
-                onClick={pausar}
-                className="flex h-9 items-center gap-1.5 rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+                disabled
+                title="Pause is unavailable for this run"
+                className="flex h-9 items-center gap-1.5 rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-40"
               >
                 <Pause size={13} aria-hidden /> Pausar
               </button>
-            </div>
+            </div></div>
           )}
         </div>
       </div>

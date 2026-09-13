@@ -28,25 +28,25 @@ export interface SeccionCatalogo {
 }
 
 export const CATALOGO_SECCIONES: readonly SeccionCatalogo[] = [
-  { orden: 1, clave: "resumen", titulo: "Resumen", protegida: false, alias: ["resumen"] },
-  { orden: 2, clave: "contribuyente", titulo: "Contribuyente", protegida: false, alias: ["contribuyente"] },
-  { orden: 3, clave: "hipotesis", titulo: "Hipótesis", protegida: false, alias: ["hipotesis"] },
-  { orden: 4, clave: "pistas", titulo: "Pistas", protegida: false, alias: ["pistas"] },
-  { orden: 5, clave: "evidencia", titulo: "Evidencia", protegida: false, alias: ["evidencia"] },
+  { orden: 1, clave: "resumen", titulo: "Summary", protegida: false, alias: ["resumen"] },
+  { orden: 2, clave: "contribuyente", titulo: "Taxpayer", protegida: false, alias: ["contribuyente"] },
+  { orden: 3, clave: "hipotesis", titulo: "Hypothesis", protegida: false, alias: ["hipotesis"] },
+  { orden: 4, clave: "pistas", titulo: "Checks", protegida: false, alias: ["pistas"] },
+  { orden: 5, clave: "evidencia", titulo: "Evidence", protegida: false, alias: ["evidencia"] },
   {
     orden: 6,
     clave: "defensor",
-    titulo: "Análisis del Defensor",
+    titulo: "Alternative explanations",
     protegida: true,
     alias: ["analisis del defensor", "defensor"],
   },
-  { orden: 7, clave: "dictamen", titulo: "Dictamen", protegida: false, alias: ["dictamen"] },
-  { orden: 8, clave: "anexo", titulo: "Anexo", protegida: false, alias: ["anexo"] },
-  { orden: 9, clave: "trayectoria", titulo: "Trayectoria", protegida: true, alias: ["trayectoria"] },
+  { orden: 7, clave: "dictamen", titulo: "Conclusion", protegida: false, alias: ["dictamen"] },
+  { orden: 8, clave: "anexo", titulo: "Appendix", protegida: false, alias: ["anexo"] },
+  { orden: 9, clave: "trayectoria", titulo: "Timeline", protegida: true, alias: ["trayectoria"] },
   {
     orden: 10,
     clave: "cadena",
-    titulo: "Cadena de explicación",
+    titulo: "Evidence chain",
     protegida: true,
     alias: ["cadena de explicacion", "cadena de explicación"],
   },
@@ -104,7 +104,7 @@ export function construirIndice(documento: Documento): EntradaIndice[] {
     const encontrado = cabeceras.find((h) => {
       if (usados.has(h.blockId)) return false;
       const normalizado = normalizarTitulo(h.titulo);
-      return seccion.alias.some((a) => normalizado === normalizarTitulo(a));
+      return [seccion.titulo, ...seccion.alias].some((a) => normalizado === normalizarTitulo(a));
     });
     if (encontrado) {
       usados.add(encontrado.blockId);
@@ -124,7 +124,7 @@ export function construirIndice(documento: Documento): EntradaIndice[] {
         nivel: 2,
         estado: "ausente",
         protegida: seccion.protegida,
-        motivoAusencia: "La versión cargada del expediente no incluye esta sección; la escribe el Redactor.",
+        motivoAusencia: "This section is not included in the loaded report.",
       });
     }
   }

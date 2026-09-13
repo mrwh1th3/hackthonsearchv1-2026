@@ -12,7 +12,8 @@ export const runtime = "nodejs";
  * "Inspeccionar" sobre una corrida cargada desde un estate: lanza la auditoría por fases
  * (`loaders/auditoria_en_vivo.py`) y responde 202 con el caso ancla que dibuja el canvas y
  * la investigación que se abre al terminar. La ronda de agentes queda `omitida`
- * salvo `FORENSE_AGENTES=n8n` en el servidor (consume tokens en n8n).
+ * salvo opt-in explícito `FORENSE_LEGACY_N8N=1`; la nueva investigación IA se
+ * inicia desde /laboratorio con A/B y Codex.
  */
 export async function POST(req: Request) {
   if (!isSameOriginRequest(req)) return NextResponse.json({ error: "origen_no_permitido" }, { status: 403 });
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
   if (!corrida) return NextResponse.json({ error: "corrida_no_existe" }, { status: 404 });
   const estate = rutaEstate(corrida.dataset_hash);
   if (!estate) {
-    return NextResponse.json({ error: "sin_estate", detalle: "Esta corrida no se cargó desde un estate SQLite." }, { status: 409 });
+    return NextResponse.json({ error: "sin_estate", detalle: "This dataset was not loaded from a SQLite estate." }, { status: 409 });
   }
 
   const casoId = randomUUID();
@@ -40,8 +41,8 @@ export async function POST(req: Request) {
     "--corrida", corrida.id, "--estate", estate, "--investigacion", investigacionId, "--caso", casoId,
     "--perfil", session.perfil_id, "--seed", String(seed), "--paso-ms", process.env.FORENSE_PASO_MS ?? "600",
   ];
-  // Ronda 2: el pipeline multi-agente de n8n amplía o refuta cada hallazgo determinista.
-  if (process.env.FORENSE_AGENTES === "n8n") args.push("--agentes", "n8n");
+  // El valor heredado FORENSE_AGENTES=n8n no debe reactivar el pipeline anterior.
+  if (process.env.FORENSE_LEGACY_N8N === "1") args.push("--agentes", "n8n");
   lanzarAuditoria(args);
   return NextResponse.json({ caso_id: casoId, investigacion_id: investigacionId }, { status: 202 });
 }

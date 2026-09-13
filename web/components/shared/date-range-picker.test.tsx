@@ -15,7 +15,7 @@ describe("DateRangePicker (15 §9) — componente", () => {
     // Se dispara una vez al montar (con el preset inicial) y otra vez al
     // elegir "Hoy": el llamador siempre recibe el rango que se ve activo.
     expect(onChange).toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Hoy" }));
+    await user.click(screen.getByRole("button", { name: "Today" }));
 
     const rango = onChange.mock.calls.at(-1)![0];
     expect(rango.desde).toBe("2026-06-15T06:00:00.000Z");
@@ -29,10 +29,10 @@ describe("DateRangePicker (15 §9) — componente", () => {
   it("declara el alcance ('Periodo del dataset' vs 'Periodo de ejecución')", () => {
     const referencia = new Date("2026-06-15T18:00:00Z");
     const { rerender } = render(<DateRangePicker alcance="ejecucion" referencia={referencia} />);
-    expect(screen.getByText("Periodo de ejecución")).toBeInTheDocument();
+    expect(screen.getByText("Execution period")).toBeInTheDocument();
 
     rerender(<DateRangePicker alcance="dataset" referencia={referencia} />);
-    expect(screen.getByText("Periodo del dataset")).toBeInTheDocument();
+    expect(screen.getByText("Dataset period")).toBeInTheDocument();
   });
 
   it("preset activo se marca con aria-pressed", async () => {
@@ -40,12 +40,47 @@ describe("DateRangePicker (15 §9) — componente", () => {
     const referencia = new Date("2026-06-15T18:00:00Z");
     render(<DateRangePicker alcance="ejecucion" referencia={referencia} />);
 
-    const boton30d = screen.getByRole("button", { name: "30 días" });
+    const boton30d = screen.getByRole("button", { name: "30 days" });
     expect(boton30d).toHaveAttribute("aria-pressed", "true"); // default del componente
 
-    const botonHoy = screen.getByRole("button", { name: "Hoy" });
+    const botonHoy = screen.getByRole("button", { name: "Today" });
     await user.click(botonHoy);
     expect(botonHoy).toHaveAttribute("aria-pressed", "true");
     expect(boton30d).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("converts an inclusive custom day to an exclusive UTC end across DST", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<DateRangePicker alcance="ejecucion" referencia={new Date("2024-03-10T12:00:00Z")} timezone="America/New_York" onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "Custom" }));
+    onChange.mockClear();
+    await user.type(screen.getByRole("textbox", { name: "From" }), "2024-03-10");
+    await user.type(screen.getByRole("textbox", { name: "To (inclusive)" }), "2024-03-10");
+    expect(onChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({
+      desde: "2024-03-10T05:00:00.000Z",
+      hasta_exclusivo: "2024-03-11T04:00:00.000Z",
+      timezone: "America/New_York",
+      preset: "personalizado",
+    });
+  });
+
+  it("does not apply impossible dates and resets custom fields to the initial preset", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<DateRangePicker alcance="dataset" referencia={new Date("2024-03-15T12:00:00Z")} onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "Custom" }));
+    onChange.mockClear();
+    await user.type(screen.getByRole("textbox", { name: "From" }), "2024-02-30");
+    await user.type(screen.getByRole("textbox", { name: "To (inclusive)" }), "2024-03-10");
+    expect(screen.getByRole("textbox", { name: "From" })).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(onChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("button", { name: "30 days" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("textbox", { name: "From" })).not.toBeInTheDocument();
+    expect(onChange.mock.calls.at(-1)?.[0].preset).toBe("30d");
   });
 });

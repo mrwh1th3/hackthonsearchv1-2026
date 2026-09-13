@@ -53,12 +53,12 @@ export function PistasScope({ familiasEvaluables, className }: PistasScopeProps)
         <button
           type="button"
           className={cn(
-            "insp-focus-ring flex h-8 items-center gap-1.5 rounded-[var(--radius-pill)] border border-border bg-surface px-3 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:border-border-strong",
+            "insp-focus-ring flex h-8 items-center gap-1.5 rounded-[var(--radius-pill)] border border-border/80 bg-surface px-3 text-xs text-text-muted transition-colors hover:border-[var(--brand)]/35 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]",
             className,
           )}
-          aria-label={`Pistas en alcance de esta corrida: ${enAlcance} de ${CATALOGO_PISTAS.length}`}
+          aria-label={`Available checks for this dataset: ${enAlcance} de ${CATALOGO_PISTAS.length}`}
         >
-          Pistas
+          Checks
           <span className="text-text-subtle">
             {enAlcance}/{CATALOGO_PISTAS.length}
           </span>
@@ -68,9 +68,9 @@ export function PistasScope({ familiasEvaluables, className }: PistasScopeProps)
         <Popover.Content
           align="start"
           sideOffset={8}
-          className="z-[60] flex w-[300px] flex-col gap-2 rounded-[var(--radius-card-sm)] border border-border bg-surface p-3 shadow-[0_12px_50px_rgba(20,20,19,.18)]"
+          className="z-[60] flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-2.5 rounded-[18px] border border-border/70 bg-surface p-3.5 shadow-[0_12px_40px_rgba(28,36,25,.12)]"
         >
-          <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-border bg-surface-raised px-2.5 focus-within:border-primary" style={{ height: 32 }}>
+          <div className="flex items-center gap-2 rounded-[11px] border border-border/80 bg-surface-raised px-2.5 transition-colors focus-within:border-[var(--focus)] focus-within:bg-surface focus-within:ring-2 focus-within:ring-[var(--brand-soft)]" style={{ height: 34 }}>
             <Search size={13} className="text-placeholder" aria-hidden />
             <input
               value={busqueda}
@@ -79,8 +79,8 @@ export function PistasScope({ familiasEvaluables, className }: PistasScopeProps)
               className="min-w-0 flex-1 border-none bg-transparent text-xs text-text outline-none"
             />
           </div>
-          <p className="px-0.5 text-[11px] text-text-subtle">
-            {enAlcance} de {CATALOGO_PISTAS.length} en alcance para esta corrida. Alcance de lectura: no cambia lo que se investiga.
+          <p className="px-0.5 text-[11px] leading-relaxed text-text-subtle">
+            {enAlcance} of {CATALOGO_PISTAS.length} available for this dataset. This list does not change the investigation scope.
           </p>
           <div className="flex max-h-[260px] flex-col gap-0.5 overflow-y-auto">
             {filtradas.map((p) => {
@@ -91,13 +91,13 @@ export function PistasScope({ familiasEvaluables, className }: PistasScopeProps)
                     aria-hidden
                     className={cn(
                       "flex h-3.5 w-3.5 flex-none items-center justify-center rounded-[4px] border",
-                      evaluable ? "border-primary bg-primary text-white" : "border-border bg-surface-muted",
+                      evaluable ? "border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-strong)]" : "border-border bg-surface-muted",
                     )}
                   >
                     {evaluable && <Check size={9} strokeWidth={3} />}
                   </span>
                   <FamiliaChip familia={p.familia} className="h-4 w-4 text-[9px]" />
-                  <span className="min-w-0 flex-1 truncate text-xs text-text" title={evaluable ? undefined : `Familia ${p.familia} fuera de familias_evaluables de esta corrida`}>
+                  <span className="min-w-0 flex-1 truncate text-xs text-text" title={evaluable ? undefined : `Category ${p.familia} outside this dataset's available checks`}>
                     {p.nombre}
                   </span>
                   <span className="flex-none font-mono text-[10.5px] text-text-subtle">{p.codigo}</span>

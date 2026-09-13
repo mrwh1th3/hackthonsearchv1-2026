@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
   const largo = Number(req.headers.get("content-length") ?? 0);
   if (largo > MAX_BYTES_TOTAL + HOLGURA_MULTIPART) {
-    return NextResponse.json({ error: "conjunto_muy_grande", detalle: "El dataset excede el tamaño máximo." }, { status: 413 });
+    return NextResponse.json({ error: "conjunto_muy_grande", detalle: "The dataset exceeds the size limit." }, { status: 413 });
   }
 
   let archivos: File[];
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
   if (archivos.length === 0) return NextResponse.json({ error: "falta_archivo" }, { status: 400 });
   const total = archivos.reduce((s, f) => s + f.size, 0);
   if (total > MAX_BYTES_TOTAL) {
-    return NextResponse.json({ error: "conjunto_muy_grande", detalle: "El dataset excede el tamaño máximo." }, { status: 413 });
+    return NextResponse.json({ error: "conjunto_muy_grande", detalle: "The dataset exceeds the size limit." }, { status: 413 });
   }
 
   let conjunto: Conjunto;
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     if (typeof ingesta.estate_db !== "string" || !/^[0-9a-f]{64}$/.test(ingesta.sha256)) throw new Error("salida");
   } catch {
     console.error("[estates] ingesta falló", ing.code, ing.stderr.slice(-2000));
-    return NextResponse.json({ error: "ingesta_fallo", detalle: "No se pudo convertir el dataset." }, { status: 500 });
+    return NextResponse.json({ error: "ingesta_fallo", detalle: "Could not convert the dataset." }, { status: 500 });
   }
 
   const r = await ejecutarPython(
@@ -116,7 +116,7 @@ async function guardarEntrada(dirConjunto: string, dirEntrada: string, conjunto:
   for (const a of conjunto.archivos) {
     // `a.nombre` ya está saneado (un solo segmento); se comprueba otra vez que no escape del directorio.
     const destino = path.join(temporal, a.nombre);
-    if (path.dirname(destino) !== temporal) throw new Error("nombre de archivo inseguro");
+    if (path.dirname(destino) !== temporal) throw new Error("unsafe filename");
     await writeFile(destino, a.bytes);
   }
   await rm(dirEntrada, { recursive: true, force: true });

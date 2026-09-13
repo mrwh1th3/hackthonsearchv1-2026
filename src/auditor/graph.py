@@ -48,8 +48,13 @@ def money_cycles(e: Estate) -> list[list[dict]]:
         if t["from_clabe"] in own and t["to_clabe"] in vendor_clabes and t["to_clabe"] not in own:
             walk([t], {t["from_clabe"], t["to_clabe"]})
 
-    # selección determinista sin reutilizar transferencias: ciclos más cortos y tempranos primero
-    found.sort(key=lambda c: (len(c), c[0]["date"], [x["txn_id"] for x in c]))
+    # Sin reutilizar transferencias: priorizar el cierre temporal del ciclo antes
+    # que sus IDs. Un ID lexicográficamente menor en un pago posterior no debe
+    # enlazar una salida antigua con el retorno de una operación posterior y
+    # consumir ambos ciclos. Los IDs sólo desempatan recorridos con iguales fechas.
+    found.sort(key=lambda c: (len(c), c[0]["date"], c[-1]["date"],
+                              tuple(x["date"] for x in c[1:-1]),
+                              tuple(x["txn_id"] for x in c)))
     used: set[str] = set()
     out = []
     for c in found:

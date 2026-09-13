@@ -57,15 +57,15 @@ function referenciaExhibit(sourceTable: string, recordId: string): string {
 }
 
 export const SECCIONES_BASE = [
-  "Resumen/hipótesis",
-  "Nivel y dictamen",
-  "Hallazgo y money trail",
-  "Evidencia citada por ID",
-  "Defensa y descartes",
-  "Trayectoria",
-  "Cadena de explicación",
-  "Contraste",
-  "Agentes IA",
+  "Summary / hypothesis",
+  "Confidence & conclusion",
+  "Finding & money trail",
+  "Cited evidence",
+  "Alternative explanations & dismissals",
+  "Timeline",
+  "Evidence chain",
+  "Challenge",
+  "AI investigators",
 ] as const;
 
 export type SeccionBase = (typeof SECCIONES_BASE)[number];
@@ -83,15 +83,15 @@ export type SeccionBase = (typeof SECCIONES_BASE)[number];
  * SÍ deben anexarse — ese es el hueco real.
  */
 const ALIAS_SECCION: Record<SeccionBase, string[]> = {
-  "Resumen/hipótesis": ["resumen", "hipotesis", "contribuyente"],
-  "Nivel y dictamen": ["dictamen", "nivel"],
-  "Hallazgo y money trail": ["hallazgo"],
-  "Evidencia citada por ID": ["evidencia"],
-  "Defensa y descartes": ["defensor", "defensa"],
-  Trayectoria: ["trayectoria"],
-  "Cadena de explicación": ["cadena de explicacion"],
-  Contraste: [],
-  "Agentes IA": [],
+  "Summary / hypothesis": ["resumen", "hipotesis", "contribuyente"],
+  "Confidence & conclusion": ["dictamen", "nivel"],
+  "Finding & money trail": ["hallazgo"],
+  "Cited evidence": ["evidencia"],
+  "Alternative explanations & dismissals": ["defensor", "defensa"],
+  Timeline: ["trayectoria"],
+  "Evidence chain": ["cadena de explicacion"],
+  Challenge: [],
+  "AI investigators": [],
 };
 
 export interface EntradaDocumentoBase {
@@ -114,10 +114,10 @@ function normalizarTitulo(t: string): string {
 
 function seccionResumen({ detalle }: EntradaDocumentoBase): string {
   const c = detalle.caso;
-  const tipologia = c.tipologia ? `Tipología: ${c.tipologia}.` : "";
+  const tipologia = c.tipologia ? `Pattern: ${c.tipologia}.` : "";
   return [
-    `RFC principal ${c.rfc_principal}${(c.rfcs_satelite ?? []).length > 0 ? ` (satélites: ${c.rfcs_satelite.join(", ")})` : ""}.`,
-    `Monto en riesgo: ${c.moneda} ${Number(c.monto_en_riesgo).toLocaleString("es-MX")}. ${tipologia}`.trim(),
+    `RFC principal ${c.rfc_principal}${(c.rfcs_satelite ?? []).length > 0 ? ` (related entities: ${c.rfcs_satelite.join(", ")})` : ""}.`,
+    `Amount at risk: ${c.moneda} ${Number(c.monto_en_riesgo).toLocaleString("es-MX")}. ${tipologia}`.trim(),
   ].join("\n\n");
 }
 
@@ -125,7 +125,7 @@ function seccionNivel({ detalle }: EntradaDocumentoBase): string {
   const c = detalle.caso;
   const d = detalle.dictamen;
   // Regla 7: nunca "definitivo". Sin nivel todavía, se dice "en curso", no se rellena con un valor inventado.
-  const nivel = c.nivel ?? "en curso (sin dictamen todavía)";
+  const nivel = c.nivel ?? "in progress (no conclusion yet)";
   const partes = [`Nivel: **${nivel}**.`];
   if (d) partes.push(`Regla aplicada: ${d.regla}.`, `Familias: ${d.familias.join(", ") || "—"}.`);
   if (d && d.limitaciones.length > 0) partes.push(`Limitaciones: ${d.limitaciones.map((l) => JSON.stringify(l)).join("; ")}.`);
@@ -133,7 +133,7 @@ function seccionNivel({ detalle }: EntradaDocumentoBase): string {
 }
 
 function seccionHallazgo({ hallazgo }: EntradaDocumentoBase): string {
-  if (!hallazgo) return "Este caso no tiene un hallazgo propio del auditor determinista en esta corrida.";
+  if (!hallazgo) return "No rule-engine finding is linked to this case.";
   const trail = hallazgo.money_trail
     .map((p) => `- ${p.from} → ${p.to}: ${p.amount.toLocaleString("es-MX")} el ${p.date} [${referenciaExhibitDesdeExhibit(hallazgo, p.exhibit_id)}]`)
     .join("\n");
@@ -148,12 +148,12 @@ function referenciaExhibitDesdeExhibit(hallazgo: AuditorHallazgo, exhibitId: str
 function seccionEvidencia({ detalle, hallazgo }: EntradaDocumentoBase): string {
   const lineas: string[] = [];
   for (const e of detalle.evidencia) {
-    for (const ref of e.referencias) lineas.push(`- [${ref}] ${e.tipo} · ${e.validada ? "validada" : "sin validar"}`);
+    for (const ref of e.referencias) lineas.push(`- [${ref}] ${e.tipo} · ${e.validada ? "validada" : "unverified"}`);
   }
   if (hallazgo) {
     for (const x of hallazgo.exhibits) lineas.push(`- [${referenciaExhibit(x.source_table, x.record_id)}] ${x.note}`);
   }
-  return lineas.length > 0 ? [...new Set(lineas)].join("\n") : "Sin evidencia citable persistida para este caso todavía.";
+  return lineas.length > 0 ? [...new Set(lineas)].join("\n") : "No citable evidence has been saved for this case yet.";
 }
 
 function seccionDefensa({ detalle, hallazgo }: EntradaDocumentoBase): string {
@@ -164,47 +164,47 @@ function seccionDefensa({ detalle, hallazgo }: EntradaDocumentoBase): string {
       lineas.push(`- (${d.held ? "se sostiene" : "no se sostiene"}) ${d.argument} — ${d.why}`);
     }
   }
-  return lineas.length > 0 ? lineas.join("\n") : "Sin argumentos de defensa/descarte persistidos para este caso.";
+  return lineas.length > 0 ? lineas.join("\n") : "No alternative explanations have been saved for this case.";
 }
 
 function seccionTrayectoria({ trayectoria }: EntradaDocumentoBase): string {
-  if (trayectoria.length === 0) return "Sin trayectoria persistida para este RFC en esta corrida.";
+  if (trayectoria.length === 0) return "No timeline has been saved for this tax ID.";
   return trayectoria
     .map((p) => `- ${p.periodo}: emitido ${p.monto_emitido} · recibido ${p.monto_recibido}${p.eventos.length > 0 ? ` · eventos: ${p.eventos.join(", ")}` : ""}`)
     .join("\n");
 }
 
 function seccionCadena({ cadena }: EntradaDocumentoBase): string {
-  if (!cadena) return "Sin cadena de explicación derivable para este caso (no viene del auditor determinista).";
+  if (!cadena) return "No evidence chain is available for this case.";
   return cadena.eslabones
     .map((e) => `- (${e.tipo}) ${e.texto}${e.referencias.length > 0 ? ` [${e.referencias.join(", ")}]` : ""}`)
     .join("\n");
 }
 
 function seccionContraste({ contraste }: EntradaDocumentoBase): string {
-  if (!contraste) return "Sin contraste persistido (\"por qué esta sí y aquella no\") para este caso todavía.";
+  if (!contraste) return "No comparison with a dismissed case has been saved yet.";
   return [
     `Comparable: ${contraste.rfc_comparable} (giro compartido: ${contraste.giro_compartido}).`,
-    `Resultado del comparable: ${contraste.resultado_comparable}. Razón: ${contraste.razon_tipificada}.`,
+    `Comparison result: ${contraste.resultado_comparable}. Reason: ${contraste.razon_tipificada}.`,
     contraste.explicacion,
   ].join("\n\n");
 }
 
 function seccionAgentes({ agentesBitacora }: EntradaDocumentoBase): string {
-  if (agentesBitacora.length === 0) return "Sin agentes con eventos persistidos en la bitácora de este caso.";
+  if (agentesBitacora.length === 0) return "No investigator activity has been saved for this case.";
   return agentesBitacora.map((a) => `- ${a}`).join("\n");
 }
 
 const CONTENIDO_SECCION: Record<SeccionBase, (input: EntradaDocumentoBase) => string> = {
-  "Resumen/hipótesis": seccionResumen,
-  "Nivel y dictamen": seccionNivel,
-  "Hallazgo y money trail": seccionHallazgo,
-  "Evidencia citada por ID": seccionEvidencia,
-  "Defensa y descartes": seccionDefensa,
-  Trayectoria: seccionTrayectoria,
-  "Cadena de explicación": seccionCadena,
-  Contraste: seccionContraste,
-  "Agentes IA": seccionAgentes,
+  "Summary / hypothesis": seccionResumen,
+  "Confidence & conclusion": seccionNivel,
+  "Finding & money trail": seccionHallazgo,
+  "Cited evidence": seccionEvidencia,
+  "Alternative explanations & dismissals": seccionDefensa,
+  Timeline: seccionTrayectoria,
+  "Evidence chain": seccionCadena,
+  Challenge: seccionContraste,
+  "AI investigators": seccionAgentes,
 };
 
 /** Markdown de UNA sección (heading `##` + cuerpo), determinista sobre el mismo `input`. */

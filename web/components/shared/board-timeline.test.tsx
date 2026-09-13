@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { BoardTimeline } from "./board-timeline";
 import type { EventoForense } from "@/lib/data";
 
@@ -26,7 +27,7 @@ function evento(overrides: Partial<EventoForense>): EventoForense {
 describe("BoardTimeline", () => {
   it("sin eventos, estado vacío honesto", () => {
     render(<BoardTimeline eventos={[]} />);
-    expect(screen.getByText("Sin eventos en la bitácora de esta corrida todavía.")).toBeInTheDocument();
+    expect(screen.getByText("No activity recorded for this dataset yet.")).toBeInTheDocument();
   });
 
   it("ordena por seq descendente (más reciente primero) y respeta el límite", () => {
@@ -38,5 +39,18 @@ describe("BoardTimeline", () => {
     render(<BoardTimeline eventos={eventos} limite={2} />);
     const filas = screen.getAllByText(/caso_creado|dictamen|ronda_inicio/);
     expect(filas.map((n) => n.textContent)).toEqual(["dictamen", "ronda_inicio"]);
+  });
+
+  it("busca fuera del tramo visible y abre las referencias exactas del evento", async () => {
+    const eventos = [evento({ id: "primero", seq: 1, payload: { resumen: "Pago contrastado", referencias: ["MOV:original-123"], operacion_id: "operacion-real" } }), evento({ id: "ultimo", seq: 2 })];
+    render(<BoardTimeline eventos={eventos} limite={1} />);
+    expect(screen.queryByText("Pago contrastado")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Search activity" }), "MOV:original-123");
+    await userEvent.click(screen.getByRole("button", { name: /Pago contrastado/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("MOV:original-123")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByText("Identificadores y origen"));
+    expect(within(dialog).getByText("operacion-real")).toBeInTheDocument();
+    expect(within(dialog).getByText("primero")).toBeInTheDocument();
   });
 });

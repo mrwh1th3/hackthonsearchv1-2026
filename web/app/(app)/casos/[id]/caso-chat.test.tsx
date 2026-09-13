@@ -40,7 +40,7 @@ describe("CasoChat", () => {
     expect(enviado.contexto.periodo).toEqual(periodo);
     expect(enviado.mensaje).toBe("¿por qué subió el monto?");
 
-    expect(await screen.findByText(/aceptado y en cola/)).toBeInTheDocument();
+    expect(await screen.findByText(/accepted and queued/)).toBeInTheDocument();
     expect(screen.queryByText(/concentr|signals|three weeks/i)).not.toBeInTheDocument();
   });
 });

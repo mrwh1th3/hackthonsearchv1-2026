@@ -206,4 +206,9 @@ export class FixtureDataSource implements DataSource {
     void _corridaId;
     return null;
   }
+
+  async getAuditorSubmission(_corridaId: string): Promise<Record<string, unknown> | null> {
+    void _corridaId;
+    return null;
+  }
 }

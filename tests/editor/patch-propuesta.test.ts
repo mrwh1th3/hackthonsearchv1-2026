@@ -182,7 +182,7 @@ describe("construirPropuesta (07 §4: el patch lo arma el backend, no el modelo)
     const documento = base();
     const objetivo = documento.content[1];
     const salida = salidaEditorDemostracion({
-      mensajeUsuario: "Hazlo más claro",
+      mensajeUsuario: "Make this clearer",
       documento,
       seleccion: seleccionDe(documento, "x", [objetivo.attrs.id]),
     });

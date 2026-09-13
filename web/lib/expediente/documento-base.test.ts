@@ -82,7 +82,7 @@ describe("generarMarkdownBase", () => {
     d.caso.nivel = null;
     d.dictamen = null;
     const md = generarMarkdownBase(entrada({ detalle: d }));
-    expect(md).toContain("en curso");
+    expect(md).toContain("in progress");
   });
 
   it("cita evidencia con IDs reales que el cita-drawer puede validar", () => {
@@ -106,12 +106,12 @@ describe("generarMarkdownBase", () => {
 
 describe("tieneSeccion / completarMarkdown", () => {
   it("detecta una sección existente sin importar el nivel del heading", () => {
-    expect(tieneSeccion("# Título\n\n### Nivel y dictamen\n\ntexto", "Nivel y dictamen")).toBe(true);
-    expect(tieneSeccion("# Título\n\ntexto", "Nivel y dictamen")).toBe(false);
+    expect(tieneSeccion("# Título\n\n### Confidence & conclusion\n\ntexto", "Confidence & conclusion")).toBe(true);
+    expect(tieneSeccion("# Título\n\ntexto", "Confidence & conclusion")).toBe(false);
   });
 
   it("anexa solo las secciones faltantes, sin tocar lo existente", () => {
-    const existente = "# Redacción\n\n## Resumen/hipótesis\n\nEste es el resumen humano original, no se toca.";
+    const existente = "# Redacción\n\n## Summary / hypothesis\n\nEste es el resumen humano original, no se toca.";
     const completo = completarMarkdown(existente, entrada());
     expect(completo.startsWith(existente)).toBe(true);
     expect(completo).toContain("Este es el resumen humano original, no se toca.");
@@ -119,7 +119,7 @@ describe("tieneSeccion / completarMarkdown", () => {
       expect(completo).toContain(`## ${s}`);
     }
     // no duplica la sección que ya existía
-    expect(completo.match(/## Resumen\/hipótesis/g)?.length).toBe(1);
+    expect(completo.match(/## Summary \/ hypothesis/g)?.length).toBe(1);
   });
 
   it("si ya tiene las nueve secciones, devuelve el markdown intacto (mismo string)", () => {
@@ -161,13 +161,13 @@ describe("tieneSeccion / completarMarkdown", () => {
     ].join("\n");
     const completo = completarMarkdown(markdownDelLoader, entrada());
     expect(completo.startsWith(markdownDelLoader)).toBe(true);
-    for (const cubierta of ["Resumen/hipótesis", "Nivel y dictamen", "Evidencia citada por ID", "Defensa y descartes", "Trayectoria", "Cadena de explicación"] as const) {
+    for (const cubierta of ["Summary / hypothesis", "Confidence & conclusion", "Cited evidence", "Alternative explanations & dismissals", "Timeline", "Evidence chain"] as const) {
       expect(seccionCubierta(markdownDelLoader, cubierta)).toBe(true);
     }
-    expect(completo).toContain("## Contraste");
-    expect(completo).toContain("## Agentes IA");
-    expect(completo.match(/## Contraste/g)?.length).toBe(1);
-    expect(completo.match(/## Agentes IA/g)?.length).toBe(1);
+    expect(completo).toContain("## Challenge");
+    expect(completo).toContain("## AI investigators");
+    expect(completo.match(/## Challenge/g)?.length).toBe(1);
+    expect(completo.match(/## AI investigators/g)?.length).toBe(1);
     // nada de lo que ya traía el loader se repite
     expect(completo.match(/## Resumen$/gm)?.length).toBe(1);
     expect(completo.match(/## Dictamen$/gm)?.length).toBe(1);

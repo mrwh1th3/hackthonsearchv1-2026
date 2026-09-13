@@ -5,6 +5,12 @@ Normativo sobre la **apariencia e interacción** de la webapp. Donde discrepe co
 las reglas de `CLAUDE.md`, **prevalecen 21 y CLAUDE.md**: el diseño es genérico
 y no conoce este dominio.
 
+## Flujo único vigente · 2026-09-13
+
+La corrección más reciente del usuario mantiene **una sola página principal**. Tras seleccionar datos y, opcionalmente, dar contexto y fechas de enfoque, `InvestigationComposer` inicia una ejecución que corre el motor antes de A/B. `InspectorHome` conserva selección, ejecución y resultados en `/?corrida=…&run=…`; `IntegratedLabRun` se monta dentro del mismo shell. El mapa compacto presenta Motor → Contexto → A y B → Compilador → Revisión; al desglosar aparecen preparación, muestras, ramas A/B e intercambio incidental. El resultado del motor, la evidencia, la bitácora, propuestas y consumo se consultan en esa misma investigación. El historial integra ejecuciones nuevas y anteriores. No hay una entrada separada de laboratorio; `/laboratorio` redirige al main.
+
+La cobertura muestra **muestras entregadas**, no equivale a investigación concluida. Resultados sin evidencia, errores y consumo desconocido tienen estados explícitos. Guardar propuestas no representa aprobación humana. Los detalles completos y las listas extensas se expanden bajo demanda.
+
 ## Fuente de verdad
 
 | Archivo | Qué es |
@@ -219,3 +225,95 @@ original.
 
 Cada entrega dice qué podría romper y trae prueba (regla 1). No se borra
 ninguna funcionalidad existente (regla 9).
+
+El composer recupera **Contexto | Filtros**, con texto libre, Desde/Hasta inclusivos y Todo el rango. El giro pertenece a las herramientas: un paso interno lo infiere a partir de actividades acotadas antes de consultar contexto; si no puede, declara contexto general. `mensaje` y `filtros` viajan por el BFF, supervisor y `brief.user_focus` hasta A, B y compilador. Son prioridades de investigación/presentación: el motor mantiene el estate completo y no se ocultan relaciones fuera del periodo.
+
+El encabezado presenta inicio, fin, duración medida y contador mientras corre, en hora de Ciudad de México. Las ejecuciones terminales con observaciones se muestran como Finalizada; los detalles de cobertura, límites y errores persisten en bitácora y artefactos. Los fallos del supervisor siguen como Interrumpida.
+
+
+## Document-first investigations · 2026-09-13
+
+Opening a saved unified run from Home or navigation now renders `InvestigationDocument`: a paper report, five-section outline and the existing `ReportChat`. Legacy investigations open their existing document editor by default. The report progressively reveals findings, money trails, saved exhibits, dismissed leads, A/B reviews and exact trace artifacts. Phone layouts switch between document and assistant. Original findings remain immutable; this report reader does not add rich-text editing to unified runs.
+
+The authenticated, owner-scoped `/api/laboratorio/[id]/assistant` endpoint answers through the existing local Codex provider. The server supplies a bounded overview or selected finding; clients cannot inject evidence. References must belong to the saved excerpt. Inputs and answers persist privately under the run’s `assistant/` directory; follow-up usage remains separate from the original investigation. The evidence drawer displays the saved exhibit, not a new database query. Existing legacy report editing continues through its original endpoints.
+
+Validation: 480 web tests and 53 lab tests passed; typecheck and isolated production build passed. Desktop and 390px phone layouts were inspected. A real Codex question on seed 105 run `06a3fe55-f478-4003-a7c6-7cce08360c79`, finding 9, completed in 15.627 seconds with four validated references. Opening a citation and restoring the saved conversation after reload were verified.
+
+### Visual report and hypothesis workspace · 2026-09-13
+
+The document reader now has six sections, including **Method & limits**. `ReportSnapshot`,
+`InvestigationJourney`, `EvidenceTrail`, `AmountProof` and `ReviewScope` show saved results,
+actual workflow states, individual money movements, per-table arithmetic and the A/B sample.
+Amounts retain cents and the report identifies overlaps and reconciliation differences.
+Each movement opens its saved exhibit; unrelated transfers are not drawn as a continuous path.
+The overview separates whole-investigation usage from engine-only metrics and later chat calls.
+Unknown subscription cost stays unavailable. Company and period come from recorded metadata;
+the free-text focus does not silently redefine the audited period.
+
+`/hypotheses` is a separate, owner-scoped destination in the main navigation. It collects A's
+reviews and leads, B's hypotheses, compiler proposals, notes and recorded decisions across saved
+runs. Search, type filters, real/demo filters, pagination and `?run=UUID` preserve provenance.
+The detail panel exposes evidence references, alternatives, missing support, recorded steps and
+the originating investigation. Notes and journal entries are not counted as new hypotheses.
+No proposal approves itself or changes a detector through this page. Active runs refresh every
+15 seconds; global memory without run ownership is excluded.
+
+Login uses an English editorial layout with an interactive three-step preview, clear validation
+and the existing session endpoint. Home restores the animated magnifier and Context disclosure;
+the free-text context and date filters remain intact. Motion respects reduced-motion preferences.
+Desktop and 390px layouts were inspected for the report, evidence drawer, hypotheses and login.
+The complete web suite passed 524 tests; the final affected-component check passed 14 tests.
+TypeScript and the isolated production build passed.
+
+### Inspector identity and shared controls · 2026-09-13
+
+The app identity is the supplied four-point star with the live **Inspector** wordmark in
+Instrument Sans, matching page titles. `Logo` and `InspectorWordmark` replace the old document
+symbol and raster wordmark. Browser titles and the install manifest use Inspector. The vector
+source is `web/public/inspector-star.svg`; `npm --prefix web run icons` regenerates the SVG
+favicon, 16/32/48px ICO, 180px Apple icon, 192/512px PWA icons and a separate safe-area maskable
+icon. No extra dependency was installed.
+
+`AppSelect` replaces native select menus throughout the app, including report sections,
+payment paths, hypothesis filters, profile settings and the legacy editor. Radix provides
+keyboard navigation, typeahead, Escape and focus restoration. Menus and dialogs use the app's
+surface/shadow treatment; brand tokens define sage text selection, focus, caret and control
+states. Domain-specific chart colors remain semantic.
+
+The unified report's title and status now share the top row with navigation. Its actions menu
+belongs to a sticky toolbar inside the reader. The reader isolates its stacking context so
+opening app navigation covers the toolbar correctly. Downloads and reruns retain their existing
+handlers. Desktop and 390px checks verified the placement, scrolling and custom section menu.
+
+`AppDateField` replaces native date controls in Home and the date-range picker. Its branded
+calendar supports manual ISO dates, month navigation, keyboard selection, Escape and clearing.
+Existing inclusive date filters and UTC boundaries are preserved. Desktop and 390px browser
+checks verified selection, full-range reset and popover placement without horizontal overflow.
+The complete web suite passed 555 tests in 72 files; TypeScript and the isolated production
+build passed. The build retains two existing unused-prop lint warnings in the legacy editor.
+
+### Whole-investigation overview and timing · 2026-09-13
+
+The report header groups the back arrow, dataset title and status at the far right; its
+actions remain sticky inside the reader. The first report page presents company/period/seed,
+a prominent whole-investigation clock, timestamps, usage and replay scope before the executive
+summary. Clickable pattern bars and a traceability preview lead to findings and exact saved
+exhibits. Findings, closed leads and unvalidated AI hypotheses remain separate counts. Home
+shows the selected dataset's latest investigation and the same compact timing component.
+
+`RunTiming` reads launch measurements, never engine-only or A/B-only fallback durations.
+The worker's `report` phase keeps polling alive through publication; a running supervisor
+also takes precedence during the short transition after the agent summary finishes. New
+`timing_scope=through_report` records include report preparation; older records disclose
+their timing scope. Export failures surface without discarding saved investigation results.
+Recorded token subtotals are identified when historical selector usage is absent from the
+actor summary; subscription MXN allocation remains unavailable without configured inputs.
+
+Verification: 565 full-suite web tests and 31 final scoped tests passed, with TypeScript and
+the isolated production build. Chrome desktop and 390px checks covered the right-aligned
+header, main-page timing, branded section menu, finding 9 and its exact BNK-00834 citation.
+The new self-contained HTML was inspected at both widths with no horizontal page overflow.
+
+The latest saved real Codex run `ac160589-4af3-4234-a891-8865017e0df7` was inspected read-only:
+202.058 seconds through report validation, six provider invocations and 176,850 recorded tokens.
+The displayed duration and usage match its manifest. No additional model call was made for UI QA.

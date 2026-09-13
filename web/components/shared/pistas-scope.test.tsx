@@ -17,19 +17,19 @@ describe("PistasScope (equivalente de lectura del picker 'Columns')", () => {
     // D (4) + R (3) = 7 de 14 en alcance.
     expect(screen.getByText("7/14")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Pistas en alcance/ }));
-    expect(screen.getByText("7 de 14 en alcance para esta corrida. Alcance de lectura: no cambia lo que se investiga.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Available checks/ }));
+    expect(screen.getByText("7 of 14 available for this dataset. This list does not change the investigation scope.")).toBeInTheDocument();
 
     // Las 14 pistas del catálogo, no una muestra.
-    expect(screen.getByText("Atributos compartidos")).toBeInTheDocument(); // R1, en alcance
-    expect(screen.getByText("Listas del SAT")).toBeInTheDocument(); // E1, fuera de alcance
+    expect(screen.getByText("Shared attributes")).toBeInTheDocument(); // R1, en alcance
+    expect(screen.getByText("Tax-authority watchlists")).toBeInTheDocument(); // E1, fuera de alcance
     expect(screen.getAllByText(/^[DFRTE][1-4]$/).length).toBe(14);
   });
 
   it("no pone ninguna casilla que aparente escribir algo (es de lectura, docs/22)", async () => {
     const user = userEvent.setup();
     render(<PistasScope familiasEvaluables={["D", "F", "R", "T", "E"]} />);
-    await user.click(screen.getByRole("button", { name: /Pistas en alcance/ }));
+    await user.click(screen.getByRole("button", { name: /Available checks/ }));
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.queryAllByRole("button", { name: /^[DFRTE][1-4]/ })).toHaveLength(0);
     expect(screen.getByText("14/14")).toBeInTheDocument();
@@ -38,8 +38,8 @@ describe("PistasScope (equivalente de lectura del picker 'Columns')", () => {
   it("una pista de una familia fuera de alcance explica el motivo derivado, no un texto inventado", async () => {
     const user = userEvent.setup();
     render(<PistasScope familiasEvaluables={["D", "F", "R", "T"]} />);
-    await user.click(screen.getByRole("button", { name: /Pistas en alcance/ }));
-    const e1 = screen.getByText("Listas del SAT");
-    expect(e1).toHaveAttribute("title", "Familia E fuera de familias_evaluables de esta corrida");
+    await user.click(screen.getByRole("button", { name: /Available checks/ }));
+    const e1 = screen.getByText("Tax-authority watchlists");
+    expect(e1).toHaveAttribute("title", "Category E outside this dataset's available checks");
   });
 });

@@ -63,7 +63,7 @@ export function ClusterForceGraph({
   }, [nodos.length]);
 
   if (nodos.length === 0) {
-    return <div className="flex h-[240px] items-center justify-center rounded-[var(--radius-card)] border border-dashed border-border text-sm text-text-subtle">Sin grafo disponible para esta investigación en el fixture.</div>;
+    return <div className="flex h-[240px] items-center justify-center rounded-[var(--radius-card)] border border-dashed border-border text-sm text-text-subtle">No graph is available for this demo investigation.</div>;
   }
 
   return (

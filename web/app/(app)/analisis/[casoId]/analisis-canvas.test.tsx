@@ -63,21 +63,21 @@ describe("AnalisisCanvas", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     render(<AnalisisCanvas casoId={caso.id} etiqueta="Demo" enVivo={false} inicial={{ caso, tareas, eventos }} />);
 
-    expect(screen.getByRole("heading", { name: /Análisis en proceso/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Investigation in progress/ })).toBeInTheDocument();
     expect(screen.getByText(/1\.2k tokens consumidos/)).toBeInTheDocument();
-    expect(screen.getByText("Árbol de trabajo:")).toBeInTheDocument();
-    expect(screen.getByText("En etapa de ronda 1 · especialistas")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
+    expect(screen.getByText("Workflow tree:")).toBeInTheDocument();
+    expect(screen.getByText("In stage round 1 · specialists")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /financiero/ }));
+    await user.click(screen.getByRole("button", { name: /financial review/ }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "Subagente de financiero" })).toBeInTheDocument();
-    expect(within(dialog).getByText("Etapa de ronda 1")).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "Agent for financial review" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Stage of round 1")).toBeInTheDocument();
     expect(within(dialog).getByText("Revisa pagos del cluster")).toBeInTheDocument();
-    expect(within(dialog).getByText(/En proceso/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/In progress/)).toBeInTheDocument();
     expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "Salir" })).not.toBeInTheDocument();
-    expect(within(dialog).getByText(/todavía no ha anotado hallazgos/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/has not recorded findings yet/)).toBeInTheDocument();
   });
 
   it("sin ?continuar=1 muestra el gate y no el árbol/mapa lógico", () => {
@@ -85,7 +85,7 @@ describe("AnalisisCanvas", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     render(<AnalisisCanvas casoId={caso.id} etiqueta="Demo" enVivo={false} inicial={{ caso, tareas, eventos }} />);
 
-    expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
-    expect(screen.queryByText("Árbol de trabajo:")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    expect(screen.queryByText("Workflow tree:")).not.toBeInTheDocument();
   });
 });

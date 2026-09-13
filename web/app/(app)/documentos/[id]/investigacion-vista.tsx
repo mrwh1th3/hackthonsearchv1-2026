@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -64,6 +65,7 @@ export function InvestigacionVista({
   casos,
   tokensCorrida,
   anotacionesIA,
+  descargaSubmission = null,
 }: {
   etiqueta: string;
   enVivo: boolean;
@@ -84,9 +86,12 @@ export function InvestigacionVista({
   tokensCorrida: number | null;
   /** Pizarrón de los 5 agentes IA de TODA la investigación (migración 028). */
   anotacionesIA: AnotacionAgenteIA[];
+  /** `submission.json` del auditor de la corrida (descarga directa junto a "Reporte completo"), si se auditó. */
+  descargaSubmission?: { href: string; ruta: string | null } | null;
 }) {
   const searchParams = useSearchParams();
   const [doc, setDoc] = useState(searchParams.get("doc") !== "0");
+  const [chatMovil, setChatMovil] = useState(false);
   // Versión del expediente que ve el chat lateral (fuera del editor): arranca
   // en la versión REAL vigente (`versionDocumento`, no 1 fija) y sube cuando
   // Aplicar versiona, para que la siguiente pregunta cite la versión correcta.
@@ -105,20 +110,22 @@ export function InvestigacionVista({
         enVivo={enVivo}
         acciones={
           <div className="flex items-center gap-2">
+            {!editorAbierto && detalle && <button type="button" aria-pressed={chatMovil} onClick={() => setChatMovil((v) => !v)} className="flex h-9 items-center gap-1.5 rounded-control border border-border bg-surface px-3 text-[12px] text-text-muted lg:hidden"><MessageSquare size={14} aria-hidden />{chatMovil ? "Ver resultados" : "Ver chat"}</button>}
+            {!editorAbierto && <Link href={`/?corrida=${encodeURIComponent(investigacion.corrida_id)}`} className="flex h-9 items-center gap-1.5 rounded-control bg-primary px-3 text-[12px] font-medium text-white hover:bg-primary-hover">New investigation<ArrowUpRight size={13} aria-hidden /></Link>}
             {editorAbierto ? (
               <button
                 type="button"
                 onClick={() => setDoc(false)}
                 className="flex h-8 flex-none items-center rounded-[10px] border border-border bg-surface px-3.5 text-[12.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover"
               >
-                Atrás
+                Back
               </button>
             ) : (
               <Link
                 href="/"
                 className="flex h-8 flex-none items-center rounded-[10px] border border-border bg-surface px-3.5 text-[12.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover"
               >
-                Atrás
+                Back
               </Link>
             )}
           </div>
@@ -127,10 +134,10 @@ export function InvestigacionVista({
       <div
         className={cn(
           "grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3.5",
-          editorAbierto ? "lg:grid-cols-[minmax(0,1fr)]" : "lg:grid-cols-[minmax(0,1fr)_268px]",
+          editorAbierto ? "lg:grid-cols-[minmax(0,1fr)]" : "lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]",
         )}
       >
-      <div className={cn("flex min-h-0 flex-col gap-2.5 pr-0.5", editorAbierto ? "overflow-hidden" : "overflow-y-auto")}>
+      <div className={cn("insp-scroll flex min-h-0 min-w-0 flex-col gap-2.5 pr-0.5", editorAbierto ? "overflow-hidden" : "overflow-y-auto", chatMovil && !editorAbierto && "max-lg:hidden")}>
         {editorAbierto ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2.5">
             {/* El editor real, con su chat de propuestas a la derecha. */}
@@ -156,27 +163,22 @@ export function InvestigacionVista({
             contraste={contraste}
             trayectoria={trayectoria}
             onAbrirReporte={documento ? () => setDoc(true) : undefined}
+            descargaSubmission={descargaSubmission}
             extraSecciones={<ResumenInvestigacion corrida={corrida} casos={casos} tokensCorrida={tokensCorrida} anotacionesIA={anotacionesIA} />}
             soloResumen
           />
         ) : (
           <div className="flex flex-1 flex-col gap-2.5 rounded-[18px] border border-border bg-surface-muted p-4">
             <p className="m-0 text-[12.5px] text-text-subtle">
-              Esta investigación todavía no tiene un caso dictaminado al que mostrarle hallazgos.
+              This investigation has no reviewed case yet.
             </p>
-            <button
-              type="button"
-              onClick={() => setDoc(true)}
-              className="h-8 w-fit rounded-[10px] border border-border bg-surface px-3.5 text-[12.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover"
-            >
-              Ver el documento
-            </button>
+            <Link href={`/?corrida=${encodeURIComponent(investigacion.corrida_id)}`} className="flex h-9 w-fit items-center rounded-control border border-border bg-surface px-3.5 text-[12px] text-text-muted hover:bg-surface-hover">Investigate this dataset</Link>
           </div>
         )}
 
       </div>
 
-      <div className={cn("min-h-0 max-lg:hidden", editorAbierto && "hidden")}>
+      <div className={cn("min-h-0 min-w-0", !chatMovil && "max-lg:hidden", editorAbierto && "hidden")}>
         {/*
           Mismo chat que dentro del editor (`ReportChat`, contrato
           `editor.solicitud`/`agents.editor`): pregunta o propone sobre EL
@@ -201,7 +203,7 @@ export function InvestigacionVista({
           />
         ) : (
           <div className="flex h-full items-center justify-center rounded-[18px] border border-border bg-surface-muted p-4 text-center text-[12.5px] text-text-subtle">
-            Esta investigación todavía no tiene expediente que editar.
+            No editable report is available yet.
           </div>
         )}
       </div>

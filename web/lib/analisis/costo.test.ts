@@ -22,7 +22,7 @@ describe("estimarCostoUsd", () => {
 
 describe("formatoCostoEstimado", () => {
   it("null se pinta 'no disp.', nunca $0.00", () => {
-    expect(formatoCostoEstimado(null)).toBe("costo no disp.");
+    expect(formatoCostoEstimado(null)).toBe("cost unavailable");
   });
   it("un valor real se etiqueta 'estimado'", () => {
     expect(formatoCostoEstimado(0.5)).toBe("~$0.500 (estimado)");
@@ -49,6 +49,6 @@ describe("costoMostrado", () => {
     const r = costoMostrado(null, null, null, null);
     expect(r.esReal).toBe(false);
     expect(r.valor).toBeNull();
-    expect(r.texto).toBe("costo no disp.");
+    expect(r.texto).toBe("cost unavailable");
   });
 });

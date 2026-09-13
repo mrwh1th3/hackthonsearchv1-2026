@@ -19,11 +19,11 @@ import { clavesNoMapeadas, textoValorGenerico } from "@/lib/analisis/claves-no-m
  * crudo (nunca inventadas, nunca omitidas).
  */
 export const ESQUEMA: Record<string, string> = {
-  phantom_vendor: "Proveedor fantasma",
+  phantom_vendor: "Phantom vendor",
   kickback: "Kickback",
   round_tripping: "Round-tripping",
-  threshold_splitting: "Fraccionamiento de compras",
-  revenue_inflation: "Ingresos inflados",
+  threshold_splitting: "Split purchases",
+  revenue_inflation: "Inflated revenue",
 };
 export const CERRADO_POR: Record<AuditorLead["closed_by"], string> = {
   investigator: "Investigador",
@@ -39,7 +39,7 @@ export function Confianza({ valor }: { valor: AuditorHallazgo["confidence"] }) {
   const estilo = valor === "proven" ? "bg-red-100 text-red-800 border-red-300" : "bg-amber-50 text-amber-800 border-amber-200";
   return (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${estilo}`}>
-      {valor === "proven" ? "Probado" : "Probable"}
+      {valor === "proven" ? "Proven" : "Probable"}
     </span>
   );
 }
@@ -59,13 +59,36 @@ const CLAVES_RAIZ = [
   "detector_hits", "leads_investigated", "findings", "leads", "run_metadata", "case_file_html",
 ] as const;
 
+/**
+ * Los dos entregables de los jueces para la corrida: el expediente HTML (se abre) y `submission.json` (se descarga
+ * directo, sin editor; `/auditoria/[corridaId]/submission`). Enlaces nativos: este archivo es server-safe.
+ */
+function AccionesEntregable({ corridaId }: { corridaId: string }) {
+  const boton = "rounded-[10px] border border-border bg-surface px-3.5 py-2 text-[13px] font-medium text-text hover:bg-surface-hover";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <a href={`/auditoria/${corridaId}/expediente`} target="_blank" rel="noreferrer" className={boton}>
+          Abrir expediente entregable ↗
+        </a>
+        <a href={`/auditoria/${corridaId}/submission`} download className={boton}>
+          Descargar submission.json
+        </a>
+      </div>
+      <Link href={`/auditoria/${corridaId}`} className="text-[12.5px] text-text-muted hover:underline">
+        Open dataset audit ↗
+      </Link>
+    </div>
+  );
+}
+
 /** Fila genérica para cualquier clave que la UI tipada no conoce todavía. */
 export function ClavesNoMapeadas({ obj, conocidas, titulo }: { obj: unknown; conocidas: readonly string[]; titulo?: string }) {
   const extra = clavesNoMapeadas(obj, conocidas);
   if (extra.length === 0) return null;
   return (
     <div className="mt-1 flex flex-col gap-1 rounded-[10px] border border-dashed border-border-strong bg-surface-muted p-2.5">
-      <span className="text-[10.5px] uppercase tracking-wide text-text-subtle">{titulo ?? "Otros campos (no mapeados por la UI)"}</span>
+      <span className="text-[10.5px] uppercase tracking-wide text-text-subtle">{titulo ?? "Other recorded fields"}</span>
       {extra.map(([k, v]) => (
         <div key={k} className="grid grid-cols-[140px_minmax(0,1fr)] gap-2 text-[11.5px]">
           <span className="truncate font-mono text-text-muted">{k}</span>
@@ -86,9 +109,9 @@ export function AuditorResultadoCompleto({ resultado }: { resultado: AuditorResu
   if (!resultado) {
     return (
       <Tarjeta>
-        <p className="text-[14px] text-text">Esta corrida todavía no ha sido auditada.</p>
+        <p className="text-[14px] text-text">This dataset has not been audited yet.</p>
         <p className="mt-1 text-[13px] text-text-muted">
-          No es lo mismo que “sin hallazgos”: no hay resultado guardado en <code className="font-mono text-[12px]">forense.auditor_resultados</code>.
+          This is not a finding of no fraud. No result is saved in <code className="font-mono text-[12px]">forense.auditor_resultados</code>.
         </p>
       </Tarjeta>
     );
@@ -100,26 +123,14 @@ export function AuditorResultadoCompleto({ resultado }: { resultado: AuditorResu
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <a
-          href={`/auditoria/${r.corrida_id}/expediente`}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-[10px] border border-border bg-surface px-3.5 py-2 text-[13px] font-medium text-text hover:bg-surface-hover"
-        >
-          Abrir expediente entregable ↗
-        </a>
-        <Link href={`/auditoria/${r.corrida_id}`} className="text-[12.5px] text-text-muted hover:underline">
-          Ver esta corrida en /auditoria ↗
-        </Link>
-      </div>
+      <AccionesEntregable corridaId={r.corrida_id} />
 
       <Tarjeta>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           {[
-            ["Hallazgos", `${r.findings.length}`, `${probados} probados · ${r.findings.length - probados} probables`],
-            ["Exposición total", mxn(total), "suma de montos conciliados"],
-            ["Leads cerrados", `${r.leads.length}`, `${r.detector_hits} alertas de detectores`],
+            ["Findings", `${r.findings.length}`, `${probados} probados · ${r.findings.length - probados} probables`],
+            ["Total flagged amount", mxn(total), "sum of reconciled finding amounts"],
+            ["Leads cerrados", `${r.leads.length}`, `${r.detector_hits} detector alerts`],
             ["Llamadas LLM · costo", `${md.llm_calls} · MXN ${md.mxn_cost.toFixed(2)}`, `modo ${md.llm_mode ?? "off"}`],
             ["Tiempo", `${md.wall_clock_seconds.toFixed(2)} s`, md.deterministic ? "determinista" : "no determinista"],
           ].map(([t, v, s]) => (
@@ -134,15 +145,15 @@ export function AuditorResultadoCompleto({ resultado }: { resultado: AuditorResu
           Empresa {r.company_rfc} · periodo {r.period?.[0]} a {r.period?.[1]} · seed {r.seed} · huella{" "}
           <code className="font-mono">{r.fingerprint.slice(0, 16)}</code>
         </p>
-        <ClavesNoMapeadas obj={r.run_log} conocidas={CLAVES_RAIZ} titulo="Otros campos de run_log (raíz)" />
-        <ClavesNoMapeadas obj={md} conocidas={["llm_calls", "mxn_cost", "wall_clock_seconds", "deterministic", "llm_mode"]} titulo="Otros campos de run_metadata" />
+        <ClavesNoMapeadas obj={r.run_log} conocidas={CLAVES_RAIZ} titulo="Other run-log fields" />
+        <ClavesNoMapeadas obj={md} conocidas={["llm_calls", "mxn_cost", "wall_clock_seconds", "deterministic", "llm_mode"]} titulo="Other run metadata" />
       </Tarjeta>
 
       <section className="flex flex-col gap-4">
         <h2 className="text-[16px] font-medium text-text">Hallazgos ({r.findings.length})</h2>
         {r.findings.length === 0 && (
           <Tarjeta>
-            <p className="text-[14px] text-text">Ningún esquema sobrevivió investigación y validación.</p>
+            <p className="text-[14px] text-text">No pattern survived investigation and validation.</p>
           </Tarjeta>
         )}
         {r.findings.map((f, i) => (
@@ -153,7 +164,7 @@ export function AuditorResultadoCompleto({ resultado }: { resultado: AuditorResu
       <section className="flex flex-col gap-3">
         <h2 className="text-[16px] font-medium text-text">Leads investigados y cerrados ({r.leads.length})</h2>
         <p className="text-[13px] text-text-muted">
-          Cada alerta que no terminó en acusación, con la evidencia que la cerró y las herramientas que se consultaron.
+          Dismissed alerts with supporting evidence and checks performed.
         </p>
         <TablaLeads leads={r.leads} />
       </section>
@@ -181,15 +192,15 @@ export function HallazgoCard({ f, indice }: { f: AuditorHallazgo; indice?: numbe
       </summary>
       <div className="flex flex-col gap-4 border-t border-border px-5 pb-5 pt-4">
         <div>
-          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Regla incumplida</div>
+          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Rule violated</div>
           <p className="mt-1 text-[13.5px] text-text">{f.rule_broken}</p>
         </div>
         <div>
-          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Qué pasó</div>
+          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">What happened</div>
           <p className="mt-1 text-[13.5px] leading-relaxed text-text">{f.narrative}</p>
         </div>
         <div>
-          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Rastro del dinero</div>
+          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Follow the money</div>
           <div className="mt-2 rounded-[10px] border border-border bg-white p-3">
             <RastroDinero pasos={f.money_trail} etiquetas={etiquetas} />
           </div>
@@ -202,8 +213,8 @@ export function HallazgoCard({ f, indice }: { f: AuditorHallazgo; indice?: numbe
                 <tr>
                   <th className="py-1.5 pr-3 font-medium">Exhibit</th>
                   <th className="py-1.5 pr-3 font-medium">Tabla</th>
-                  <th className="py-1.5 pr-3 font-medium">Registro</th>
-                  <th className="py-1.5 font-medium">Qué prueba</th>
+                  <th className="py-1.5 pr-3 font-medium">Record</th>
+                  <th className="py-1.5 font-medium">What this proves</th>
                 </tr>
               </thead>
               <tbody>
@@ -220,20 +231,20 @@ export function HallazgoCard({ f, indice }: { f: AuditorHallazgo; indice?: numbe
           </div>
         </div>
         <div>
-          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Conciliación</div>
+          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Reconciliation</div>
           <p className="mt-1 text-[13px] tabular-nums text-text">
             {f.reconciliation.items.map(([id, v]) => `${mxn(v)} (${id})`).join(" + ")} ={" "}
             <b>{mxn(f.reconciliation.items.reduce((s, [, v]) => s + v, 0))}</b>
           </p>
           {f.reconciled_against && (
             <p className="text-[12px] text-text-muted">
-              Validador: tabla más cercana <code className="font-mono">{f.reconciled_against.table}</code> ={" "}
-              {mxn(f.reconciled_against.sum)}, dentro de 2%. Todos los registros citados existen.
+              Validator: closest reconciling table <code className="font-mono">{f.reconciled_against.table}</code> ={" "}
+              {mxn(f.reconciled_against.sum)}, within 2%. All cited records exist.
             </p>
           )}
         </div>
         <div>
-          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Evidencia y revisión adversarial</div>
+          <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Evidence & adversarial review</div>
           <ul className="mt-1 list-disc pl-5 text-[13px] text-text">
             {f.evidence.map((e) => (
               <li key={e}>{e}</li>
@@ -244,7 +255,7 @@ export function HallazgoCard({ f, indice }: { f: AuditorHallazgo; indice?: numbe
               <li key={d.argument} className="rounded-[10px] bg-surface-muted px-3 py-2">
                 <span className="font-medium text-text">{d.by === "llm" ? "Defensa (LLM)" : "Revisor"}:</span>{" "}
                 <span className="text-text">{d.argument}</span>{" "}
-                <span className={d.held ? "text-green-700" : "text-red-700"}>{d.held ? "El hallazgo se sostiene:" : "No se sostiene:"}</span>{" "}
+                <span className={d.held ? "text-green-700" : "text-red-700"}>{d.held ? "El hallazgo se sostiene:" : "Not supported:"}</span>{" "}
                 <span className="text-text-muted">{d.why}</span>
               </li>
             ))}
@@ -254,7 +265,7 @@ export function HallazgoCard({ f, indice }: { f: AuditorHallazgo; indice?: numbe
           <div className="grid gap-3 sm:grid-cols-2">
             {f.signals && f.signals.length > 0 && (
               <div>
-                <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Señales</div>
+                <div className="text-[11.5px] uppercase tracking-wide text-text-muted">Signals</div>
                 <p className="mt-1 text-[12.5px] text-text-muted">{f.signals.join(", ")}</p>
               </div>
             )}
@@ -281,11 +292,11 @@ export function TablaLeads({ leads }: { leads: AuditorLead[] }) {
         <table className="w-full text-left text-[13px]">
           <thead className="text-text-muted">
             <tr>
-              <th className="px-4 py-2 font-medium">Entidad</th>
-              <th className="px-4 py-2 font-medium">Señal</th>
-              <th className="px-4 py-2 font-medium">Por qué se cerró</th>
+              <th className="px-4 py-2 font-medium">Entity</th>
+              <th className="px-4 py-2 font-medium">Signal</th>
+              <th className="px-4 py-2 font-medium">Why it was closed</th>
               <th className="px-4 py-2 font-medium">Herramientas</th>
-              <th className="px-4 py-2 font-medium">Cerró</th>
+              <th className="px-4 py-2 font-medium">Closed by</th>
             </tr>
           </thead>
           <tbody>
@@ -310,7 +321,7 @@ export function TablaLeads({ leads }: { leads: AuditorLead[] }) {
       {leads.map((l) => {
         const extra = clavesNoMapeadas(l, CLAVES_LEAD);
         if (extra.length === 0) return null;
-        return <ClavesNoMapeadas key={`${l.entity}-extra`} obj={l} conocidas={CLAVES_LEAD} titulo={`Otros campos de ${l.entity}`} />;
+        return <ClavesNoMapeadas key={`${l.entity}-extra`} obj={l} conocidas={CLAVES_LEAD} titulo={`Other fields in ${l.entity}`} />;
       })}
     </>
   );
@@ -334,7 +345,7 @@ export function SeccionCorridaAuditor({
   if (!resultado) {
     return (
       <Tarjeta>
-        <p className="text-[14px] text-text">Esta corrida todavía no ha sido auditada.</p>
+        <p className="text-[14px] text-text">This dataset has not been audited yet.</p>
       </Tarjeta>
     );
   }
@@ -344,25 +355,13 @@ export function SeccionCorridaAuditor({
   const md = r.run_metadata;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <a
-          href={`/auditoria/${r.corrida_id}/expediente`}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-[10px] border border-border bg-surface px-3.5 py-2 text-[13px] font-medium text-text hover:bg-surface-hover"
-        >
-          Abrir expediente entregable ↗
-        </a>
-        <Link href={`/auditoria/${r.corrida_id}`} className="text-[12.5px] text-text-muted hover:underline">
-          Ver esta corrida en /auditoria ↗
-        </Link>
-      </div>
+      <AccionesEntregable corridaId={r.corrida_id} />
       <Tarjeta>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           {[
             ["Hallazgos (corrida)", `${r.findings.length}`, `${probados} probados · ${r.findings.length - probados} probables`],
-            ["Exposición total", mxn(total), "suma de montos conciliados"],
-            ["Leads cerrados (corrida)", `${r.leads.length}`, `${r.detector_hits} alertas de detectores`],
+            ["Total flagged amount", mxn(total), "sum of reconciled finding amounts"],
+            ["Leads cerrados (corrida)", `${r.leads.length}`, `${r.detector_hits} detector alerts`],
             ["Llamadas LLM · costo", `${md.llm_calls} · MXN ${md.mxn_cost.toFixed(2)}`, `modo ${md.llm_mode ?? "off"}`],
             ["Tiempo", `${md.wall_clock_seconds.toFixed(2)} s`, md.deterministic ? "determinista" : "no determinista"],
           ].map(([t, v, s]) => (
@@ -377,18 +376,18 @@ export function SeccionCorridaAuditor({
           Empresa {r.company_rfc} · periodo {r.period?.[0]} a {r.period?.[1]} · seed {r.seed} · huella{" "}
           <code className="font-mono">{r.fingerprint.slice(0, 16)}</code>
         </p>
-        <ClavesNoMapeadas obj={r.run_log} conocidas={CLAVES_RAIZ} titulo="Otros campos de run_log (raíz)" />
-        <ClavesNoMapeadas obj={md} conocidas={["llm_calls", "mxn_cost", "wall_clock_seconds", "deterministic", "llm_mode"]} titulo="Otros campos de run_metadata" />
+        <ClavesNoMapeadas obj={r.run_log} conocidas={CLAVES_RAIZ} titulo="Other run-log fields" />
+        <ClavesNoMapeadas obj={md} conocidas={["llm_calls", "mxn_cost", "wall_clock_seconds", "deterministic", "llm_mode"]} titulo="Other run metadata" />
       </Tarjeta>
 
       {hallazgosSinCaso.length > 0 && (
         <section className="flex flex-col gap-3">
           <h2 className="text-[16px] font-medium text-text">
-            Hallazgos sin caso propio en esta investigación ({hallazgosSinCaso.length})
+            Findings without a linked case ({hallazgosSinCaso.length})
           </h2>
           <p className="text-[13px] text-text-muted">
-            Existen en <code className="font-mono">forense.auditor_resultados</code> de esta corrida pero no coincidieron con ningún caso de{" "}
-            <code className="font-mono">inv.caso_ids</code> (esquema + entidades no emparejan con ningún caso listado).
+            Recorded in <code className="font-mono">forense.auditor_resultados</code> but not matched to a case in{" "}
+            <code className="font-mono">inv.caso_ids</code> (pattern and entities do not match any listed case).
           </p>
           {hallazgosSinCaso.map((f) => (
             <HallazgoCard key={`${f.scheme_type}-${f.entities.join()}`} f={f} />
@@ -398,8 +397,8 @@ export function SeccionCorridaAuditor({
 
       {leadsSinCaso.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-[16px] font-medium text-text">Leads sin caso relacionado en esta investigación ({leadsSinCaso.length})</h2>
-          <p className="text-[13px] text-text-muted">Ninguno de los casos mostrados comparte RFC/entidad con estos leads.</p>
+          <h2 className="text-[16px] font-medium text-text">Leads without a linked case ({leadsSinCaso.length})</h2>
+          <p className="text-[13px] text-text-muted">These leads share no entity with the displayed cases.</p>
           <TablaLeads leads={leadsSinCaso} />
         </section>
       )}

@@ -20,6 +20,8 @@ const raizRepo = path.resolve(process.cwd(), "..");
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Independent build output keeps verification from overwriting the active dev server.
+  distDir: process.env.FORENSE_NEXT_DIST_DIR || ".next",
   typedRoutes: false,
   // `middleware.ts` cubre /api/estates: sin subir este tope (10 MB por omisión) Next trunca el cuerpo
   // multipart de un dataset antes de que llegue al route. Igual a MAX_BYTES_TOTAL + holgura multipart

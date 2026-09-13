@@ -3,6 +3,7 @@
 !.env.example
 node_modules/
 .next/
+.next-verify/
 data/raw/
 data/gen/
 .claude/worktrees/
@@ -16,3 +17,11 @@ coverage/
 eval/input_labels_*.csv
 # estates y claves generadas por el harness forense
 data/forensic/
+# Local laboratory artifacts, prompts and cached sector research.
+data/labs/
+__pycache__/
+*.pyc
+
+# Local video production and imported evaluation datasets.
+output/
+data/external/

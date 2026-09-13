@@ -13,7 +13,7 @@ const err = () => Object.assign(new Error("listCorridas: fetch failed"), { diges
 describe("FalloDatos", () => {
   it("dice que no se pudo preguntar, no que no haya hallazgos", () => {
     render(<FalloDatos error={err()} reset={() => {}} alcance="pagina" />);
-    expect(screen.getByText(/Esto no significa que no haya hallazgos/i)).toBeTruthy();
+    expect(screen.getByText(/This does not mean there are no findings/i)).toBeTruthy();
   });
 
   it("nunca ofrece datos de demostración como sustituto", () => {
@@ -24,8 +24,8 @@ describe("FalloDatos", () => {
     // El texto sí menciona los datos de demostración, pero para decir que NO
     // se usan: lo que no puede aparecer es el rótulo que los presenta como
     // contenido de la pantalla ("Datos de demostración · contratos v…").
-    expect(container.textContent).not.toMatch(/Datos de demostración ·/);
-    expect(container.textContent).toMatch(/No se sustituye por datos de demostración/i);
+    expect(container.textContent).not.toMatch(/Demo data ·/);
+    expect(container.textContent).toMatch(/not been replaced with demo data/i);
   });
 
   it("nombra el schema sin exponer como primera causa a revisar", () => {
@@ -36,10 +36,10 @@ describe("FalloDatos", () => {
 
   it("distingue el alcance: el layout tumba la app, una página no", () => {
     const { unmount } = render(<FalloDatos error={err()} reset={() => {}} alcance="app" />);
-    expect(screen.getByText(/shell de toda la aplicación/i)).toBeTruthy();
+    expect(screen.getByText(/profile and app navigation/i)).toBeTruthy();
     unmount();
     render(<FalloDatos error={err()} reset={() => {}} alcance="pagina" />);
-    expect(screen.getByText(/El resto de la navegación sigue en pie/i)).toBeTruthy();
+    expect(screen.getByText(/Other pages remain available/i)).toBeTruthy();
   });
 
   it("con mensaje corto lo muestra; sin él, publica el digest para el log", () => {
@@ -57,7 +57,7 @@ describe("FalloDatos", () => {
   it("reintentar usa el reset de la frontera cuando lo hay", () => {
     const reset = vi.fn();
     render(<FalloDatos error={err()} reset={reset} alcance="pagina" />);
-    screen.getByRole("button", { name: /Reintentar/i }).click();
+    screen.getByRole("button", { name: /Retry/i }).click();
     expect(reset).toHaveBeenCalledOnce();
   });
 
@@ -69,7 +69,7 @@ describe("FalloDatos", () => {
       value: { ...original, reload: recargar },
     });
     render(<FalloDatos error={err()} alcance="app" />);
-    screen.getByRole("button", { name: /Reintentar/i }).click();
+    screen.getByRole("button", { name: /Retry/i }).click();
     expect(recargar).toHaveBeenCalledOnce();
     Object.defineProperty(window, "location", { configurable: true, value: original });
   });

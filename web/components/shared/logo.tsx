@@ -1,29 +1,30 @@
 import { cn } from "@/lib/utils";
 
-/**
- * Símbolo propio de Forense: documento de esquina doblada con dos trazos
- * verticales interiores (15 §1 — "Logo/favicon"). Usa `currentColor`, así
- * que el mismo trazo sirve para el botón/cabecera negra (variante blanca)
- * y para superficies claras (variante negra); ver `app/icon.svg` para el
- * favicon estático con fondo blanco fijo.
- */
+/** Inspector's four-point star. Keep the path in sync with public/inspector-star.svg. */
 export function Logo({ className }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox="0 0 32 32"
       fill="none"
       className={cn("h-5 w-5", className)}
       aria-hidden="true"
     >
       <path
-        d="M6 3.5H14.5L18.5 7.5V20.5H6V3.5Z"
+        d="M16 2.5 20.1 11.9 29.5 16 20.1 20.1 16 29.5 11.9 20.1 2.5 16 11.9 11.9Z"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.55"
         strokeLinejoin="round"
       />
-      <path d="M14.5 3.5V7.5H18.5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M9.5 11V17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M13 11V17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M16 2.5 14.4 17.6 29.5 16M14.4 17.6 16 29.5M14.4 17.6 2.5 16" stroke="currentColor" strokeWidth="1.05" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+export function InspectorWordmark({ className }: { className?: string }) {
+  return (
+    <span className={cn("inspector-wordmark", className)}>
+      <Logo className="inspector-wordmark-star" />
+      <span>Inspector</span>
+    </span>
   );
 }

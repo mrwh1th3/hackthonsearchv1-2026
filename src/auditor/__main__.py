@@ -83,10 +83,13 @@ def main(argv: list[str] | None = None) -> int:
     except StructureError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    measured = result["run_metadata"]["wall_clock_seconds"]
     paths = write_outputs(result, a.out)
     md = result["run_metadata"]
+    # misma carpeta y mismo resultado: la submission conserva el reloj de la ejecución que la produjo
+    pinned = f" (measured {measured}; submission unchanged)" if md["wall_clock_seconds"] != measured else ""
     print(f"seed={a.seed} findings={len(result['findings'])} leads_closed={len(result['leads'])} "
-          f"llm_calls={md['llm_calls']} mxn_cost={md['mxn_cost']} wall_clock_s={md['wall_clock_seconds']} "
+          f"llm_calls={md['llm_calls']} mxn_cost={md['mxn_cost']} wall_clock_s={md['wall_clock_seconds']}{pinned} "
           f"fingerprint={result['fingerprint'][:16]}")
     for f in result["findings"]:
         print(f"  {f['scheme_type']:<20} {f['confidence']:<9} {f['peso_amount']:>14,.2f}  {', '.join(f['entities'])}")

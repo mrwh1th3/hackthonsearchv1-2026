@@ -679,7 +679,7 @@ export class SupabaseDataSource implements DataSource {
     if (!percentiles) return [];
     return [
       {
-        metrica: "Facturación 12 meses",
+        metrica: "12-month invoicing",
         unidad: "MXN",
         valor_propio: Number(fila.facturacion_12m ?? 0),
         p10: Number(percentiles.fact_p10 ?? 0),
@@ -769,5 +769,16 @@ export class SupabaseDataSource implements DataSource {
       .maybeSingle();
     if (error) throw new Error(`SupabaseDataSource.getAuditorExpedienteHtml: ${error.message}`);
     return data ? String(data.case_file_html) : null;
+  }
+
+  async getAuditorSubmission(corridaId: string): Promise<Record<string, unknown> | null> {
+    const { data, error } = await this.client
+      .from("auditor_resultados")
+      .select("submission")
+      .eq("corrida_id", corridaId)
+      .maybeSingle();
+    if (error) throw new Error(`SupabaseDataSource.getAuditorSubmission: ${error.message}`);
+    const submission = data?.submission;
+    return submission && typeof submission === "object" && !Array.isArray(submission) ? (submission as Record<string, unknown>) : null;
   }
 }

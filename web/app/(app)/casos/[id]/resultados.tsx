@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { FileBraces, FileText } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { FAMILIA_NOMBRE, FamiliaChip, NivelBadge } from "@/components/shared/badges";
@@ -49,6 +49,7 @@ export function ResultadosCaso({
   senales = SENALES_VACIAS,
   extraSecciones = null,
   soloResumen = false,
+  descargaSubmission = null,
 }: {
   detalle: CasoDetalle;
   bitacora: EventoForense[];
@@ -77,6 +78,11 @@ export function ResultadosCaso({
    * debajo era ruido, no información nueva.
    */
   soloResumen?: boolean;
+  /**
+   * `submission.json` del auditor para la corrida, junto a "Reporte completo": se descarga directo, sin editor.
+   * `ruta` es dónde quedó escrito en disco, si de ahí salen los bytes de la descarga.
+   */
+  descargaSubmission?: { href: string; ruta: string | null } | null;
 }) {
   const { caso, pistas, evidencia } = detalle;
 
@@ -129,7 +135,7 @@ export function ResultadosCaso({
     {
       label: "Pistas confirmadas",
       valor: `${sostenidas.length}`,
-      nota: `de ${evaluadas.length} revisada${evaluadas.length === 1 ? "" : "s"}${pistas.length > evaluadas.length ? ` · ${pistas.length - evaluadas.length} sin poder revisar` : ""}`,
+      nota: `de ${evaluadas.length} revisada${evaluadas.length === 1 ? "" : "s"}${pistas.length > evaluadas.length ? ` · ${pistas.length - evaluadas.length} not reviewed` : ""}`,
       barra: evaluadas.length > 0 ? sostenidas.length / evaluadas.length : undefined,
     },
     {
@@ -139,26 +145,26 @@ export function ResultadosCaso({
       barra: evidencia.length > 0 ? evidenciaValida.length / evidencia.length : undefined,
     },
     {
-      label: "Monto en riesgo",
+      label: "Flagged amount",
       valor: `${caso.moneda} ${Number(caso.monto_en_riesgo).toLocaleString("es-MX", { maximumFractionDigits: 0 })}`,
-      nota: caso.cobertura_completa ? "Se revisó todo el periodo" : "Falta revisar parte del periodo",
+      nota: caso.cobertura_completa ? "Entire period reviewed" : "Part of the period remains unreviewed",
     },
     {
-      label: "Intentos de la investigación",
+      label: "Investigation attempts",
       valor: `${caso.n_reintentos}`,
-      nota: caso.presupuesto_agotado ? "Se acabó el tiempo asignado" : "Todavía hay tiempo disponible",
+      nota: caso.presupuesto_agotado ? "Time limit reached" : "Time remains",
     },
   ];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-[18px] border border-border-strong bg-surface-muted p-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto rounded-card-lg border border-border bg-surface-raised p-3 sm:p-5">
       {onAbrirReporte ? (
         <button type="button" onClick={onAbrirReporte} className="sticky top-0 z-[1] flex w-full flex-none items-center justify-between gap-2.5 rounded-[13px] border border-border-strong bg-surface px-3.5 py-2.5 text-left shadow-sm transition-colors duration-150 hover:border-border-stronger hover:bg-surface-hover">
         <span className="flex min-w-0 items-center gap-2.5">
           <FileText size={15} strokeWidth={1.8} className="flex-none text-text" aria-hidden />
           <span className="text-[12.5px] font-medium text-text">Reporte completo</span>
         </span>
-        <span className="flex-none rounded-[10px] bg-focus px-3 py-1 text-[11.5px] font-medium text-white">Abrir</span>
+        <span className="flex-none rounded-control bg-primary px-3 py-1 text-[11.5px] font-medium text-white">Open</span>
         </button>
       ) : (
       <Link
@@ -169,8 +175,29 @@ export function ResultadosCaso({
           <FileText size={15} strokeWidth={1.8} className="flex-none text-text" aria-hidden />
           <span className="text-[12.5px] font-medium text-text">Reporte completo</span>
         </span>
-        <span className="flex-none rounded-[10px] bg-focus px-3 py-1 text-[11.5px] font-medium text-white">Abrir</span>
+        <span className="flex-none rounded-control bg-primary px-3 py-1 text-[11.5px] font-medium text-white">Open</span>
       </Link>
+      )}
+
+      {descargaSubmission && (
+        <a
+          href={descargaSubmission.href}
+          download
+          className="flex w-full flex-none items-center justify-between gap-2.5 rounded-[13px] border border-border-strong bg-surface px-3.5 py-2.5 text-left shadow-sm transition-colors duration-150 hover:border-border-stronger hover:bg-surface-hover"
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            <FileBraces size={15} strokeWidth={1.8} className="flex-none text-text" aria-hidden />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[12.5px] font-medium text-text">submission.json</span>
+              {descargaSubmission.ruta && (
+                <span className="truncate font-mono text-[11px] text-text-muted" title={descargaSubmission.ruta}>
+                  {descargaSubmission.ruta}
+                </span>
+              )}
+            </span>
+          </span>
+          <span className="flex-none rounded-control bg-primary px-3 py-1 text-[11.5px] font-medium text-white">Download</span>
+        </a>
       )}
 
       {extraSecciones}
@@ -188,9 +215,9 @@ export function ResultadosCaso({
       */}
       <div className="flex flex-col gap-2.5 rounded-[var(--radius-card-sm)] border border-border bg-surface p-3.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Investigación</span>
+          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Investigation</span>
           <Link href={`/clusters/${caso.cluster_id}`} className="text-[11.5px] text-focus hover:underline">
-            Ver en grande
+            Expand view
           </Link>
         </div>
 
@@ -210,14 +237,14 @@ export function ResultadosCaso({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-text-subtle">
-          <span className="font-mono text-[12px] text-text" title="identificador interno de la investigación">
+          <span className="font-mono text-[12px] text-text" title="Investigation identifier">
             {caso.cluster_id.slice(0, 8)}…
           </span>
           {cluster && (
             <>
               <span>{cluster.n_rfc} contribuyente{cluster.n_rfc === 1 ? "" : "s"} relacionado{cluster.n_rfc === 1 ? "" : "s"}</span>
-              <span title="número de vuelta de análisis">· revisión {cluster.ronda_actual}</span>
-              <span title="puntaje de riesgo calculado por el sistema">· puntaje de riesgo {cluster.score.toFixed(2)}</span>
+              <span title="Review round">· review {cluster.ronda_actual}</span>
+              <span title="Calculated risk score">· risk score {cluster.score.toFixed(2)}</span>
               {cluster.nivel && <NivelBadge nivel={cluster.nivel} />}
             </>
           )}
@@ -228,9 +255,9 @@ export function ResultadosCaso({
 
         <ClusterForceGraph nodos={grafo?.nodos ?? []} aristas={grafo?.aristas ?? []} height={260} />
 
-        <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Notas del equipo ({senalesEnVivo.length})</span>
+        <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Team notes ({senalesEnVivo.length})</span>
         {senalesEnVivo.length === 0 ? (
-          <p className="m-0 text-[12px] text-text-subtle">Todavía no hay notas escritas en esta investigación.</p>
+          <p className="m-0 text-[12px] text-text-subtle">No notes have been written yet.</p>
         ) : (
           <ul className="m-0 grid gap-1.5 p-0 sm:grid-cols-2">
             {senalesEnVivo.map((s) => (
@@ -244,7 +271,7 @@ export function ResultadosCaso({
                 <span className="flex flex-wrap items-center gap-1.5">
                   <NombreFamilia familia={s.familia} />
                   {s.refuta && <span className="rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle">descarta esta pista</span>}
-                  <span className="ml-auto rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle" title="qué tan seguro está el sistema de esta nota">
+                  <span className="ml-auto rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle" title="Confidence in this note">
                     confianza: {s.confianza}
                   </span>
                 </span>
@@ -256,7 +283,7 @@ export function ResultadosCaso({
                     </span>
                   ))}
                 </span>
-                <span className="text-[10.5px] text-text-subtle">{s.ids.length} documento{s.ids.length === 1 ? "" : "s"} de respaldo</span>
+                <span className="text-[10.5px] text-text-subtle">{s.ids.length} documento{s.ids.length === 1 ? "" : "s"} supporting</span>
               </li>
             ))}
           </ul>

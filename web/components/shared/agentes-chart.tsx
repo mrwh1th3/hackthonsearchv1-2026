@@ -18,8 +18,8 @@ export function AgentesChart({ datos }: { datos: TokensPorAgente[] }) {
         <YAxis tick={{ fontSize: 11 }} />
         <Tooltip formatter={(value) => (typeof value === "number" ? value.toLocaleString("es-MX") : String(value ?? ""))} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
-        <Bar dataKey="tokens_in" stackId="tokens" name="Entrada" fill="var(--primary)" />
-        <Bar dataKey="tokens_out" stackId="tokens" name="Salida" fill="var(--border-strong)" />
+        <Bar dataKey="tokens_in" stackId="tokens" name="Input" fill="var(--primary)" />
+        <Bar dataKey="tokens_out" stackId="tokens" name="Output" fill="var(--border-strong)" />
       </BarChart>
     </ResponsiveContainer>
   );

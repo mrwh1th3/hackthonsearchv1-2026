@@ -10,12 +10,12 @@ export interface Sugerencia {
 }
 
 export const SUGERENCIAS: Sugerencia[] = [
-  { id: "seguir_dinero", titulo: "Seguir el dinero", descripcion: "Rastrea entradas, salidas y retornos del RFC/investigación seleccionado.", requiere: ["rfc"] },
-  { id: "sin_pago", titulo: "Buscar facturas sin pago", descripcion: "Concilia comprobantes del periodo y declara cobertura faltante.", requiere: ["rfc"] },
-  { id: "intentar_refutar", titulo: "Intentar refutar", descripcion: "Prueba explicaciones legítimas de las pistas seleccionadas.", requiere: ["rfc"] },
-  { id: "comparar_pares", titulo: "Comparar con sus pares", descripcion: "Usa giro/tamaño y métricas disponibles.", requiere: ["rfc"] },
-  { id: "explicar_cadena", titulo: "Explicar esta cadena", descripcion: "Prioriza ruta y evidencias de las aristas seleccionadas.", requiere: ["evidencia"] },
-  { id: "resumen", titulo: "Preparar resumen ejecutivo", descripcion: "Solicita un resumen del resultado de la investigación.", requiere: ["rfc"] },
+  { id: "seguir_dinero", titulo: "Follow the money", descripcion: "Trace incoming payments, outgoing payments and returns.", requiere: ["rfc"] },
+  { id: "sin_pago", titulo: "Find unpaid invoices", descripcion: "Reconcile invoices and identify missing records.", requiere: ["rfc"] },
+  { id: "intentar_refutar", titulo: "Intentar refutar", descripcion: "Test legitimate explanations for selected signals.", requiere: ["rfc"] },
+  { id: "comparar_pares", titulo: "Compare with peers", descripcion: "Use industry, company size and available metrics.", requiere: ["rfc"] },
+  { id: "explicar_cadena", titulo: "Explicar esta cadena", descripcion: "Prioritize the selected money trail and supporting records.", requiere: ["evidencia"] },
+  { id: "resumen", titulo: "Preparar resumen ejecutivo", descripcion: "Summarize the investigation results.", requiere: ["rfc"] },
 ];
 
 export interface SuggestionChipsProps {
@@ -32,7 +32,7 @@ export interface SuggestionChipsProps {
  */
 export function SuggestionChips({ seleccionId, onSelect, disponible, className }: SuggestionChipsProps) {
   return (
-    <div className={cn("flex gap-2 overflow-x-auto pb-1", className)} role="group" aria-label="Sugerencias de análisis">
+    <div className={cn("flex gap-2 overflow-x-auto pb-1", className)} role="group" aria-label="Suggested investigations">
       {SUGERENCIAS.map((s) => {
         const faltante = s.requiere.find((r) => !disponible[r]);
         const deshabilitada = Boolean(faltante);
@@ -43,7 +43,7 @@ export function SuggestionChips({ seleccionId, onSelect, disponible, className }
             disabled={deshabilitada}
             onClick={() => onSelect(s)}
             aria-pressed={seleccionId === s.id}
-            title={deshabilitada ? `Requiere ${etiquetaFaltante(faltante!)} en el contexto actual` : s.descripcion}
+            title={deshabilitada ? `Requiere ${etiquetaFaltante(faltante!)} in the current context` : s.descripcion}
             className={cn(
               "flex shrink-0 flex-col rounded-[var(--radius-card)] border px-3 py-2 text-left text-xs transition-colors",
               deshabilitada
@@ -65,7 +65,7 @@ export function SuggestionChips({ seleccionId, onSelect, disponible, className }
 }
 
 function etiquetaFaltante(r: "rfc" | "cluster" | "evidencia"): string {
-  if (r === "rfc") return "un RFC";
-  if (r === "cluster") return "una investigación";
+  if (r === "rfc") return "a tax ID";
+  if (r === "cluster") return "an investigation";
   return "evidencia";
 }

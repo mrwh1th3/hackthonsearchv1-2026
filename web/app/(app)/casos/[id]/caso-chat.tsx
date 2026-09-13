@@ -46,7 +46,7 @@ type Burbuja = { id: string; rol: "usuario" | "agente"; texto: string };
 const CHIPS: Array<{ label: string; directriz: InvestigarPayload["directriz_id"] }> = [
   { label: "Explicar esta cadena", directriz: "explicar_cadena" },
   { label: "Intentar refutar", directriz: "intentar_refutar" },
-  { label: "Comparar con sus pares", directriz: "comparar_pares" },
+  { label: "Compare with peers", directriz: "comparar_pares" },
   { label: "Resumen ejecutivo", directriz: "resumen" },
 ];
 
@@ -88,17 +88,17 @@ export function CasoChat({ corridaId, clusterId, rfcs, periodo, tituloInicial, i
           id: crypto.randomUUID(),
           rol: "agente",
           texto: ok
-            ? "Seguimiento aceptado y en cola. La respuesta aparece aquí cuando la investigación se persiste; nada se contesta antes de medirlo."
+            ? "Follow-up accepted and queued. Its response appears here once saved."
             : body.error === "backend_no_configurado"
-              ? "El backend de investigación no está configurado en este entorno todavía."
-              : `No se pudo enviar el seguimiento (${body.error ?? res.status}).`,
+              ? "The investigation service is not configured in this environment."
+              : `Could not send the follow-up (${body.error ?? res.status}).`,
         },
       ]);
-      if (!ok) toast.error("No se pudo enviar el seguimiento.");
+      if (!ok) toast.error("Could not send the follow-up.");
     } catch {
       setMensajes((m) => [
         ...m,
-        { id: crypto.randomUUID(), rol: "agente", texto: "No se pudo conectar con el servidor." },
+        { id: crypto.randomUUID(), rol: "agente", texto: "Could not connect to the server." },
       ]);
     } finally {
       setEnviando(false);
@@ -111,13 +111,13 @@ export function CasoChat({ corridaId, clusterId, rfcs, periodo, tituloInicial, i
         <input
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
-          aria-label="Nombre del hilo"
+          aria-label="Investigation name"
           className="-ml-[7px] h-[26px] min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-[7px] text-[12.5px] font-medium text-text outline-none transition-colors duration-150 focus:border-border-strong focus:bg-surface"
         />
         <button
           type="button"
           onClick={() => setHistorial((v) => !v)}
-          aria-label="Historial de investigaciones"
+          aria-label="Investigation history"
           aria-expanded={historial}
           className={cn(
             "flex h-[26px] w-[26px] flex-none items-center justify-center rounded-lg text-text-muted transition-colors duration-150 hover:bg-surface-hover",
@@ -131,7 +131,7 @@ export function CasoChat({ corridaId, clusterId, rfcs, periodo, tituloInicial, i
       {historial && (
         <div className="mb-2.5 flex flex-none flex-col gap-0.5 rounded-[var(--radius-card-sm)] border border-border bg-surface-raised p-2">
           <span className="px-1.5 pb-1.5 pt-0.5 text-[10.5px] uppercase tracking-[0.05em] text-text-subtle">
-            Investigaciones de esta corrida
+            Investigations for this dataset
           </span>
           {investigaciones.map((inv) => (
             <Link
@@ -139,12 +139,12 @@ export function CasoChat({ corridaId, clusterId, rfcs, periodo, tituloInicial, i
               href={`/documentos/${inv.id}`}
               className="flex items-center justify-between gap-2 rounded-[9px] px-2 py-[7px] text-left transition-colors duration-150 hover:bg-surface-muted"
             >
-              <span className="min-w-0 flex-1 truncate text-[12px] text-text">{inv.titulo ?? inv.mensaje ?? "Investigación"}</span>
+              <span className="min-w-0 flex-1 truncate text-[12px] text-text">{inv.titulo ?? inv.mensaje ?? "Investigation"}</span>
               <span className="flex-none text-[11px] text-text-subtle">{soloFecha(inv.completada_at ?? inv.creado)}</span>
             </Link>
           ))}
           {investigaciones.length === 0 && (
-            <p className="m-0 px-2 py-3 text-center text-[11.5px] text-text-subtle">Todavía no hay investigaciones de esta corrida.</p>
+            <p className="m-0 px-2 py-3 text-center text-[11.5px] text-text-subtle">No investigations for this dataset yet.</p>
           )}
         </div>
       )}
@@ -203,7 +203,7 @@ export function CasoChat({ corridaId, clusterId, rfcs, periodo, tituloInicial, i
           <div className="flex items-center justify-between gap-2">
             <Link
               href={`/corridas/${corridaId}`}
-              aria-label="Volver al board de la corrida"
+              aria-label="Back to dataset"
               className="flex h-6 w-6 items-center justify-center rounded-full text-text-subtle transition-colors duration-150 hover:bg-surface-hover"
             >
               <Plus size={15} aria-hidden />

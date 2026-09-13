@@ -1,0 +1,5 @@
+[
+  {"id":"no_signal_is_not_cleared","description":"Un sujeto sin señal nunca fue investigado; no equivale a legitimidad demostrada."},
+  {"id":"external_similarity_is_not_evidence","description":"Parecerse a un fraude externo solo orienta hipótesis; se requiere evidencia local."},
+  {"id":"normal_treasury","description":"Tesorería de grupo, factoraje, devoluciones y anticipos deben contrastarse con documentación y flujo."}
+]

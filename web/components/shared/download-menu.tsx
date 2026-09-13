@@ -45,31 +45,31 @@ export function DownloadMenu({ options, className }: { options: DownloadOption[]
         <button
           type="button"
           className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-input)] border border-border bg-surface px-2.5 text-xs text-text hover:bg-surface-hover",
+            "insp-focus-ring inline-flex h-8 items-center gap-1.5 rounded-[11px] border border-border/80 bg-surface px-2.5 text-xs text-text-muted transition-colors hover:border-[var(--brand)]/35 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-strong)]",
             className,
           )}
-          aria-label="Descargar"
+          aria-label="Download"
         >
           <Download size={14} aria-hidden />
-          Descargar
+          Download
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           align="end"
           sideOffset={6}
-          className="z-50 min-w-[180px] rounded-[var(--radius-card)] border border-border bg-surface p-1 text-sm shadow-lg"
+          className="z-50 min-w-[180px] rounded-[18px] border border-border/70 bg-surface p-1.5 text-[13px] shadow-[0_12px_40px_rgba(28,36,25,.12)]"
         >
           {options.map((opt) => (
             <DropdownMenu.Item
               key={opt.label}
               onSelect={() => descargar(opt)}
-              className="cursor-pointer rounded-md px-2 py-1.5 text-text outline-none hover:bg-surface-hover focus:bg-surface-hover"
+              className="cursor-pointer rounded-[12px] px-3 py-2 text-text-muted outline-none transition-colors data-[highlighted]:bg-[var(--brand-soft)] data-[highlighted]:text-[var(--brand-strong)]"
             >
               {opt.label}
             </DropdownMenu.Item>
           ))}
-          {estado === "error" && <p className="px-2 py-1 text-xs text-error">Error al generar el archivo. Reintenta.</p>}
+          {estado === "error" && <p className="px-2 py-1 text-xs text-error">Could not generate the file. Try again.</p>}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

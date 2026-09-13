@@ -20,15 +20,16 @@ const instrumentSans = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Forense",
-  description: "Agente forense de facturación falsa",
+  title: "Inspector",
+  applicationName: "Inspector",
+  description: "Evidence-led financial investigations",
 };
 
 export const viewport = { themeColor: "#FFFFFF" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`${inter.variable} ${instrumentSans.variable}`}>
+    <html lang="en" className={`${inter.variable} ${instrumentSans.variable}`}>
       <body>
         {children}
         <ToastProvider />

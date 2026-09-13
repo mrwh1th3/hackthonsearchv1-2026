@@ -1,0 +1,185 @@
+[
+  {
+    "rule_id": "phantom_vendor",
+    "name": "Proveedor sin soporte material suficiente",
+    "source": "src/auditor/investigate.py:phantom_vendor",
+    "mechanism": "Puntaje de corroboración independiente sobre facturas sin órdenes/contratos; documentación exculpatoria se contrasta primero.",
+    "predicados": [
+      {
+        "field": "derived.phantom_score",
+        "operator": "gte",
+        "value": 2,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.undocumented_invoice_count",
+        "operator": "gt",
+        "value": 0,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.exculpatory_documentation",
+        "operator": "eq",
+        "value": false,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      }
+    ],
+    "fingerprint_scope": "Conservative fingerprint of existing branch conditions, not a reimplementation or exhaustive definition. Original investigator remains authoritative."
+  },
+  {
+    "rule_id": "threshold_splitting",
+    "name": "Fraccionamiento de órdenes",
+    "source": "src/auditor/investigate.py:threshold_splitting",
+    "mechanism": "Órdenes próximas debajo de límites de autorización, ventana temporal y ausencia de defensa documental suficiente.",
+    "predicados": [
+      {
+        "field": "derived.order_limit_ratio",
+        "operator": "gte",
+        "value": 0.85,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.order_limit_ratio",
+        "operator": "lt",
+        "value": 1,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.order_count",
+        "operator": "gte",
+        "value": 3,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.order_window_days",
+        "operator": "lte",
+        "value": 21,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.order_sum_limit_ratio",
+        "operator": "gt",
+        "value": 1,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.same_requester_or_approver",
+        "operator": "eq",
+        "value": true,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.approver_authorized_above_limit",
+        "operator": "eq",
+        "value": false,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      }
+    ],
+    "fingerprint_scope": "Conservative fingerprint of existing branch conditions, not a reimplementation or exhaustive definition. Original investigator remains authoritative."
+  },
+  {
+    "rule_id": "round_tripping",
+    "name": "Retorno de fondos",
+    "source": "src/auditor/investigate.py:round_tripping",
+    "mechanism": "Pago y regreso directo o cadena de 3–4 saltos con conservación de monto y ventana temporal; excluye cuentas propias intermedias.",
+    "predicados": [
+      {
+        "field": "derived.return_amount_ratio",
+        "operator": "gte",
+        "value": 0.8,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.return_amount_ratio",
+        "operator": "lte",
+        "value": 1,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.return_elapsed_days",
+        "operator": "lte",
+        "value": 20,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.return_cycle_count",
+        "operator": "gte",
+        "value": 2,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.refund_documented",
+        "operator": "eq",
+        "value": false,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      }
+    ],
+    "fingerprint_scope": "Conservative fingerprint of existing branch conditions, not a reimplementation or exhaustive definition. Original investigator remains authoritative."
+  },
+  {
+    "rule_id": "kickback",
+    "name": "Retorno a empleado relacionado",
+    "source": "src/auditor/investigate.py:kickback",
+    "mechanism": "Proveedor recibe pago y transfiere a empleado relacionado con aprobación dentro de la ventana y sin explicación lícita suficiente.",
+    "predicados": [
+      {
+        "field": "derived.employee_approval_relationship",
+        "operator": "eq",
+        "value": true,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.employee_payment_elapsed_days",
+        "operator": "gte",
+        "value": 0,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.employee_payment_elapsed_days",
+        "operator": "lte",
+        "value": 15,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.exculpatory_documentation",
+        "operator": "eq",
+        "value": false,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      }
+    ],
+    "fingerprint_scope": "Conservative fingerprint of existing branch conditions, not a reimplementation or exhaustive definition. Original investigator remains authoritative."
+  },
+  {
+    "rule_id": "revenue_inflation",
+    "name": "Ingresos sin cobranza corroborada",
+    "source": "src/auditor/investigate.py:revenue_inflation",
+    "mechanism": "Factura emitida envejecida sin cobranza suficiente, considerando método de pago, abonos y documentación.",
+    "predicados": [
+      {
+        "field": "derived.invoice_age_days",
+        "operator": "gte",
+        "value": 30,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.collection_ratio",
+        "operator": "lt",
+        "value": 0.1,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.payment_grace_expired",
+        "operator": "eq",
+        "value": true,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      },
+      {
+        "field": "derived.exculpatory_documentation",
+        "operator": "eq",
+        "value": false,
+        "description": "Huella de una condición existente; consultar implementación y exclusiones completas en source."
+      }
+    ],
+    "fingerprint_scope": "Conservative fingerprint of existing branch conditions, not a reimplementation or exhaustive definition. Original investigator remains authoritative."
+  }
+]

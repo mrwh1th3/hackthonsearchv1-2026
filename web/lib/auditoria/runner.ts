@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 /**
@@ -22,6 +23,34 @@ export function rutaEstate(datasetHash: string): string | null {
   if (!/^[0-9a-f]{64}$/.test(datasetHash)) return null;
   const ruta = path.join(DIR_ESTATES, `${datasetHash}.db`);
   return existsSync(ruta) ? ruta : null;
+}
+
+/**
+ * Carpeta donde `loaders/auditoria_en_vivo.py` escribe la entrega de cada corrida (`<corrida>/submission.json`,
+ * `run_log.json`, `case_file.html`, `executions.jsonl`): `FORENSE_SALIDA_DIR` si está definida (p. ej.
+ * `~/Documents/Forense`; relativa se resuelve contra la raíz del repo), si no `data/forensic/runs`. La misma regla
+ * vive en `carpeta_salida` del loader: si cambian, cambian juntas.
+ */
+export function dirSalidas(env: Record<string, string | undefined> = process.env): string {
+  const base = env.FORENSE_SALIDA_DIR?.trim();
+  if (!base) return path.join(RAIZ_REPO, "data", "forensic", "runs");
+  const expandida = base === "~" || base.startsWith("~/") ? path.join(os.homedir(), base.slice(1)) : base;
+  return path.resolve(RAIZ_REPO, expandida);
+}
+
+/** `submission.json` en disco de una corrida, si existe. Solo uuids: nada del cliente arma la ruta. */
+export function rutaSubmission(corridaId: string): string | null {
+  if (!esUuid(corridaId)) return null;
+  const ruta = path.join(dirSalidas(), corridaId, "submission.json");
+  return existsSync(ruta) ? ruta : null;
+}
+
+/** Ruta para mostrar en la UI: relativa al repo si vive dentro, con `~` si vive en el home. */
+export function rutaLegible(ruta: string): string {
+  const relativa = path.relative(RAIZ_REPO, ruta);
+  if (relativa && !relativa.startsWith("..") && !path.isAbsolute(relativa)) return relativa;
+  const home = os.homedir();
+  return ruta.startsWith(home + path.sep) ? `~${ruta.slice(home.length)}` : ruta;
 }
 
 /** `structure_report` que dejó `loaders/ingestar_estate.py` junto al estate canónico. */

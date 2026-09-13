@@ -24,7 +24,7 @@
 /** Misma que el valor por omisión de `DateRangePicker` (15 §9). */
 export const ZONA_POR_OMISION = "America/Monterrey";
 
-const LOCALE = "es-MX";
+const LOCALE = "en-US";
 
 function instante(valor: string | number | Date): Date | null {
   const d = valor instanceof Date ? valor : new Date(valor);

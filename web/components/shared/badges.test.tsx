@@ -11,13 +11,13 @@ import { EstadoInyeccionBadge } from "./badges";
 describe("EstadoInyeccionBadge", () => {
   it("un estado en curso (p.ej. 'investigando') muestra el spinner", () => {
     render(<EstadoInyeccionBadge estado="investigando" />);
-    expect(screen.getByText("Investigando")).toBeInTheDocument();
+    expect(screen.getByText("Investigating")).toBeInTheDocument();
     expect(document.querySelector(".animate-spin")).not.toBeNull();
   });
 
   it("'completada' (éxito terminal) nunca gira, aunque haya terminado hace un instante", () => {
     render(<EstadoInyeccionBadge estado="completada" />);
-    expect(screen.getByText("Completada")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
     expect(document.querySelector(".animate-spin")).toBeNull();
   });
 

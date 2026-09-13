@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Fingerprint, Search } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { NivelBadge } from "./badges";
+import { NIVEL_LABEL, NivelBadge } from "./badges";
+import { BoardTimeline } from "./board-timeline";
 import { CasoDetalleCompleto } from "./caso-detalle-completo";
 import { HallazgoCard, SeccionCorridaAuditor, TablaLeads } from "./auditor-resultado";
 import { emparejarAuditor } from "@/lib/analisis/emparejar-auditor";
 import { ChartPanel } from "./chart-panel";
 import { ClusterForceGraph } from "./force-graph";
 import { MapaLogico } from "./mapa-logico";
+import { construirArbol } from "@/lib/analisis/arbol";
 import type { AuditorHallazgo, AuditorLead, AuditorResultado, CasoDetalle, ClusterResumen, ContrasteCaso, Corrida, EventoForense, GrafoArista, GrafoCluster, GrafoNodo, TrayectoriaPunto } from "@/lib/data";
 import type { AnotacionAgenteIA, EjecucionesCaso } from "@/lib/data/privado";
 import { derivarCadenaExplicacion } from "@/lib/analisis/cadena-explicacion";
@@ -21,6 +23,7 @@ import { confianzaAnalisis } from "@/lib/expediente/confianza";
 import { narrarInvestigacion, type PasoNarrado } from "@/lib/expediente/narrativa";
 import { cn } from "@/lib/utils";
 import { AgentesChart } from "./agentes-chart";
+import { AppSelect } from "./app-select";
 
 export interface CasoConContexto {
   detalle: CasoDetalle;
@@ -98,20 +101,29 @@ export function ResumenInvestigacion({
     [casos, auditorResultado],
   );
 
+  const [vista, setVista] = useState<"casos" | "metricas" | "traza">("casos");
+  const [buscarCaso, setBuscarCaso] = useState("");
+  const [nivelFiltro, setNivelFiltro] = useState("todos");
+  const casosVisibles = casos.filter(({ detalle: { caso } }) =>
+    (nivelFiltro === "todos" || (caso.nivel ?? "en_curso") === nivelFiltro) &&
+    (!buscarCaso.trim() || [caso.rfc_principal, caso.id, ...caso.rfcs_satelite].join(" ").toLowerCase().includes(buscarCaso.trim().toLowerCase())),
+  );
+  const eventosUnicos = [...new Map(casos.flatMap((c) => c.bitacora).map((e) => [e.id, e])).values()];
+  const evidenciasUnicas = new Set(casos.flatMap((c) => c.detalle.evidencia.map((e) => e.ref_id || e.id)));
+  const coberturaParcial = casos.filter((c) => !c.detalle.caso.cobertura_completa).length;
+  const monedas = new Set(casos.map((c) => c.detalle.caso.moneda));
+  const monedaUnica = monedas.size === 1 ? [...monedas][0] : null;
   const duraciones = casos.map(duracionCaso);
   const duracionTotal = duraciones.some((d) => d !== null) ? duraciones.reduce<number>((a, d) => a + (d ?? 0), 0) : null;
 
-  const tokensBitacora = casos.flatMap((c) => c.bitacora).reduce((a, e) => a + (e.tokens_in ?? 0) + (e.tokens_out ?? 0), 0);
+  const tokensBitacora = eventosUnicos.reduce((a, e) => a + (e.tokens_in ?? 0) + (e.tokens_out ?? 0), 0);
   const tokens =
     tokensBitacora > 0
-      ? { valor: numero(tokensBitacora), nota: "entrada + salida de los agentes" }
+      ? { valor: numero(tokensBitacora), nota: "AI input + output" }
       : tokensCorrida != null
-        ? { valor: numero(tokensCorrida), nota: "total de la corrida" }
-        : { valor: "—", nota: "La bitácora no reporta tokens" };
+        ? { valor: numero(tokensCorrida), nota: "dataset total" }
+        : { valor: "—", nota: "No token usage recorded" };
 
-  const aristas = new Map(casos.flatMap((c) => c.grafo?.aristas ?? []).map((a) => [a.id, a]));
-  const documentos = [...aristas.values()].reduce((a, x) => a + (x.n_registros ?? 1), 0);
-  const montoAnalizado = [...aristas.values()].reduce((a, x) => a + Number(x.monto || 0), 0);
   const nodos = new Set(casos.flatMap((c) => (c.grafo?.nodos ?? []).map((n) => n.id)));
 
   // Tokens por agente (rol) agregados de TODAS las ejecuciones de runtime de
@@ -121,6 +133,7 @@ export function ResumenInvestigacion({
   const tokensPorAgenteInvestigacion = Object.values(
     casos
       .flatMap((c) => c.ejecuciones.ejecuciones)
+      .filter((e) => e.tokens_in != null || e.tokens_out != null)
       .reduce<Record<string, { agente: string; tokens_in: number; tokens_out: number }>>((acc, e) => {
         const k = e.rol;
         if (!acc[k]) acc[k] = { agente: nombreAgente(k), tokens_in: 0, tokens_out: 0 };
@@ -132,45 +145,58 @@ export function ResumenInvestigacion({
 
 
   const stats: Array<{ label: string; valor: string; nota?: string }> = [
-    { label: "Casos encontrados", valor: `${casos.length}`, nota: corrida ? `${corrida.dataset} · corte ${soloFecha(corrida.fecha_corte)}` : undefined },
+    { label: "Cases under review", valor: `${casos.length}`, nota: corrida ? `${corrida.dataset} · corte ${soloFecha(corrida.fecha_corte)}` : undefined },
     {
-      label: "Volumen analizado",
-      valor: `${numero(documentos)} doc${documentos === 1 ? "" : "s"}`,
-      nota: `${numero(nodos.size)} entidades · MXN ${numero(montoAnalizado)}`,
+      label: "Evidence references",
+      valor: numero(evidenciasUnicas.size),
+      nota: `${numero(nodos.size)} entities in the available graphs`,
     },
-    { label: "Tokens gastados", valor: tokens.valor, nota: tokens.nota },
-    { label: "Duración de ejecución", valor: formatoDuracion(duracionTotal), nota: `suma de ${casos.length} caso${casos.length === 1 ? "" : "s"}` },
+    { label: "Recorded usage", valor: tokens.valor, nota: tokens.nota },
+    { label: "Execution time", valor: formatoDuracion(duracionTotal), nota: `sum of ${casos.length} caso${casos.length === 1 ? "" : "s"}` },
   ];
 
   return (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex flex-col gap-2.5 rounded-[var(--radius-card-sm)] border border-border bg-surface p-3.5">
-        <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Resumen de la investigación</span>
-        <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
+    <div className="flex min-w-0 flex-col gap-5">
+      <section className="insp-surface overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-border p-5 sm:p-6">
+          <span className="insp-eyebrow">LECTURA DE LA INVESTIGACIÓN</span>
+          <h1 className="font-display text-[28px] font-medium leading-tight tracking-[-0.035em] text-text sm:text-[34px]">Start with the conclusion.<br /><span className="text-text-subtle">Then explore the evidence.</span></h1>
+          <p className="max-w-[600px] text-[12.5px] leading-relaxed text-text-subtle">Open a case to see what was flagged, what was challenged and which records support the conclusion.</p>
+          {coberturaParcial > 0 && <details className="text-[11.5px] text-text-subtle"><summary>Review notes</summary><p className="mt-2">{coberturaParcial} caso{coberturaParcial === 1 ? " tiene" : "s tienen"} recorded scope limits. Open a case for details.</p></details>}
+        </div>
+        <dl className="grid grid-cols-2 divide-x divide-border lg:grid-cols-4">
           {stats.map((s) => (
-            <div key={s.label} title={s.nota} className="flex flex-col gap-3 rounded-[13px] border border-border bg-surface-raised px-4 py-3.5">
-              <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">{s.label}</span>
-              <span className="truncate text-[40px] font-semibold leading-none tracking-[-0.03em] text-text tabular-nums">{s.valor}</span>
+            <div key={s.label} className="flex min-w-0 flex-col gap-2 p-4 sm:p-5">
+              <dt className="text-[10px] font-medium uppercase tracking-[0.06em] text-text-subtle">{s.label}</dt>
+              <dd className="break-words font-display text-[30px] font-medium leading-none tracking-[-0.04em] text-text tabular-nums">{s.valor}</dd>
+              <p className="text-[10.5px] leading-relaxed text-text-subtle">{s.nota}</p>
             </div>
           ))}
-        </div>
-      </div>
+        </dl>
+      </section>
 
-      {casos.length > 0 && (
-        <div className="grid gap-2.5 lg:grid-cols-2">
+      <nav aria-label="Investigation view" className="flex flex-wrap items-center gap-1 rounded-card-sm border border-border bg-surface-raised p-1">
+        {([{ id: "casos", label: "Casos y evidencia", count: casos.length }, { id: "metricas", label: "Metrics", count: null }, { id: "traza", label: "Trazabilidad", count: eventosUnicos.length }] as const).map((item) => <button key={item.id} type="button" aria-pressed={vista === item.id} onClick={() => setVista(item.id)} className={cn("flex items-center gap-2 rounded-control px-3.5 py-2.5 text-[12px] transition-colors", vista === item.id ? "bg-primary font-medium text-white" : "text-text-subtle hover:bg-surface hover:text-text")}>{item.label}{item.count !== null && <span className={cn("rounded-pill px-1.5 text-[10px] tabular-nums", vista === item.id ? "bg-white/15 text-white" : "bg-surface-muted")}>{item.count}</span>}</button>)}
+      </nav>
+
+      {vista === "traza" && <section className="insp-surface p-4 sm:p-5"><div className="mb-5 flex items-start gap-3"><Fingerprint size={18} className="mt-0.5 text-text-subtle" aria-hidden /><div><h2 className="text-sm font-medium">El rastro completo</h2><p className="mt-1 text-xs leading-relaxed text-text-subtle">Recorded events, newest first. Open any event to inspect its sources.</p></div></div><BoardTimeline eventos={eventosUnicos} limite={20} /></section>}
+
+      {vista === "metricas" && casos.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2">
           <ChartPanel
-            title="Monto en riesgo por caso"
-            unidad="MXN"
+            title="Flagged amount by case"
+            unidad={monedaUnica ?? "Multiple currencies · view data"}
             columns={[
               { key: "rfc", header: "RFC" },
               { key: "monto", header: "Monto", align: "right", render: (r) => numero(r.monto) },
+              { key: "moneda", header: "Moneda" },
               { key: "nivel", header: "Nivel" },
             ]}
-            rows={casos.map((c) => ({ rfc: c.detalle.caso.rfc_principal, monto: Number(c.detalle.caso.monto_en_riesgo), nivel: c.detalle.caso.nivel ?? "en curso" }))}
-            getRowKey={(r) => r.rfc}
+            rows={casos.map((c) => ({ id: c.detalle.caso.id, rfc: c.detalle.caso.rfc_principal, monto: Number(c.detalle.caso.monto_en_riesgo), moneda: c.detalle.caso.moneda, nivel: c.detalle.caso.nivel ? NIVEL_LABEL[c.detalle.caso.nivel] : "Running" }))}
+            getRowKey={(r) => r.id}
             csvFilename="monto-por-caso"
           >
-            <ResponsiveContainer width="100%" height={220}>
+            {monedaUnica ? <ResponsiveContainer width="100%" height={220}>
               <BarChart data={casos.map((c) => ({ rfc: c.detalle.caso.rfc_principal, monto: Number(c.detalle.caso.monto_en_riesgo) }))} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="rfc" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
@@ -178,17 +204,17 @@ export function ResumenInvestigacion({
                 <Tooltip formatter={(v) => (typeof v === "number" ? v.toLocaleString("es-MX") : String(v ?? ""))} />
                 <Bar dataKey="monto" fill="var(--primary)" radius={[10, 10, 0, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer> : <p className="p-6 text-xs leading-relaxed text-text-subtle">These cases use different currencies. View the data to inspect amounts separately.</p>}
           </ChartPanel>
           <ChartPanel
-            title="Casos por nivel"
+            title="Cases by confidence"
             columns={[
               { key: "nivel", header: "Nivel" },
               { key: "n", header: "Casos", align: "right" },
             ]}
             rows={Object.entries(
               casos.reduce<Record<string, number>>((acc, c) => {
-                const k = c.detalle.caso.nivel ?? "en curso";
+                const k = c.detalle.caso.nivel ?? "in progress";
                 acc[k] = (acc[k] ?? 0) + 1;
                 return acc;
               }, {}),
@@ -200,7 +226,7 @@ export function ResumenInvestigacion({
               <BarChart
                 data={Object.entries(
                   casos.reduce<Record<string, number>>((acc, c) => {
-                    const k = c.detalle.caso.nivel ?? "en curso";
+                    const k = c.detalle.caso.nivel ?? "in progress";
                     acc[k] = (acc[k] ?? 0) + 1;
                     return acc;
                   }, {}),
@@ -218,14 +244,14 @@ export function ResumenInvestigacion({
         </div>
       )}
 
-      {tokensPorAgenteInvestigacion.length > 0 && (
+      {vista === "metricas" && tokensPorAgenteInvestigacion.length > 0 && (
         <ChartPanel
-          title="Tokens por agente (toda la investigación)"
+          title="Tokens by investigator"
           unidad="tokens"
           columns={[
             { key: "agente", header: "Agente" },
-            { key: "tokens_in", header: "Entrada", align: "right" },
-            { key: "tokens_out", header: "Salida", align: "right" },
+            { key: "tokens_in", header: "Input", align: "right" },
+            { key: "tokens_out", header: "Output", align: "right" },
           ]}
           rows={tokensPorAgenteInvestigacion}
           getRowKey={(r) => r.agente}
@@ -235,20 +261,25 @@ export function ResumenInvestigacion({
         </ChartPanel>
       )}
 
-      {casos.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-[var(--radius-card-sm)] border border-border bg-surface p-3.5">
-          <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Casos encontrados ({casos.length})</span>
-          <div className="flex flex-col gap-1.5">
-            {casos.map((c, i) => (
+      {vista === "casos" && (
+        <section className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-control border border-border bg-surface px-3 py-2.5"><Search size={14} className="text-text-subtle" aria-hidden /><input aria-label="Search by tax ID or case ID" placeholder="Buscar RFC, entidad relacionada o ID…" value={buscarCaso} onChange={(e) => setBuscarCaso(e.target.value)} className="min-w-0 flex-1 bg-transparent text-[12px] outline-none" /></div>
+            <AppSelect aria-label="Filter cases by confidence" value={nivelFiltro} onValueChange={setNivelFiltro} options={[{ value: "todos", label: "All levels" }, ...Object.entries(NIVEL_LABEL).map(([value, label]) => ({ value, label })), { value: "en_curso", label: "Running" }]} />
+          </div>
+          <p className="text-[11px] text-text-subtle">{casosVisibles.length} of {casos.length} cases · open a row to explore</p>
+          <div className="flex flex-col gap-2.5">
+            {casosVisibles.map((c) => (
               <CasoFila
                 key={c.detalle.caso.id}
                 caso={c}
-                duracionMs={duraciones[i]}
+                duracionMs={duracionCaso(c)}
                 auditor={emparejamiento.porCaso.get(c.detalle.caso.id) ?? { hallazgo: null, leads: [] }}
               />
             ))}
           </div>
-        </div>
+          {casosVisibles.length === 0 && <p className="rounded-card-sm border border-dashed border-border p-8 text-center text-xs text-text-subtle">{casos.length === 0 ? "No cases are available yet. This is not a finding of no fraud." : "No cases match. Change the tax ID or confidence filter."}</p>}
+        </section>
       )}
 
       {/*
@@ -258,7 +289,7 @@ export function ResumenInvestigacion({
         hallazgos/leads que no emparejaron con ningún `caso_id` de esta
         investigación). El resto ya se ve en cada `CasoFila` de abajo.
       */}
-      <SeccionColapsable titulo="Corrida (fuera de los casos de esta investigación)" abiertaPorDefecto={false}>
+      {vista === "metricas" && <SeccionColapsable titulo="Dataset totals and other findings" abiertaPorDefecto={false}>
         {() => (
           <SeccionCorridaAuditor
             resultado={auditorResultado}
@@ -266,7 +297,7 @@ export function ResumenInvestigacion({
             leadsSinCaso={emparejamiento.leadsSinCaso}
           />
         )}
-      </SeccionColapsable>
+      </SeccionColapsable>}
 
       {/*
         Pizarrón de los 5 agentes IA de la investigación (no por caso: el
@@ -276,9 +307,9 @@ export function ResumenInvestigacion({
         remoto" — ambos caen a `[]` en el BFF hoy (`.catch`), así que el
         texto de abajo se queda deliberadamente neutro.
       */}
-      <SeccionColapsable titulo="Mapa lógico — histórico de la investigación" abiertaPorDefecto={false}>
+      {vista === "traza" && <SeccionColapsable titulo="Investigation map · saved history" abiertaPorDefecto={false}>
         {() => <MapaLogico mode="historico" senales={[]} anotaciones={anotacionesIA} />}
-      </SeccionColapsable>
+      </SeccionColapsable>}
     </div>
   );
 }
@@ -302,21 +333,21 @@ function CasoFila({
   const tramo = tramoCaso(caso);
 
   return (
-    <div className="flex flex-col rounded-[13px] border border-border bg-surface">
+    <div className={cn("flex min-w-0 flex-col overflow-hidden rounded-card-sm border bg-surface transition-colors", abierto ? "border-border-stronger" : "border-border hover:border-border-strong")}>
       <button
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-expanded={abierto}
-        className="flex w-full flex-wrap items-center gap-2.5 px-3.5 py-2.5 text-left"
+        className="flex w-full flex-wrap items-center gap-3 px-4 py-4 text-left hover:bg-surface-raised"
       >
-        <span className="font-mono text-[13px] font-medium text-text">{c.rfc_principal}</span>
+        <span className="min-w-0 flex-1"><span className="block break-all font-mono text-[13px] font-medium text-text">{c.rfc_principal}</span><span className="mt-1 block text-[11px] text-text-subtle">{caso.detalle.evidencia.length} evidencias · {caso.bitacora.length} eventos</span></span>
         <NivelBadge nivel={c.nivel} />
         {caso.cluster && (
           <span
-            className="ml-auto inline-flex items-center gap-2 rounded-[var(--radius-pill)] border border-border-strong bg-surface-raised py-0.5 pl-2.5 pr-1"
-            title="Puntaje de riesgo calculado por el sistema (0 a 1)"
+            className="inline-flex items-center gap-2 rounded-[var(--radius-pill)] border border-border-strong bg-surface-raised py-0.5 pl-2.5 pr-1"
+            title="Rule-based risk score (0–1)"
           >
-            <span className="text-[11.5px] text-text-muted">Riesgo</span>
+            <span className="text-[11.5px] text-text-muted">Risk</span>
             <span className="block h-[5px] w-14 overflow-hidden rounded-[3px] bg-surface-muted">
               <span
                 className={cn("block h-full rounded-[3px]", caso.cluster.score >= 0.75 ? "bg-red-600" : caso.cluster.score >= 0.5 ? "bg-red-400" : "bg-green-600")}
@@ -337,18 +368,18 @@ function CasoFila({
       </button>
 
       {abierto && (
-        <div className="flex flex-col gap-3 border-t border-border px-3.5 py-3">
+        <div className="flex min-w-0 flex-col gap-4 border-t border-border px-3.5 py-3">
           <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]">
             <MiniStat label="Pistas confirmadas" valor={`${sostenidas.length}`} nota={`de ${evaluadas.length} revisadas`} />
             <MiniStat
-              label="Confianza del análisis"
+              label="Review confidence"
               valor={confianza.porcentaje === null ? "—" : `${confianza.porcentaje}%`}
               nota={confianza.factores.map((f) => `${f.nombre}: ${Math.round(f.valor * 100)}%`).join("\n")}
               barra={confianza.porcentaje === null ? undefined : confianza.porcentaje / 100}
             />
-            <MiniStat label="Monto en riesgo" valor={`${c.moneda} ${numero(Number(c.monto_en_riesgo))}`} nota={c.cobertura_completa ? "periodo completo" : "cobertura parcial"} />
+            <MiniStat label="Flagged amount" valor={`${c.moneda} ${numero(Number(c.monto_en_riesgo))}`} nota={c.cobertura_completa ? "periodo completo" : "see case scope"} />
             <MiniStat
-              label="Ejecución de este caso"
+              label="Case execution"
               valor={formatoDuracion(duracionMs)}
               nota={tramo ? `${soloHora(tramo.desde)} → ${soloHora(tramo.hasta)} · ${tramo.pasos} pasos` : `${c.n_reintentos} reintentos`}
             />
@@ -356,11 +387,11 @@ function CasoFila({
 
           <div className="grid min-w-0 gap-4 rounded-[10px] border border-border bg-surface px-3 py-2.5 lg:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-2">
-              <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">Confianza del análisis</span>
+              <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">Review confidence</span>
               <DesgloseConfianza confianza={confianza} />
             </div>
             <div className="flex min-w-0 flex-col gap-2 border-border max-lg:border-t max-lg:pt-3 lg:border-l lg:pl-4">
-              <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">Resumen de la investigación</span>
+              <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">Investigation summary</span>
               <ResumenEscrito detalle={caso.detalle} />
             </div>
           </div>
@@ -376,21 +407,24 @@ function CasoFila({
                     resaltado={seleccion}
                     onNodeClick={(n) => setSeleccion((actual) => (actual === n.id ? null : n.id))}
                   />
-                  <span className="text-[11px] text-text-subtle">Haz clic en un punto para ver sus transacciones en la tabla.</span>
+                  <span className="text-[11px] text-text-subtle">Select a point to see the underlying transactions.</span>
                 </>
               ) : (
-                <p className="m-0 text-[12px] text-text-subtle">Sin grafo persistido para este caso.</p>
+                <p className="m-0 text-[12px] text-text-subtle">No saved graph for this case.</p>
               )}
             </Seccion>
 
-            <Seccion titulo="Transacciones usadas en la investigación">
+            <Seccion titulo="Transactions used in this investigation">
               <FilasUsadas grafo={caso.grafo} evidencia={caso.detalle.evidencia} seleccion={seleccion} onLimpiar={() => setSeleccion(null)} />
             </Seccion>
           </div>
 
-          <Seccion titulo="Cómo se investigó este caso">
+          <Seccion titulo="How this case was investigated">
             <LineaDecisiones pasos={narrarInvestigacion(caso.bitacora, caso.detalle)} />
           </Seccion>
+          <SeccionColapsable titulo={`Open activity log and source references (${caso.bitacora.length})`} abiertaPorDefecto={false}>
+            {() => <BoardTimeline eventos={caso.bitacora} />}
+          </SeccionColapsable>
 
           <SeccionColapsable titulo="Hallazgos completos, defensa, dictamen, Contraste y Trayectoria" abiertaPorDefecto={false}>
             {() => <CasoDetalleCompleto detalle={caso.detalle} bitacora={caso.bitacora} contraste={caso.contraste} trayectoria={caso.trayectoria} />}
@@ -398,7 +432,7 @@ function CasoFila({
 
           {(auditor.hallazgo || auditor.leads.length > 0) && (
             <SeccionColapsable
-              titulo={`Hallazgo del auditor determinista${auditor.hallazgo ? "" : " (sin hallazgo propio)"} y leads relacionados (${auditor.leads.length})`}
+              titulo={`Rule-engine finding${auditor.hallazgo ? "" : " (no standalone finding)"} y leads relacionados (${auditor.leads.length})`}
               abiertaPorDefecto={false}
             >
               {() => (
@@ -407,7 +441,7 @@ function CasoFila({
                     <HallazgoCard f={auditor.hallazgo} />
                   ) : (
                     <p className="text-[13px] text-text-subtle">
-                      Este caso no tiene un hallazgo propio en <code className="font-mono">forense.auditor_resultados</code>; sólo leads relacionados por RFC.
+                      This case has no standalone finding in <code className="font-mono">forense.auditor_resultados</code>; only related leads linked by tax ID.
                     </p>
                   )}
                   {auditor.leads.length > 0 && (
@@ -421,16 +455,22 @@ function CasoFila({
             </SeccionColapsable>
           )}
 
-          <SeccionColapsable titulo="Cadena de explicación" abiertaPorDefecto={false}>
+          <SeccionColapsable titulo="Evidence chain" abiertaPorDefecto={false}>
             {() => <CadenaExplicacionVista auditorResultado={caso.auditorResultado} rfc={c.rfc_principal} />}
           </SeccionColapsable>
 
-          <SeccionColapsable titulo="Agentes IA (runtime + telemetría real)" abiertaPorDefecto={false}>
+          <SeccionColapsable titulo="AI investigators · recorded activity" abiertaPorDefecto={false}>
             {() => <SeccionAgentesRuntime ejecuciones={caso.ejecuciones} />}
           </SeccionColapsable>
 
-          <SeccionColapsable titulo={`Mapa lógico — histórico (${caso.detalle.senales.length})`} abiertaPorDefecto={false}>
-            {() => <MapaLogico mode="historico" senales={caso.detalle.senales} />}
+          <SeccionColapsable titulo={`Investigation map · history (${caso.detalle.senales.length})`} abiertaPorDefecto={false}>
+            {() => (
+              <MapaLogico
+                mode="historico"
+                senales={caso.detalle.senales}
+                etapas={construirArbol(caso.detalle.caso, caso.detalle.tareas, caso.bitacora, caso.ejecuciones.ejecuciones).etapas}
+              />
+            )}
           </SeccionColapsable>
         </div>
       )}
@@ -497,7 +537,7 @@ function FilasUsadas({
     if (primera) filasRef.current.get(primera.id)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [seleccion, aristas]);
 
-  if (aristas.length === 0) return <p className="m-0 text-[12px] text-text-subtle">No hay transacciones registradas para este caso.</p>;
+  if (aristas.length === 0) return <p className="m-0 text-[12px] text-text-subtle">No transactions recorded for this case.</p>;
   const citadas = new Set(evidencia.flatMap((e) => [e.ref_id, `${e.tipo.toUpperCase()}:${e.ref_id}`]));
   const irA = (id: string) => filasRef.current.get(id)?.scrollIntoView({ block: "center", behavior: "smooth" });
 
@@ -507,10 +547,10 @@ function FilasUsadas({
         {seleccion ? (
           <>
             <span className="text-text-muted">
-              {activas.length} de {aristas.length} transacciones de <span className="font-mono text-text">{etiquetaNodo(seleccion, grafo?.nodos ?? [])}</span>
+              {activas.length} de {aristas.length} transactions from <span className="font-mono text-text">{etiquetaNodo(seleccion, grafo?.nodos ?? [])}</span>
             </span>
             <button type="button" onClick={onLimpiar} className="text-focus hover:underline">
-              Quitar selección
+              Clear selection
             </button>
           </>
         ) : (
@@ -522,11 +562,11 @@ function FilasUsadas({
           <table className="w-full border-collapse text-left text-[11.5px]">
             <thead className="sticky top-0 z-[1] bg-surface-raised text-[10px] uppercase tracking-[0.03em] text-text-subtle">
               <tr>
-                <th className="px-2.5 py-1.5 font-normal">Tipo</th>
+                <th className="px-2.5 py-1.5 font-normal">Type</th>
                 <th className="px-2.5 py-1.5 font-normal">De</th>
                 <th className="px-2.5 py-1.5 font-normal">Para</th>
                 <th className="px-2.5 py-1.5 text-right font-normal">Monto</th>
-                <th className="px-2.5 py-1.5 font-normal">Fecha</th>
+                <th className="px-2.5 py-1.5 font-normal">Date</th>
               </tr>
             </thead>
             <tbody>
@@ -563,7 +603,7 @@ function FilasUsadas({
           </table>
         </div>
         {desborda && (
-          <div className="relative w-[10px] flex-none border-l border-border bg-surface-raised" aria-label="Mapa de filas marcadas">
+          <div className="relative w-[10px] flex-none border-l border-border bg-surface-raised" aria-label="Flagged-record map">
             <span
               aria-hidden
               className="absolute inset-x-[1px] rounded-[2px] bg-border"
@@ -575,7 +615,7 @@ function FilasUsadas({
                   key={a.id}
                   type="button"
                   onClick={() => irA(a.id)}
-                  title="Ir a esta transacción"
+                  title="Open this transaction"
                   className="absolute inset-x-0 h-[3px] -translate-y-1/2 bg-green-600 hover:h-[5px]"
                   style={{ top: `${posiciones[a.id] * 100}%` }}
                 />
@@ -593,13 +633,13 @@ const VERDES = ["bg-green-700", "bg-emerald-500", "bg-green-500", "bg-emerald-70
 
 function DesgloseConfianza({ confianza }: { confianza: ReturnType<typeof confianzaAnalisis> }) {
   if (confianza.porcentaje === null) {
-    return <p className="m-0 text-[12px] text-text-subtle">Todavía no hay pruebas, señales ni defensa suficientes para calificar este análisis.</p>;
+    return <p className="m-0 text-[12px] text-text-subtle">Not enough evidence or review activity to rate this analysis yet.</p>;
   }
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline gap-2" title="Mide qué tan sólido es el análisis, no la probabilidad de fraude.">
+      <div className="flex items-baseline gap-2" title="Measures the strength of the review, not the probability of fraud.">
         <span className="text-[22px] font-semibold leading-none tracking-tight text-text">{confianza.porcentaje}%</span>
-        <span className="text-[11.5px] text-text-subtle">promedio de {confianza.factores.length} factores</span>
+        <span className="text-[11.5px] text-text-subtle">average of {confianza.factores.length} factores</span>
       </div>
       <ul className="m-0 flex flex-col gap-1.5 p-0">
         {confianza.factores.map((f, i) => {
@@ -626,7 +666,7 @@ function DesgloseConfianza({ confianza }: { confianza: ReturnType<typeof confian
  */
 function ResumenEscrito({ detalle }: { detalle: CasoDetalle }) {
   const markdown = detalle.redactor?.markdown;
-  if (!markdown) return <p className="m-0 text-[12px] text-text-subtle">El agente redactor todavía no escribió el resumen de este caso.</p>;
+  if (!markdown) return <p className="m-0 text-[12px] text-text-subtle">The case summary has not been written yet.</p>;
   const secciones = dividirEnSecciones(markdown);
   const resumen = secciones.find((x) => /resumen/i.test(x.titulo)) ?? secciones[0];
   const validadas = new Set(detalle.evidencia.filter((e) => e.validada).flatMap((e) => e.referencias));
@@ -642,7 +682,7 @@ function ResumenEscrito({ detalle }: { detalle: CasoDetalle }) {
             return (
               <sup
                 key={j}
-                title={`${seg.cruda}${seg.valida ? "" : " · no está en evidencia validada"}`}
+                title={`${seg.cruda}${seg.valida ? "" : " · not in validated evidence"}`}
                 className={cn("ml-0.5 rounded-[4px] px-1 text-[9.5px] font-medium", seg.valida ? "bg-surface-muted text-text-muted" : "bg-red-50 text-red-600")}
               >
                 {citas.indexOf(seg.cruda) + 1}
@@ -651,13 +691,13 @@ function ResumenEscrito({ detalle }: { detalle: CasoDetalle }) {
           })}
         </p>
       ))}
-      <span className="text-[11px] text-text-subtle">Escrito por el agente redactor · {citas.length} cita{citas.length === 1 ? "" : "s"} a evidencia</span>
+      <span className="text-[11px] text-text-subtle">Written by the report agent · {citas.length} cita{citas.length === 1 ? "" : "s"} a evidencia</span>
     </div>
   );
 }
 
 function LineaDecisiones({ pasos }: { pasos: PasoNarrado[] }) {
-  if (pasos.length === 0) return <p className="m-0 text-[12px] text-text-subtle">Todavía no hay pasos registrados para este caso.</p>;
+  if (pasos.length === 0) return <p className="m-0 text-[12px] text-text-subtle">No steps have been recorded for this case yet.</p>;
   return (
     <ol className="m-0 flex flex-col p-0">
       {pasos.map((p, i) => (
@@ -688,7 +728,7 @@ function LineaDecisiones({ pasos }: { pasos: PasoNarrado[] }) {
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-[10px] border border-border bg-surface px-3 py-2.5">
-      <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">{titulo}</span>
+      <span className="text-[12px] font-medium leading-relaxed text-text-muted">{titulo}</span>
       {children}
     </div>
   );
@@ -708,7 +748,7 @@ function SeccionColapsable({ titulo, abiertaPorDefecto, children }: { titulo: st
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-[10px] border border-border bg-surface px-3 py-2.5">
       <button type="button" onClick={() => setAbierta((v) => !v)} aria-expanded={abierta} className="flex w-full items-center justify-between gap-2 text-left">
-        <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">{titulo}</span>
+        <span className="text-[12px] font-medium leading-relaxed text-text-muted">{titulo}</span>
         <ChevronDown size={14} className={cn("flex-none text-text-subtle transition-transform duration-150", abierta && "rotate-180")} aria-hidden />
       </button>
       {abierta && children()}
@@ -735,14 +775,14 @@ function CadenaExplicacionVista({ auditorResultado, rfc }: { auditorResultado: A
   }
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[10.5px] uppercase tracking-[0.03em] text-text-subtle" title="Derivada de forense.auditor_resultados, no de una tabla de cadena de explicación (no existe todavía)">
-        Derivada del auditor · regla: {cadena.hallazgo}
+      <span className="text-[10.5px] uppercase tracking-[0.03em] text-text-subtle" title="Derived from the saved rule-engine result">
+        Source rule: {cadena.hallazgo}
       </span>
       <ol className="m-0 flex flex-col gap-1.5 p-0">
         {cadena.eslabones.map((e, i) => (
           <li key={e.id} className="flex list-none gap-2 text-[12.5px] text-text">
             <span className={cn("flex-none rounded-[6px] px-1.5 py-0.5 text-[10px] uppercase", e.tipo === "hipotesis" ? "bg-primary text-white" : "bg-surface-muted text-text-subtle")}>
-              {e.tipo === "hipotesis" ? "hipótesis" : `evidencia ${i}`}
+              {e.tipo === "hipotesis" ? "hypothesis" : `evidencia ${i}`}
             </span>
             <span className="min-w-0 flex-1">
               {e.texto}
@@ -766,7 +806,7 @@ function CadenaExplicacionVista({ auditorResultado, rfc }: { auditorResultado: A
  */
 function SeccionAgentesRuntime({ ejecuciones }: { ejecuciones: EjecucionesCaso }) {
   if (ejecuciones.ejecuciones.length === 0) {
-    return <p className="m-0 text-[12px] text-text-subtle">Sin ejecuciones de runtime registradas para este caso todavía.</p>;
+    return <p className="m-0 text-[12px] text-text-subtle">No runtime executions recorded for this case yet.</p>;
   }
   return (
     <div className="flex flex-col gap-1.5">
@@ -781,20 +821,20 @@ function SeccionAgentesRuntime({ ejecuciones }: { ejecuciones: EjecucionesCaso }
             <span className="flex flex-wrap items-center gap-2 text-[12px] text-text">
               <span className="font-medium capitalize">{nombreAgente(e.rol)}</span>
               <span className="text-text-subtle">{e.estado_interno.replaceAll("_", " ")}</span>
-              {e.toolEnCurso && <span className="rounded-[6px] border border-border bg-surface px-1.5 text-[10.5px] text-text-muted">tool: {e.toolEnCurso.nombre ?? "en curso"}</span>}
+              {e.toolEnCurso && <span className="rounded-[6px] border border-border bg-surface px-1.5 text-[10.5px] text-text-muted">tool: {e.toolEnCurso.nombre ?? "in progress"}</span>}
               <span className="ml-auto font-mono text-[10.5px] text-text-subtle">paso {e.paso}</span>
             </span>
             <span className="text-[11px] text-text-subtle">
               {e.tokens_in != null || e.tokens_out != null ? `${numero(e.tokens_in ?? 0)} in / ${numero(e.tokens_out ?? 0)} out` : "tokens no disp."} ·{" "}
-              {e.duracion_ms != null ? `${numero(e.duracion_ms)} ms` : "duración no disp."} · {e.tools.length} tool call{e.tools.length === 1 ? "" : "s"} ·{" "}
+              {e.duracion_ms != null ? `${numero(e.duracion_ms)} ms` : "duration unavailable"} · {e.tools.length} tool call{e.tools.length === 1 ? "" : "s"} ·{" "}
               {costo.texto}
             </span>
             <span className={cn("text-[11px]", e.erroresContrato && e.erroresContrato.length > 0 ? "text-red-600" : "text-text-subtle")}>
               {e.erroresContrato == null
-                ? "errores de contrato: no reportado"
+                ? "validation errors: not reported"
                 : e.erroresContrato.length === 0
-                  ? "errores de contrato: 0"
-                  : `errores de contrato: ${e.erroresContrato.join("; ")}`}
+                  ? "validation errors: 0"
+                  : `validation errors: ${e.erroresContrato.join("; ")}`}
             </span>
           </div>
         );
@@ -807,7 +847,8 @@ function MiniStat({ label, valor, nota, barra }: { label: string; valor: string;
   return (
     <div title={nota} className="flex flex-col gap-2.5 rounded-[10px] border border-border bg-surface px-3.5 py-3">
       <span className="text-[10.5px] uppercase tracking-[0.03em] text-text-subtle">{label}</span>
-      <span className="truncate text-[32px] font-semibold leading-none tracking-[-0.03em] text-text tabular-nums">{valor}</span>
+      <span className="break-words font-display text-[25px] font-medium leading-tight tracking-[-0.03em] text-text tabular-nums">{valor}</span>
+      {nota && <p className="whitespace-pre-line text-[10.5px] leading-relaxed text-text-subtle">{nota}</p>}
       {barra != null && (
         <span className="block h-[4px] overflow-hidden rounded-[3px] bg-surface-muted">
           <span className={cn("block h-full rounded-[3px]", barra >= 0.75 ? "bg-green-600" : barra >= 0.5 ? "bg-red-400" : "bg-red-600")} style={{ width: `${Math.round(barra * 100)}%` }} />

@@ -39,7 +39,7 @@ export function estimarCostoUsd(modelId: string | null, tokensIn: number | null,
 }
 
 export function formatoCostoEstimado(usd: number | null): string {
-  return usd == null ? "costo no disp." : `~$${usd.toFixed(3)} (estimado)`;
+  return usd == null ? "cost unavailable" : `~$${usd.toFixed(3)} (estimado)`;
 }
 
 /**
