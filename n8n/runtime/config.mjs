@@ -166,3 +166,26 @@ export const MAX_REPARACIONES_JSON = 1;
 export const MAX_REINTENTOS_TRANSPORTE = 2;
 // 03: máximo dos reintentos forenses por caso.
 export const MAX_REINTENTOS_FORENSES = 2;
+
+// db/028 — complemento IA tras el auditor determinista. Espejo DOCUMENTAL de
+// forense.config_presupuesto / forense.config_ia: la fuente que se aplica es la
+// DB (reserve_request) más el tope de turnos de decidir-paso.
+//  - Exactamente 5 especialistas por investigación (D,F,R,T,E): índice único
+//    (investigacion_id, familia). Sin auditor/defensor/réplica/redactor LLM.
+//  - Modelo de workers: sonnet (verificado por smoke). haiku costaría ~1/3 por
+//    token pero NO tiene smoke: tras el smoke, `update forense.config_ia set
+//    valor='claude-haiku-4-5-20251001' where clave='modelo_workers'`.
+//  - Precios en forense.precios_modelo: SUPUESTOS sin verificar.
+export const COMPLEMENTO_IA = Object.freeze({
+  roles: Object.freeze(['documental', 'financiero', 'relacional', 'temporal', 'externo']),
+  modelo_workers: 'claude-sonnet-5',
+  modelo_respaldo_barato_sin_smoke: 'claude-haiku-4-5-20251001',
+  requests_por_ejecucion: 8,
+  tokens_por_ejecucion: 120_000,
+  tokens_por_investigacion: 500_000,
+  usd_por_ejecucion: 1.5,
+  usd_por_investigacion: 5.0,
+  max_reparaciones_json: 1,
+  max_recuperaciones_paso: 2,
+  herramienta_salida: 'forense_entregar_salida',
+});

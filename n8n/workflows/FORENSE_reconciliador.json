@@ -42,8 +42,10 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- 17 §2: ocho pasos activos como máximo. El reconciliador es RECUPERACIÓN, no el camino normal: el dispatcher es inmediato al guardar checkpoint.\nSELECT e.id AS execution_id, e.caso_id, e.tarea_id, e.corrida_id, e.rol,\n       'reconciliador'::text AS owner\n  FROM forense.ejecuciones_agente e\n  WHERE e.estado_interno NOT IN ('terminado','error','timeout')\n    AND e.lease_owner IS NULL\n    AND (e.deadline_at IS NULL OR e.deadline_at > now())\n  ORDER BY e.actualizado\n  LIMIT 8",
-        "options": {}
+        "query": "-- DEPENDE de db/028. 17 §2: ocho pasos como máximo. El reconciliador es RECUPERACIÓN, no el camino normal.\nSELECT p.execution_id, p.caso_id, p.tarea_id, p.corrida_id, p.rol, p.owner\n  FROM forense.recuperar_pasos('reconciliador:' || nullif(nullif($1::text, 'null'), '')::text, 8) p",
+        "options": {
+          "queryReplacement": "={{ ($execution.id) ?? 'null' }}"
+        }
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
@@ -156,6 +158,52 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "-- DEPENDE de db/028. Solo investigaciones completas con auditor_resultados, sin caso ia_complemento, en la ventana configurada.\nSELECT p.investigacion_id, p.corrida_id FROM forense.ia_complementos_pendientes(2) p",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        280
+      ],
+      "name": "Complementos IA pendientes",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "PENDIENTE_FORENSE_IA_COMPLEMENTO",
+          "cachedResultName": "FORENSE_ia_complemento"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "investigacion_id": "={{ $json.investigacion_id }}"
+          }
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        440,
+        280
+      ],
+      "name": "Lanzar complemento IA"
+    },
+    {
+      "parameters": {
         "content": "FORENSE_reconciliador (17 §3).\n\nCada 10 s, configurable y a validar en la instancia.\nEs la RED DE SEGURIDAD, no el camino normal.\nNo hace polling al LLM.",
         "height": 200,
         "width": 400,
@@ -181,6 +229,22 @@
           },
           {
             "node": "Barreras vencidas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Complementos IA pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complementos IA pendientes": {
+      "main": [
+        [
+          {
+            "node": "Lanzar complemento IA",
             "type": "main",
             "index": 0
           }

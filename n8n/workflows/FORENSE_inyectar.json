@@ -116,7 +116,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Rechazo con motivo legible: la UI lo muestra en /inyecciones/[id] (21 §3.3).\nUPDATE forense.inyecciones\n   SET estado = 'rechazada', diagnostico = $2::jsonb, terminado = now()\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS inyeccion_id, estado, diagnostico",
+        "query": "-- Rechazo con motivo legible: la UI lo muestra en /inyecciones/[id] (21 §3.3).\nUPDATE forense.inyecciones\n   SET estado = 'rechazada', diagnostico = nullif(nullif($2::text, 'null'), '')::jsonb, terminado = now()\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS inyeccion_id, estado, diagnostico",
         "options": {
           "queryReplacement": "={{ ($('Registrar inyección').first().json.inyeccion_id) ?? 'null' }}, ={{ (JSON.stringify($json.diagnostico)) ?? 'null' }}"
         }

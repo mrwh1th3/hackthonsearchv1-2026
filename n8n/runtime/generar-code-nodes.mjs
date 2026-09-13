@@ -64,6 +64,8 @@ export const GENERADOS = [
       '  mensajes: (ejecucion.checkpoint || {}).mensajes,',
       '  errores_contrato: (ejecucion.checkpoint || {}).errores_contrato ?? [],',
       "  sin_herramientas: paso.motivo_request === 'reparacion',",
+      // Reparación y último turno fuerzan la herramienta de salida (db/028).
+      '  forzar_salida: paso.forzar_salida === true,',
       '  max_tokens: MAX_TOKENS_SALIDA[ejecucion.rol] ?? 2000,',
       '  techo_caracteres: CATALOGO_PROMPTS.techos[ejecucion.rol] ?? 0,',
       '  catalogo_prompts: CATALOGO_PROMPTS,',

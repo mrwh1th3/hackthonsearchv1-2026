@@ -196,7 +196,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- HTTP 200 = solicitud ACEPTADA, no que alguien contestó. Timeout después de enviar → `resultado_desconocido` y reconciliación, nunca redial ciego (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.guardar_aceptacion_llamada(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, $3::jsonb)",
+        "query": "-- HTTP 200 = solicitud ACEPTADA, no que alguien contestó. Timeout después de enviar → `resultado_desconocido` y reconciliación, nunca redial ciego (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.guardar_aceptacion_llamada(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, nullif(nullif($3::text, 'null'), '')::jsonb)",
         "options": {
           "queryReplacement": "={{ ($('Crear intento de llamada').first().json.llamada_id) ?? 'null' }}, ={{ ($json.statusCode) ?? 'null' }}, ={{ (JSON.stringify($json.body)) ?? 'null' }}"
         }

@@ -49,8 +49,22 @@ quedan en modo test hasta que el smoke pase.
 | 8 | `FORENSE_resultado_llamada.json` | 6 | Callback de 7. |
 | 9 | `FORENSE_reconciliador.json` | 8 | Necesita 1 y 7. |
 | 10 | `FORENSE_errores.json` | 5 | Error Trigger; no referencia a nadie. |
+| 11 | `FORENSE_ia_complemento.json` | 13 | db/028. Necesita 1; lo lanza 9 (o su webhook `forense/ia_complemento`). |
 
-Total: 155 nodos. Ninguno lleva `id`, `versionId`, `meta`, `pinData` ni
+**db/028 es bloqueante para 1, 9 y 11** (`registrar_turno_ia`, `registrar_fin_agente`,
+`recuperar_pasos`, `abrir/cerrar_ia_complemento`, `ia_complementos_pendientes`). Con
+028 aplicada y `ia_solo_complemento=1` (default) **solo** los 5 especialistas del
+complemento IA (y el editor) pueden llamar al modelo: `investigar_cluster`/`corrida`
+siguen importables pero sus pasos LLM cierran con `presupuesto_agotado` sin coste.
+Topes: 8 requests, 120k tokens y 1.50 USD por especialista; 500k tokens y 5.00 USD
+por investigación (`forense.config_presupuesto`, precios supuestos en
+`forense.precios_modelo`). La salida del especialista se entrega con la herramienta
+`forense_entregar_salida` (schema `agents.especialista`); en reparación y último turno
+se fuerza con `tool_choice {type:'tool'}` — **sin smoke**: si la cuenta activa thinking
+por defecto, la API puede rechazar tool_choice forzado; el `cache_control` de nivel
+superior del cuerpo tampoco está verificado.
+
+Total: 155 nodos antes de 028 (la tabla de nodos por archivo no se recontó). Ninguno lleva `id`, `versionId`, `meta`, `pinData` ni
 `staticData`: n8n los regenera al importar.
 
 **Vía de importación (H10).** No se importa a mano: el coordinador ejecuta

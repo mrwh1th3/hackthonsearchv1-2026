@@ -206,7 +206,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).\nSELECT * FROM forense.guardar_propuesta_edicion(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, $3::jsonb, $4::jsonb,\n  coalesce((select array_agg(x) from jsonb_array_elements_text($5::jsonb) x), '{}'::text[]))",
+        "query": "-- Guarda la propuesta y devuelve propuesta_id. NO cambia el expediente: «Aplicar» es una operación determinista del BFF que versiona (regla 11). DEPENDE de forense-db (006).\nSELECT * FROM forense.guardar_propuesta_edicion(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, nullif(nullif($3::text, 'null'), '')::jsonb, nullif(nullif($4::text, 'null'), '')::jsonb,\n  coalesce((select array_agg(x) from jsonb_array_elements_text(nullif(nullif($5::text, 'null'), '')::jsonb) x), '{}'::text[]))",
         "options": {
           "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ ($json.version_base) ?? 'null' }}, ={{ (JSON.stringify($json.patch)) ?? 'null' }}, ={{ (JSON.stringify($json.diff)) ?? 'null' }}, ={{ (JSON.stringify($json.citas ?? [])) ?? 'null' }}"
         }

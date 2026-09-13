@@ -128,7 +128,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Omite familias no evaluables con resultado.motivo_omision = no_evaluable. Devuelve el conjunto exacto de tarea_id.\nSELECT t.caso_id, nullif(nullif($3::text, 'null'), '')::uuid AS cluster_id, nullif(nullif($4::text, 'null'), '')::uuid AS corrida_id,\n       nullif(nullif($5::text, 'null'), '')::uuid AS investigacion_id,\n       (x.value #>> '{}')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value #>> '{}')::uuid\n               FROM jsonb_array_elements(t.tareas) e) AS tarea_ids,\n       '{}'::bigint[] AS snapshot_senales,\n       (now() + interval '15 minutes') AS deadline, t.version_contexto\n  FROM jsonb_to_record(forense.crear_tareas_ronda(nullif(nullif($1::text, 'null'), '')::uuid, 1,\n         ARRAY(SELECT jsonb_array_elements_text($2::jsonb))::text[], 0))\n    AS t(ok boolean, caso_id uuid, ronda int, intento int, tareas jsonb,\n         version_contexto int)\n  LEFT JOIN LATERAL jsonb_array_elements(t.tareas) AS x ON true",
+        "query": "-- Omite familias no evaluables con resultado.motivo_omision = no_evaluable. Devuelve el conjunto exacto de tarea_id.\nSELECT t.caso_id, nullif(nullif($3::text, 'null'), '')::uuid AS cluster_id, nullif(nullif($4::text, 'null'), '')::uuid AS corrida_id,\n       nullif(nullif($5::text, 'null'), '')::uuid AS investigacion_id,\n       (x.value #>> '{}')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value #>> '{}')::uuid\n               FROM jsonb_array_elements(t.tareas) e) AS tarea_ids,\n       '{}'::bigint[] AS snapshot_senales,\n       (now() + interval '15 minutes') AS deadline, t.version_contexto\n  FROM jsonb_to_record(forense.crear_tareas_ronda(nullif(nullif($1::text, 'null'), '')::uuid, 1,\n         ARRAY(SELECT jsonb_array_elements_text(nullif(nullif($2::text, 'null'), '')::jsonb))::text[], 0))\n    AS t(ok boolean, caso_id uuid, ronda int, intento int, tareas jsonb,\n         version_contexto int)\n  LEFT JOIN LATERAL jsonb_array_elements(t.tareas) AS x ON true",
         "options": {
           "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ (JSON.stringify($json.roles_evaluables)) ?? 'null' }}, ={{ ($json.cluster_id) ?? 'null' }}, ={{ ($json.corrida_id) ?? 'null' }}, ={{ ($json.investigacion_id) ?? 'null' }}"
         }
@@ -177,7 +177,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.\nINSERT INTO forense.pasos_pipeline\n       (caso_id, paso, revision, tareas_esperadas, snapshot_senales, estado, deadline)\nVALUES (nullif(nullif($1::text, 'null'), '')::uuid, 'ronda1', 1,\n        coalesce((select array_agg(x::uuid) from jsonb_array_elements_text($2::jsonb) x), '{}'::uuid[]),\n        coalesce((select array_agg(x::bigint) from jsonb_array_elements_text($3::jsonb) x), '{}'::bigint[]),\n        'abierto', nullif(nullif($4::text, 'null'), '')::timestamptz)\nON CONFLICT ON CONSTRAINT pasos_pipeline_caso_id_paso_intento_version_contexto_key\n  DO UPDATE SET revision = pasos_pipeline.revision\nRETURNING *, nullif(nullif($5::text, 'null'), '')::uuid AS cluster_id, nullif(nullif($6::text, 'null'), '')::uuid AS corrida_id, nullif(nullif($7::text, 'null'), '')::uuid AS investigacion_id",
+        "query": "-- La barrera es el CONJUNTO despachado (17 §3), no un conteo de filas ni un Merge de cinco ramas.\nINSERT INTO forense.pasos_pipeline\n       (caso_id, paso, revision, tareas_esperadas, snapshot_senales, estado, deadline)\nVALUES (nullif(nullif($1::text, 'null'), '')::uuid, 'ronda1', 1,\n        coalesce((select array_agg(x::uuid) from jsonb_array_elements_text(nullif(nullif($2::text, 'null'), '')::jsonb) x), '{}'::uuid[]),\n        coalesce((select array_agg(x::bigint) from jsonb_array_elements_text(nullif(nullif($3::text, 'null'), '')::jsonb) x), '{}'::bigint[]),\n        'abierto', nullif(nullif($4::text, 'null'), '')::timestamptz)\nON CONFLICT ON CONSTRAINT pasos_pipeline_caso_id_paso_intento_version_contexto_key\n  DO UPDATE SET revision = pasos_pipeline.revision\nRETURNING *, nullif(nullif($5::text, 'null'), '')::uuid AS cluster_id, nullif(nullif($6::text, 'null'), '')::uuid AS corrida_id, nullif(nullif($7::text, 'null'), '')::uuid AS investigacion_id",
         "options": {
           "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ (JSON.stringify($json.tarea_ids ?? [])) ?? 'null' }}, ={{ (JSON.stringify($json.snapshot_senales ?? [])) ?? 'null' }}, ={{ ($json.deadline) ?? 'null' }}, ={{ ($json.cluster_id) ?? 'null' }}, ={{ ($json.corrida_id) ?? 'null' }}, ={{ ($json.investigacion_id) ?? 'null' }}"
         }
@@ -267,7 +267,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Escribe el evento ronda_fin con forense.log (no existe registrar_evento) y devuelve los insumos DETERMINISTAS de la frontera: señales de la ronda, familias evaluables, version_contexto y rutas materiales. Cero señales también exige resultado explícito (07 §2.5). DEPENDE de forense-db (004/005).\nSELECT * FROM forense.cerrar_ronda(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, $3::jsonb)",
+        "query": "-- Escribe el evento ronda_fin con forense.log (no existe registrar_evento) y devuelve los insumos DETERMINISTAS de la frontera: señales de la ronda, familias evaluables, version_contexto y rutas materiales. Cero señales también exige resultado explícito (07 §2.5). DEPENDE de forense-db (004/005).\nSELECT * FROM forense.cerrar_ronda(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::int, nullif(nullif($3::text, 'null'), '')::jsonb)",
         "options": {
           "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ (1) ?? 'null' }}, ={{ (JSON.stringify({ resultados: $json.resultados, limitaciones: $json.limitaciones, vencida: $json.vencida })) ?? 'null' }}"
         }
@@ -333,7 +333,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- La expansión usa la ÚNICA cuota del cluster e incrementa version_contexto; no vuelve a ronda 1 (07 §2.6–2.8).\nSELECT nullif(nullif($1::text, 'null'), '')::uuid AS caso_id, nullif(nullif($4::text, 'null'), '')::uuid AS cluster_id, nullif(nullif($5::text, 'null'), '')::uuid AS corrida_id,\n       nullif(nullif($6::text, 'null'), '')::uuid AS investigacion_id,\n       (x.value #>> '{}')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value #>> '{}')::uuid\n               FROM jsonb_array_elements(v.tareas) e) AS tarea_ids,\n       coalesce((v.r->'ronda2'->>'version_contexto')::int, 1) AS version_contexto,\n       (now() + interval '15 minutes') AS deadline\n  FROM (SELECT forense.expandir_y_crear_tareas_r2(nullif(nullif($1::text, 'null'), '')::uuid,\n                 ARRAY(SELECT jsonb_array_elements_text($2::jsonb))::text[],\n                 ARRAY(SELECT jsonb_array_elements_text($3::jsonb))::text[]) AS r) v0\n  CROSS JOIN LATERAL (SELECT v0.r AS r,\n                             coalesce(v0.r->'ronda2'->'tareas', v0.r->'tareas',\n                                      '[]'::jsonb) AS tareas) v\n  LEFT JOIN LATERAL jsonb_array_elements(v.tareas) AS x ON true",
+        "query": "-- La expansión usa la ÚNICA cuota del cluster e incrementa version_contexto; no vuelve a ronda 1 (07 §2.6–2.8).\nSELECT nullif(nullif($1::text, 'null'), '')::uuid AS caso_id, nullif(nullif($4::text, 'null'), '')::uuid AS cluster_id, nullif(nullif($5::text, 'null'), '')::uuid AS corrida_id,\n       nullif(nullif($6::text, 'null'), '')::uuid AS investigacion_id,\n       (x.value #>> '{}')::uuid AS tarea_id,\n       ARRAY(SELECT (e.value #>> '{}')::uuid\n               FROM jsonb_array_elements(v.tareas) e) AS tarea_ids,\n       coalesce((v.r->'ronda2'->>'version_contexto')::int, 1) AS version_contexto,\n       (now() + interval '15 minutes') AS deadline\n  FROM (SELECT forense.expandir_y_crear_tareas_r2(nullif(nullif($1::text, 'null'), '')::uuid,\n                 ARRAY(SELECT jsonb_array_elements_text(nullif(nullif($2::text, 'null'), '')::jsonb))::text[],\n                 ARRAY(SELECT jsonb_array_elements_text(nullif(nullif($3::text, 'null'), '')::jsonb))::text[]) AS r) v0\n  CROSS JOIN LATERAL (SELECT v0.r AS r,\n                             coalesce(v0.r->'ronda2'->'tareas', v0.r->'tareas',\n                                      '[]'::jsonb) AS tareas) v\n  LEFT JOIN LATERAL jsonb_array_elements(v.tareas) AS x ON true",
         "options": {
           "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ (JSON.stringify($json.despertados)) ?? 'null' }}, ={{ (JSON.stringify($json.frontera)) ?? 'null' }}, ={{ ($json.cluster_id) ?? 'null' }}, ={{ ($json.corrida_id) ?? 'null' }}, ={{ ($json.investigacion_id) ?? 'null' }}"
         }
@@ -637,7 +637,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Autoriza 1 y 2. Emite rechazo_auditor_final y reintento_inicio.\nUPDATE forense.casos\n   SET n_reintentos = n_reintentos + 1\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid AND n_reintentos < 2\nRETURNING id AS caso_id, n_reintentos, $2::jsonb AS rechazo",
+        "query": "-- Autoriza 1 y 2. Emite rechazo_auditor_final y reintento_inicio.\nUPDATE forense.casos\n   SET n_reintentos = n_reintentos + 1\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid AND n_reintentos < 2\nRETURNING id AS caso_id, n_reintentos, nullif(nullif($2::text, 'null'), '')::jsonb AS rechazo",
         "options": {
           "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ (JSON.stringify($json.rechazo)) ?? 'null' }}"
         }
@@ -688,7 +688,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Nivel máximo presuncion_alta (regla 7). Guarda familias, monto deduplicado y resultado_por_rfc; no hereda el nivel a satélites.\nSELECT * FROM forense.guardar_dictamen(nullif(nullif($1::text, 'null'), '')::uuid, $2::jsonb)",
+        "query": "-- Nivel máximo presuncion_alta (regla 7). Guarda familias, monto deduplicado y resultado_por_rfc; no hereda el nivel a satélites.\nSELECT * FROM forense.guardar_dictamen(nullif(nullif($1::text, 'null'), '')::uuid, nullif(nullif($2::text, 'null'), '')::jsonb)",
         "options": {
           "queryReplacement": "={{ ($json.caso_id) ?? 'null' }}, ={{ (JSON.stringify($json)) ?? 'null' }}"
         }

@@ -24,7 +24,7 @@ import {
   MOTIVOS_REINTENTO, ROLES_CON_REINTENTO, VARIANTE_REINTENTO_SIN_MOTIVO, FEWSHOT_POR_ROL,
 } from '../prompts/ensamblar.mjs';
 import { MAX_TOKENS_SALIDA } from './config.mjs';
-import { definicionHerramienta } from './provider/esquemas.mjs';
+import { definicionHerramienta, esquemaSalida } from './provider/esquemas.mjs';
 // Voz: el endpoint y las variables permitidas son de forense-voice
 // (integrations/elevenlabs). El runtime los CONSUME, no los redefine.
 import { ENDPOINT_LLAMADA } from '../../integrations/elevenlabs/index.mjs';
@@ -85,6 +85,8 @@ function cuerpoCodeNode(archivo) {
 // la constante embebida y `--check` detecta la deriva del JSON. Los prompts son
 // de forense-prompts: aquí solo se leen.
 const DIR_PROMPTS = path.join(RAIZ_N8N, 'prompts');
+export const HERRAMIENTA_SALIDA = 'forense_entregar_salida';
+const ESPECIALISTAS_SALIDA = ['documental', 'financiero', 'relacional', 'temporal', 'externo'];
 
 function sha256(texto) {
   return createHash('sha256').update(texto, 'utf8').digest('hex');
@@ -126,6 +128,13 @@ export function catalogoPrompts({ dir = DIR_PROMPTS } = {}) {
         [...new Set([...toolsPorRol(rol, 1), ...toolsPorRol(rol, 2)])]
           .map((t) => [t, definicionHerramienta(t)]),
       ),
+      // Salida estructurada forzada (db/028): el especialista ENTREGA llamando a
+      // esta herramienta; su input_schema es el contrato de contracts/ tal cual.
+      tool_salida: ESPECIALISTAS_SALIDA.includes(rol) ? {
+        name: HERRAMIENTA_SALIDA,
+        description: 'Entrega tu resultado final (una sola vez). senal_ids: IDs devueltos por forense_escribir_senal en esta tarea; resumen: qué encontraste que el determinista no; limitaciones: lo que no pudiste verificar.',
+        input_schema: esquemaSalida(SCHEMA_SALIDA_POR_ROL[rol]),
+      } : null,
     };
   }
   return {
@@ -203,8 +212,10 @@ const codeInline = (name, jsCode) => nodo(name, 'n8n-nodes-base.code', { jsCode 
 // integer: \"null\"", visto en ejecución real 2026-09-12). Un "null" textual
 // nunca es un uuid/entero/fecha válido, así que convertirlo a NULL SQL no
 // cambia ningún valor bueno.
+// `jsonb` incluido (db/028): un 'null' textual como `$N::jsonb` es el JSON null,
+// y `checkpoint_json || 'null'::jsonb` convierte el objeto en ARRAY.
 const nulosSeguros = (q) => q.replace(
-  /\$(\d+)::(uuid|int|bigint|timestamptz|text)\b/g,
+  /\$(\d+)::(uuid|int|bigint|timestamptz|text|jsonb)\b/g,
   (_, n, t) => `nullif(nullif($${n}::text, 'null'), '')::${t}`,
 );
 
@@ -475,6 +486,22 @@ export function workerEjecutarAgente() {
     `${ID('execution_id')}, ${ID('fencing_token')}, ${ID('request_id')}, ${ID('paso')}, ={{ $('Cargar ejecución').first().json.modelo }}`,
     '17 §5.3: la reserva ocurre ANTES del HTTP. request_id es TEXT y determinista (execution:paso:motivo): un reintento de transporte reusa el mismo y no consume cuota nueva.',
   ));
+  // Una reserva NEGADA (presupuesto agotado, lease vencido) no llama al modelo.
+  // Antes el grafo seguía al POST igual y el tope de 002/028 no frenaba nada.
+  add(si('¿Reserva concedida?', '={{ $json.ok }}'));
+  fila = 5; columna = 7;
+  add(codeInline('Cerrar sin presupuesto', [
+    '// reserve_request devolvió ok=false: se cierra el paso en error visible y',
+    '// el backend ya dejó `presupuesto_agotado` en bitácora. Nunca se reintenta',
+    '// solo: agotar presupuesto no aumenta el nivel (regla 10).',
+    'const r = $input.first().json;',
+    "const motivo = r.error ?? 'reserva negada';",
+    'return [{ json: {',
+    "  estado_interno: 'error',",
+    "  checkpoint: { estado_interno: 'error', ultimo_evento: 'presupuesto_agotado', diagnostico: motivo, pending_tool_use_ids: [] },",
+    '} }];',
+  ].join('\n')));
+  fila = 0; columna = 8;
   add(code('Construir cuerpo Messages', 'construir-cuerpo', [
     ['CATALOGO_PROMPTS', catalogoPrompts(),
       'Prompts de n8n/prompts sellados con version_prompts y el sha256 del manifest (17 §8).'],
@@ -608,7 +635,7 @@ export function workerEjecutarAgente() {
     [
       'SELECT v.ok AS salida_valida, v.errores,',
       '       $4::text AS estado_interno,',
-      "       ($5::jsonb || jsonb_build_object('salida_valida', coalesce(v.ok, false),",
+      "       (coalesce($5::jsonb, '{}'::jsonb) || jsonb_build_object('salida_valida', coalesce(v.ok, false),",
       "                                        'errores_contrato', coalesce(v.errores, '[]'::jsonb))) AS checkpoint",
       '  FROM jsonb_to_record(forense.validar_salida_rol($1::uuid, $2::text, $3::jsonb))',
       '    AS v(ok boolean, errores jsonb)',
@@ -630,6 +657,34 @@ export function workerEjecutarAgente() {
     ].join('\n'),
     `${ID('request_id')}, ={{ $('Interpretar respuesta').first().json.provider_request_id }}, ={{ JSON.stringify($('Interpretar respuesta').first().json.usage) }}, ={{ $('Interpretar respuesta').first().json.modelo }}, ={{ $json.estado_interno }}, ={{ JSON.stringify($json.checkpoint) }}`,
     'IDs y usage reales del proveedor (17 §5.4); el contenido de razonamiento no sale de backend.',
+  ));
+
+  // Telemetría en vivo (db/028): tokens, coste, paso, herramientas pedidas y
+  // anotación del pizarrón. Pasa estado_interno/checkpoint sin tocarlos.
+  add(sql(
+    'Registrar turno IA',
+    [
+      'SELECT t.ok, t.turno, t.costo_usd, $8::text AS estado_interno, $11::jsonb AS checkpoint',
+      '  FROM jsonb_to_record(forense.registrar_turno_ia($1::uuid, $2::text, $3::jsonb, $4::text, $5::text,',
+      "         ARRAY(SELECT jsonb_array_elements_text(coalesce($6::jsonb, '[]'::jsonb)))::text[],",
+      "         ($7::jsonb #>> '{}'), $8::text, ($9::text)::boolean, $10::jsonb))",
+      '    AS t(ok boolean, turno int, costo_usd numeric)',
+    ].join('\n'),
+    [
+      ID('execution_id'),
+      "={{ $('Interpretar respuesta').first().json.request_id }}",
+      "={{ JSON.stringify($('Interpretar respuesta').first().json.usage) }}",
+      "={{ $('Interpretar respuesta').first().json.modelo }}",
+      "={{ $('Interpretar respuesta').first().json.stop_reason }}",
+      "={{ JSON.stringify($('Interpretar respuesta').first().json.herramientas_turno ?? []) }}",
+      // Texto libre del modelo: viaja como JSON (comas y comillas no rompen el Query Replacement).
+      "={{ JSON.stringify($('Interpretar respuesta').first().json.texto_turno ?? '') }}",
+      '={{ $json.estado_interno }}',
+      "={{ $json.estado_interno === 'validar_salida' ? $('Validar salida contra contrato').first().json.salida_valida : null }}",
+      "={{ JSON.stringify($('Interpretar respuesta').first().json.salida ?? null) }}",
+      '={{ JSON.stringify($json.checkpoint) }}',
+    ].join(', '),
+    'DEPENDE de db/028. Orden de locks caso → ejecución (17 §4). El coste usa forense.precios_modelo (supuesto sin verificar).',
   ));
 
   // --- rama herramientas: TODOS los tool_use de la respuesta, un ítem por
@@ -698,6 +753,25 @@ export function workerEjecutarAgente() {
     `${ID('execution_id')}, ${ID('fencing_token')}, ${ID('revision')}, ={{ JSON.stringify($json.checkpoint) }}, ={{ $json.estado_interno }}`,
     '17 §3: CAS sobre (execution, revision) + fencing. Un lease vencido no puede escribir; el conflicto de revisión frena una segunda escritura del mismo paso.',
   ));
+  // Un checkpoint RECHAZADO (fence vencido, CAS perdido, patch inválido) corta
+  // la cadena: otro proceso manda. Antes se redespachaba igual y dos cadenas
+  // pagaban turnos en paralelo.
+  add(si('¿Checkpoint guardado?', '={{ $json.ok }}'));
+  fila = 3; columna = 15;
+  add(sql(
+    'Registrar checkpoint rechazado',
+    [
+      'WITH ev AS (',
+      '  SELECT forense.log(',
+      "           p_caso => $1::uuid, p_agente => $2::text, p_tipo => 'paso_checkpoint',",
+      '           p_payload => $3::jsonb, p_tarea => $4::uuid, p_corrida => $5::uuid)',
+      ')',
+      "SELECT $1::uuid AS caso_id, 'paso_checkpoint'::text AS tipo_evento, true AS registrado FROM ev",
+    ].join('\n'),
+    `${ID('caso_id')}, ${ID('rol')}, ={{ JSON.stringify({ execution_id: $('Decidir accion').first().json.execution_id, rechazado: true, error: $json.error ?? null, revision_actual: $json.revision_actual ?? null }) }}, ${ID('tarea_id')}, ${ID('corrida_id')}`,
+    'Regla 2: el rechazo también deja rastro. La cadena termina aquí, sin redespachar.',
+  ));
+  fila = 0; columna = 15;
   add(si('¿Estado terminal?', '={{ ["terminado","error","timeout"].includes($json.estado_interno) }}'));
 
   fila = 1; columna = 16;
@@ -736,6 +810,16 @@ export function workerEjecutarAgente() {
     'finish_step recibe el estado INTERNO (terminado|error|timeout) y deriva el estado de la tarea; libera slot y lease.',
   ));
   add(sql(
+    'Registrar fin agente',
+    [
+      'SELECT f.ok, f.caso_id, f.duracion_ms',
+      '  FROM jsonb_to_record(forense.registrar_fin_agente($1::uuid))',
+      '    AS f(ok boolean, caso_id uuid, duracion_ms int)',
+    ].join('\n'),
+    ID('execution_id'),
+    'DEPENDE de db/028: agente_fin con tokens, coste y duración; libera tool_en_curso.',
+  ));
+  add(sql(
     'Avanzar caso si listo',
     [
       'SELECT a.ok, a.avanzo, a.paso, a.revision, a.esperadas, a.pendientes, a.motivo',
@@ -772,7 +856,10 @@ export function workerEjecutarAgente() {
     ['Ruta del paso', 'Reservar request', 0],
     ['Ruta del paso', 'Expandir cola de tools', 1],
     ['Ruta del paso', 'Guardar checkpoint', 2],
-    ['Reservar request', 'Construir cuerpo Messages'],
+    ['Reservar request', '¿Reserva concedida?'],
+    ['¿Reserva concedida?', 'Construir cuerpo Messages', 0],
+    ['¿Reserva concedida?', 'Cerrar sin presupuesto', 1],
+    ['Cerrar sin presupuesto', 'Guardar checkpoint'],
     ['Construir cuerpo Messages', 'Registrar aviso de reintento'],
     ['Registrar aviso de reintento', 'POST /v1/messages'],
     ['POST /v1/messages', 'Clasificar transporte'],
@@ -792,17 +879,21 @@ export function workerEjecutarAgente() {
     ['Marcar error de request', 'Guardar checkpoint'],
     ['Interpretar respuesta', 'Validar salida contra contrato'],
     ['Validar salida contra contrato', 'Completar request'],
-    ['Completar request', 'Guardar checkpoint'],
+    ['Completar request', 'Registrar turno IA'],
+    ['Registrar turno IA', 'Guardar checkpoint'],
     ['Expandir cola de tools', 'Reclamar tool'],
     ['Reclamar tool', 'Llamar RPC forense'],
     ['Llamar RPC forense', 'Registrar resultado tool'],
     ['Registrar resultado tool', 'Armar tool_results'],
     ['Armar tool_results', 'Guardar checkpoint'],
-    ['Guardar checkpoint', '¿Estado terminal?'],
+    ['Guardar checkpoint', '¿Checkpoint guardado?'],
+    ['¿Checkpoint guardado?', '¿Estado terminal?', 0],
+    ['¿Checkpoint guardado?', 'Registrar checkpoint rechazado', 1],
     ['¿Estado terminal?', 'Finalizar paso', 0],
     ['¿Estado terminal?', 'Registrar paso guardado', 1],
     ['Registrar paso guardado', 'Redespachar paso'],
-    ['Finalizar paso', 'Avanzar caso si listo'],
+    ['Finalizar paso', 'Registrar fin agente'],
+    ['Registrar fin agente', 'Avanzar caso si listo'],
   ]);
 
   return workflow('FORENSE_ejecutar_agente', nodes, connections);
@@ -2288,20 +2379,18 @@ export function reconciliador() {
     'Leases vencidos, tareas huérfanas y pasos sin avance. La ejecución conserva su fence_token: el siguiente claim_step lo incrementa y deja fuera al proceso viejo (17 §4).',
   ));
 
+  // Antes: SELECT de toda ejecución sin lease, cada 10 s, sin tope y con el
+  // MISMO owner 'reconciliador' para todas (dos cadenas pasaban claim_step como
+  // «renovación» y pagaban turnos en paralelo). Ahora: solo lo quieto > 60 s,
+  // owner único por redespacho y, agotadas las recuperaciones, error visible.
   add(sql(
     'Pasos recuperables',
     [
-      'SELECT e.id AS execution_id, e.caso_id, e.tarea_id, e.corrida_id, e.rol,',
-      "       'reconciliador'::text AS owner",
-      '  FROM forense.ejecuciones_agente e',
-      "  WHERE e.estado_interno NOT IN ('terminado','error','timeout')",
-      '    AND e.lease_owner IS NULL',
-      '    AND (e.deadline_at IS NULL OR e.deadline_at > now())',
-      '  ORDER BY e.actualizado',
-      '  LIMIT 8',
+      'SELECT p.execution_id, p.caso_id, p.tarea_id, p.corrida_id, p.rol, p.owner',
+      "  FROM forense.recuperar_pasos('reconciliador:' || $1::text, 8) p",
     ].join('\n'),
-    null,
-    '17 §2: ocho pasos activos como máximo. El reconciliador es RECUPERACIÓN, no el camino normal: el dispatcher es inmediato al guardar checkpoint.',
+    '={{ $execution.id }}',
+    'DEPENDE de db/028. 17 §2: ocho pasos como máximo. El reconciliador es RECUPERACIÓN, no el camino normal.',
   ));
 
   add(subworkflow('Redespachar pasos', 'FORENSE_ejecutar_agente', {
@@ -2329,6 +2418,20 @@ export function reconciliador() {
     evento_id: '={{ $json.evento_id }}',
   }, { esperar: false, modo: 'each' }));
 
+  // Complemento IA automático: tras cada auditoría determinista completada se
+  // abren EXACTAMENTE 5 especialistas (idempotente en DB). Sin depender del
+  // caller (loaders/webapp): basta con que exista auditor_resultados.
+  fila = 2; columna = 1;
+  add(sql(
+    'Complementos IA pendientes',
+    'SELECT p.investigacion_id, p.corrida_id FROM forense.ia_complementos_pendientes(2) p',
+    null,
+    'DEPENDE de db/028. Solo investigaciones completas con auditor_resultados, sin caso ia_complemento, en la ventana configurada.',
+  ));
+  add(subworkflow('Lanzar complemento IA', 'FORENSE_ia_complemento', {
+    investigacion_id: '={{ $json.investigacion_id }}',
+  }, { esperar: false, modo: 'each' }));
+
   fila = 3; columna = 0;
   add(nota('Nota reconciliador', [
     'FORENSE_reconciliador (17 §3).',
@@ -2339,7 +2442,8 @@ export function reconciliador() {
   ].join('\n'), 200, 400));
 
   const connections = conectar([
-    ['Cada 10 s', ['Slots vencidos', 'Barreras vencidas']],
+    ['Cada 10 s', ['Slots vencidos', 'Barreras vencidas', 'Complementos IA pendientes']],
+    ['Complementos IA pendientes', 'Lanzar complemento IA'],
     ['Slots vencidos', 'Pasos recuperables'],
     ['Pasos recuperables', 'Redespachar pasos'],
     ['Barreras vencidas', 'Outbox pendiente'],
@@ -2347,6 +2451,147 @@ export function reconciliador() {
   ]);
 
   return workflow('FORENSE_reconciliador', nodes, connections);
+}
+
+// ------------------------------------------------------ FORENSE_ia_complemento
+//
+// db/028: EXACTAMENTE 5 subagentes IA (D,F,R,T,E) por investigación, SIEMPRE
+// después del auditor determinista, con contexto compacto (hallazgos + leads
+// cerrados, topes fijos) y la misión de encontrar lo que el determinista no
+// encontró. No hay auditor/defensor/réplica/redactor LLM en esta ruta: el nivel
+// del caso IA lo fija `cerrar_ia_complemento` (código determinista) y los casos
+// del auditor no se tocan.
+
+export function iaComplemento() {
+  columna = 0; fila = 0;
+  const nodes = [];
+  const add = (n) => { nodes.push(n); columna += 1; return n.name; };
+
+  add(nodo('Desde reconciliador', 'n8n-nodes-base.executeWorkflowTrigger', { inputSource: 'passthrough' }));
+  fila = 1; columna = 0;
+  add(nodo(
+    'Webhook complemento IA',
+    'n8n-nodes-base.webhook',
+    {
+      httpMethod: 'POST',
+      path: 'forense/ia_complemento',
+      authentication: 'headerAuth',
+      responseMode: 'responseNode',
+      options: {},
+    },
+    { credentials: CREDENCIALES.webhook },
+  ));
+
+  fila = 0; columna = 1;
+  add(codeInline('Normalizar complemento', [
+    '// Solo se acepta investigacion_id (uuid). Nada de roles, modelos, prompts ni',
+    '// número de agentes: el tope de 5 y el modelo los fija la DB (db/028).',
+    'const x = $input.first().json;',
+    'const fuente = x.body && typeof x.body === \'object\' ? x.body : x;',
+    'const id = String(fuente.investigacion_id ?? \'\');',
+    'if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {',
+    "  throw new Error('investigacion_id ausente o no es uuid');",
+    '}',
+    'return [{ json: { investigacion_id: id.toLowerCase() } }];',
+  ].join('\n')));
+
+  add(sql(
+    'Abrir complemento IA',
+    [
+      'SELECT a.ok, a.creado, a.motivo, a.caso_id, a.cluster_id, a.corrida_id, a.investigacion_id,',
+      "       coalesce(a.tarea_ids, '[]'::jsonb) AS tarea_ids",
+      '  FROM jsonb_to_record(forense.abrir_ia_complemento($1::uuid))',
+      '    AS a(ok boolean, creado boolean, motivo text, caso_id uuid, cluster_id uuid, corrida_id uuid,',
+      '         investigacion_id uuid, tarea_ids jsonb)',
+    ].join('\n'),
+    '={{ $json.investigacion_id }}',
+    'DEPENDE de db/028. Idempotente: índice único (investigacion_id, familia) y caso único por investigación. Sin auditor_resultados devuelve ok=false (los 5 van SIEMPRE después).',
+  ));
+
+  fila = 1; columna = 3;
+  add(nodo('Responder 202 complemento', 'n8n-nodes-base.respondToWebhook', {
+    respondWith: 'json',
+    responseBody: '={{ JSON.stringify({ ok: $json.ok, creado: $json.creado, motivo: $json.motivo, caso_id: $json.caso_id, investigacion_id: $json.investigacion_id }) }}',
+    options: { responseCode: 202 },
+  }));
+
+  fila = 0; columna = 3;
+  // Solo se despacha lo RECIÉN abierto: una segunda llamada no crea agentes ni
+  // los redespacha (lo atascado lo recupera el reconciliador, con tope).
+  add(si('¿Complemento nuevo?', '={{ $json.ok === true && $json.creado === true }}'));
+
+  add(sql(
+    'Tareas IA',
+    [
+      'SELECT $1::uuid AS caso_id, $2::uuid AS cluster_id, $3::uuid AS corrida_id,',
+      '       $4::uuid AS investigacion_id, (x.value #>> \'{}\')::uuid AS tarea_id,',
+      '       jsonb_array_length($5::jsonb) AS n_tareas',
+      '  FROM jsonb_array_elements($5::jsonb) x',
+    ].join('\n'),
+    '={{ $json.caso_id }}, ={{ $json.cluster_id }}, ={{ $json.corrida_id }}, ={{ $json.investigacion_id }}, ={{ JSON.stringify($json.tarea_ids) }}',
+    'Un ítem por tarea: 5 exactamente (lo garantiza abrir_ia_complemento).',
+  ));
+
+  add(subworkflow('Despachar 5 especialistas', 'FORENSE_ejecutar_agente', {
+    tarea_id: '={{ $json.tarea_id }}',
+    owner: "={{ 'ia:' + $execution.id + ':' + $json.tarea_id }}",
+  }, { esperar: false, modo: 'each' }));
+
+  fila = 1; columna = 5;
+  add(sql(
+    'Esperar barrera IA',
+    [
+      'SELECT $1::uuid AS caso_id, $2::uuid AS investigacion_id, b.completa, b.vencida, b.faltantes',
+      "  FROM jsonb_to_record(forense.estado_barrera($1::uuid, 'ia'))",
+      '    AS b(ok boolean, completa boolean, vencida boolean, faltantes jsonb)',
+    ].join('\n'),
+    '={{ $json.caso_id }}, ={{ $json.investigacion_id }}',
+    'Conexión corta; nunca un bucle SQL bloqueante. La barrera vence con el deadline de db/028.',
+    { executeOnce: true },
+  ));
+  add(si('¿Barrera IA lista?', '={{ $json.completa || $json.vencida }}'));
+  fila = 2; columna = 7;
+  add(esperar('Espera IA', '={{ 15000 }}'));
+
+  fila = 1; columna = 8;
+  add(sql(
+    'Cerrar complemento IA',
+    [
+      'SELECT c.ok, c.caso_id, c.nivel, c.regla, c.n_senales, c.n_fuera_del_determinista,',
+      '       c.tokens_in, c.tokens_out, c.costo_usd, c.investigacion_id',
+      '  FROM jsonb_to_record(forense.cerrar_ia_complemento($1::uuid))',
+      '    AS c(ok boolean, caso_id uuid, nivel text, regla text, n_senales int,',
+      '         n_fuera_del_determinista int, tokens_in bigint, tokens_out bigint,',
+      '         costo_usd numeric, investigacion_id text)',
+    ].join('\n'),
+    '={{ $json.caso_id }}',
+    'Nivel por código determinista (regla 4): sin señales → sin_hallazgos; con señales → no_concluyente. Corta agentes vivos. No toca casos del auditor.',
+  ));
+
+  fila = 4; columna = 0;
+  add(nota('Nota complemento IA', [
+    'FORENSE_ia_complemento (db/028).',
+    '',
+    'EXACTAMENTE 5 especialistas por investigación, después del',
+    'auditor determinista. Tope en DB: índice único',
+    '(investigacion_id, familia) + presupuesto por ejecución e',
+    'investigación en reserve_request. El nivel lo decide código.',
+  ].join('\n'), 220, 420));
+
+  const connections = conectar([
+    ['Desde reconciliador', 'Normalizar complemento'],
+    ['Webhook complemento IA', 'Normalizar complemento'],
+    ['Normalizar complemento', 'Abrir complemento IA'],
+    ['Abrir complemento IA', ['Responder 202 complemento', '¿Complemento nuevo?']],
+    ['¿Complemento nuevo?', 'Tareas IA', 0],
+    ['Tareas IA', ['Despachar 5 especialistas', 'Esperar barrera IA']],
+    ['Esperar barrera IA', '¿Barrera IA lista?'],
+    ['¿Barrera IA lista?', 'Cerrar complemento IA', 0],
+    ['¿Barrera IA lista?', 'Espera IA', 1],
+    ['Espera IA', 'Esperar barrera IA'],
+  ]);
+
+  return workflow('FORENSE_ia_complemento', nodes, connections);
 }
 
 // ---------------------------------------------------------------- FORENSE_errores
@@ -2457,11 +2702,13 @@ export const CONTRATOS_NODOS = Object.freeze({
       'rol', 'tarea_id', 'caso_id', 'corrida_id', 'editor_operacion_id', 'checkpoint', 'deadline_at',
       'modelo', 'prompt_hash', 'context_hash', 'paquete', 'ronda', 'intento', 'agente', 'paso_pipeline'],
     'Decidir accion': [...IDENTIDAD_PASO, 'accion', 'evento', 'razon', 'motivo_request',
-      'estado_interno', 'estado_tarea', 'reparaciones_json', 'pending_tool_use_ids', 'checkpoint'],
+      'estado_interno', 'estado_tarea', 'reparaciones_json', 'turnos', 'forzar_salida',
+      'pending_tool_use_ids', 'checkpoint'],
     'Reservar request': ['ok', 'error', 'duplicado', 'request_id', 'bolsa', 'restante', 'intento_transporte'],
+    'Cerrar sin presupuesto': ['estado_interno', 'checkpoint'],
     'Construir cuerpo Messages': [...IDENTIDAD_PASO, 'modelo', 'cuerpo', 'system', 'herramientas_enviadas',
       'version_prompts', 'prompt_hash', 'variante_prompt', 'intento', 'motivo_reintento',
-      'aviso_reintento', 'ambito_techo', 'caracteres_system', 'caracteres_paquete', 'ronda'],
+      'aviso_reintento', 'ambito_techo', 'caracteres_system', 'caracteres_paquete', 'ronda', 'salida_forzada'],
     'Registrar aviso de reintento': ['statusCode', 'headers', 'body'],
     'POST /v1/messages': ['statusCode', 'headers', 'body'],
     'Clasificar transporte': ['clase', 'ruta', 'espera_ms', 'intento', 'reintentar',
@@ -2471,9 +2718,10 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Interpretar respuesta': [...IDENTIDAD_PASO, 'provider_request_id', 'usage', 'modelo', 'stop_reason',
       'bloques_assistant', 'contrato', 'requiere_validacion_contrato', 'tipo', 'cola', 'evento',
       'pending_tool_use_ids', 'salida', 'errores', 'texto', 'diagnostico', 'salida_valida',
-      'estado_interno', 'checkpoint'],
+      'estado_interno', 'checkpoint', 'via', 'texto_turno', 'herramientas_turno'],
     'Validar salida contra contrato': ['salida_valida', 'errores', 'estado_interno', 'checkpoint'],
     'Completar request': ['request_id', 'estado', 'estado_interno', 'checkpoint'],
+    'Registrar turno IA': ['ok', 'turno', 'costo_usd', 'estado_interno', 'checkpoint'],
     'Expandir cola de tools': [...IDENTIDAD_PASO, 'tool_use_id', 'nombre', 'orden', 'autorizada',
       'argumentos_backend', 'base_rest', 'total_en_lote'],
     'Reclamar tool': ['ok', 'duplicado', 'tool_ejecucion_id', 'estado', 'resultado_ref', 'error', 'p_operacion',
@@ -2483,9 +2731,11 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Armar tool_results': [...IDENTIDAD_PASO, 'mensaje', 'tool_use_ids', 'con_error', 'reentregas',
       'estado_interno', 'estado_tarea', 'checkpoint'],
     'Guardar checkpoint': ['ok', 'error', 'revision', 'revision_actual', 'estado_interno'],
+    'Registrar checkpoint rechazado': ['caso_id', 'tipo_evento', 'registrado'],
     'Registrar paso guardado': ['caso_id', 'tipo_evento', 'registrado'],
     'Redespachar paso': [],
     'Finalizar paso': ['ok', 'error', 'revision', 'estado_interno', 'tarea_id', 'caso_id'],
+    'Registrar fin agente': ['ok', 'caso_id', 'duracion_ms'],
     'Avanzar caso si listo': ['ok', 'avanzo', 'paso', 'revision', 'esperadas', 'pendientes', 'motivo'],
   }),
   FORENSE_investigar_cluster: Object.freeze({
@@ -2634,10 +2884,24 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Cada 10 s': [],
     'Slots vencidos': ['ok', 'clusters', 'tareas', 'ejecuciones', 'slots', 'solicitudes', 'pasos'],
     'Pasos recuperables': ['execution_id', 'caso_id', 'tarea_id', 'corrida_id', 'rol', 'owner'],
+    'Complementos IA pendientes': ['investigacion_id', 'corrida_id'],
+    'Lanzar complemento IA': [],
     'Redespachar pasos': [],
     'Barreras vencidas': ['caso_id', 'paso', 'cerradas', 'limitaciones'],
     'Outbox pendiente': ['evento_id', 'investigacion_id', 'intentos'],
     'Reenviar outbox': [],
+  }),
+  FORENSE_ia_complemento: Object.freeze({
+    'Desde reconciliador': ['investigacion_id'],
+    'Webhook complemento IA': ['headers', 'params', 'query', 'body'],
+    'Normalizar complemento': ['investigacion_id'],
+    'Abrir complemento IA': ['ok', 'creado', 'motivo', 'caso_id', 'cluster_id', 'corrida_id',
+      'investigacion_id', 'tarea_ids'],
+    'Tareas IA': ['caso_id', 'cluster_id', 'corrida_id', 'investigacion_id', 'tarea_id', 'n_tareas'],
+    'Despachar 5 especialistas': [],
+    'Esperar barrera IA': ['caso_id', 'investigacion_id', 'completa', 'vencida', 'faltantes'],
+    'Cerrar complemento IA': ['ok', 'caso_id', 'nivel', 'regla', 'n_senales', 'n_fuera_del_determinista',
+      'tokens_in', 'tokens_out', 'costo_usd', 'investigacion_id'],
   }),
   FORENSE_errores: Object.freeze({
     'Error Trigger': ['execution', 'workflow', 'trigger'],
@@ -2687,6 +2951,7 @@ export const FORMA_PENDIENTE = Object.freeze({
   ]),
   FORENSE_resultado_llamada: Object.freeze(['Actualizar llamada', 'Deduplicar callback']),
   FORENSE_reconciliador: Object.freeze(['Barreras vencidas', 'Outbox pendiente']),
+  FORENSE_ia_complemento: Object.freeze([]),
 });
 
 // ------------------------------------------------------------------ emisión
@@ -2696,7 +2961,7 @@ export const FORMA_PENDIENTE = Object.freeze({
 // corrida y notificador, por su dependencia de ambas (21 §3).
 export const WORKFLOWS = [
   workerEjecutarAgente, reintento, editarExpediente, investigarCluster, corrida,
-  inyectar, notificarCompletada, resultadoLlamada, reconciliador, errores,
+  inyectar, notificarCompletada, resultadoLlamada, reconciliador, errores, iaComplemento,
 ];
 
 export function generar({ check = false } = {}) {

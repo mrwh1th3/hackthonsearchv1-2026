@@ -440,7 +440,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.\nUPDATE forense.corridas\n   SET estado = nullif(nullif($2::text, 'null'), '')::text, fin = now(), metricas = $3::jsonb\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
+        "query": "-- `completada` con conteos completados/en cola/error y cobertura; `error` si falla antes de tener resultados utilizables. Una corrida sin clusters cierra `completada` con `metricas.estado_final_calculado = sin_clusters`: no se investigó nada, pero tampoco falló nada.\nUPDATE forense.corridas\n   SET estado = nullif(nullif($2::text, 'null'), '')::text, fin = now(), metricas = nullif(nullif($3::text, 'null'), '')::jsonb\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id AS corrida_id, estado, fin, metricas",
         "options": {
           "queryReplacement": "={{ ($('Validar e idempotencia').first().json.corrida_id) ?? 'null' }}, ={{ ($json.estado_cierre) ?? 'null' }}, ={{ (JSON.stringify($json.metricas)) ?? 'null' }}"
         }

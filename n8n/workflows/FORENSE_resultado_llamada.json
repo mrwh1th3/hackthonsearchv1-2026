@@ -33,7 +33,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Deduplica por evento/identidad del proveedor y correlaciona por conversation_id/callSid. Un callback que llega ANTES de guardar el POST se conserva para conciliación posterior (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.registrar_callback_llamada(nullif(nullif($1::text, 'null'), '')::text, nullif(nullif($2::text, 'null'), '')::text, $3::jsonb)",
+        "query": "-- Deduplica por evento/identidad del proveedor y correlaciona por conversation_id/callSid. Un callback que llega ANTES de guardar el POST se conserva para conciliación posterior (16 §2.7). DEPENDE de 007.\nSELECT * FROM forense.registrar_callback_llamada(nullif(nullif($1::text, 'null'), '')::text, nullif(nullif($2::text, 'null'), '')::text, nullif(nullif($3::text, 'null'), '')::jsonb)",
         "options": {
           "queryReplacement": "={{ ($json.evento.conversation_id) ?? 'null' }}, ={{ ($json.evento.call_sid) ?? 'null' }}, ={{ (JSON.stringify($json.evento)) ?? 'null' }}"
         }

@@ -73,8 +73,30 @@ export function interpretarRespuestaNodo(x) {
     requiere_validacion_contrato: true,
   });
 
+  // Salida estructurada forzada: el especialista entrega llamando a esta
+  // herramienta (construir-cuerpo la añade y la fuerza en reparación/último
+  // turno). Su `input` ES la salida; nunca se ejecuta como herramienta.
+  const SALIDA_TOOL = 'forense_entregar_salida';
+  const estructura = (valor, texto) => {
+    const requeridas = REQUERIDAS[rol] ?? [];
+    const faltan = requeridas.filter((k) => valor[k] === undefined);
+    const sobran = requeridas.length > 0 ? Object.keys(valor).filter((k) => requeridas.indexOf(k) < 0) : [];
+    const errores = faltan.map((k) => ({ instancePath: `/${k}`, message: 'campo requerido ausente' }))
+      .concat(sobran.map((k) => ({ instancePath: `/${k}`, message: 'campo no permitido por el contrato' })));
+    return errores.length > 0
+      ? Object.assign({}, comun, { tipo: 'schema_invalido', evento: 'end_turn', texto, salida: valor, errores })
+      : Object.assign({}, comun, { tipo: 'salida_estructura_ok', evento: 'end_turn', salida: valor, errores: [] });
+  };
+  const entrega = bloques.find((b) => b.type === 'tool_use' && b.name === SALIDA_TOOL);
+
   let salida;
-  if (stop === 'tool_use') {
+  if (entrega) {
+    const valor = entrega.input;
+    salida = valor && typeof valor === 'object' && !Array.isArray(valor)
+      ? estructura(valor, null)
+      : Object.assign({}, comun, { tipo: 'json_invalido', evento: 'end_turn', cola: [], errores: [{ instancePath: '/', message: 'la entrega no trae un objeto' }] });
+    salida.via = 'herramienta_salida';
+  } else if (stop === 'tool_use') {
     const cola = bloques.filter((b) => b.type === 'tool_use')
       .map((b) => ({ tool_use_id: b.id, nombre: b.name, argumentos: b.input ?? {} }));
     salida = cola.length > 0
@@ -108,16 +130,11 @@ export function interpretarRespuestaNodo(x) {
       } catch (e) { /* siguiente candidato */ }
     }
     if (valor === null) {
+      // «No es JSON» es REPARABLE: va a validar_salida, que falla, y decidir-paso
+      // concede UNA reparación forzando la herramienta de salida.
       salida = Object.assign({}, comun, { tipo: 'json_invalido', evento: 'end_turn', texto, errores: [{ instancePath: '/', message: 'no se pudo parsear un objeto JSON' }] });
     } else {
-      const requeridas = REQUERIDAS[rol] ?? [];
-      const faltan = requeridas.filter((k) => valor[k] === undefined);
-      const sobran = requeridas.length > 0 ? Object.keys(valor).filter((k) => requeridas.indexOf(k) < 0) : [];
-      const errores = faltan.map((k) => ({ instancePath: `/${k}`, message: 'campo requerido ausente' }))
-        .concat(sobran.map((k) => ({ instancePath: `/${k}`, message: 'campo no permitido por el contrato' })));
-      salida = errores.length > 0
-        ? Object.assign({}, comun, { tipo: 'schema_invalido', evento: 'end_turn', texto, salida: valor, errores })
-        : Object.assign({}, comun, { tipo: 'salida_estructura_ok', evento: 'end_turn', salida: valor, errores: [] });
+      salida = estructura(valor, texto);
     }
   } else {
     salida = Object.assign({}, comun, {
@@ -134,8 +151,15 @@ export function interpretarRespuestaNodo(x) {
   const mensajes = bloques.length > 0
     ? previos.concat([{ role: 'assistant', content: bloques }])
     : previos;
+  // Texto visible del turno (sin thinking) para el pizarrón y las
+  // herramientas pedidas, para la telemetría en vivo (db/028).
+  salida.texto_turno = bloques.filter((b) => b.type === 'text').map((b) => b.text).join('\n').slice(0, 600);
+  salida.herramientas_turno = bloques.filter((b) => b.type === 'tool_use' && b.name !== SALIDA_TOOL).map((b) => b.name);
   salida.checkpoint = {
     estado_interno: salida.estado_interno,
+    // Contadores persistidos: sin ellos el tope de reparación y de turnos no existe.
+    reparaciones_json: Number(x.reparaciones_json ?? 0) + (x.motivo_request === 'reparacion' ? 1 : 0),
+    turnos: Number(x.turnos ?? 0) + 1,
     mensajes,
     cola_tools: salida.tipo === 'tool_use' ? salida.cola : [],
     pending_tool_use_ids: salida.tipo === 'tool_use' ? salida.cola.map((t) => t.tool_use_id) : [],

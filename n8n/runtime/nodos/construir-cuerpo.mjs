@@ -31,6 +31,8 @@ const ROLES_FEWSHOT = Object.keys(FEWSHOT_POR_ROL);
 export function construirCuerpoNodo(x) {
   // <<<CODE_NODE_INICIO
   const SEPARADOR = '\n\n---\n\n';
+  const SALIDA_TOOL = 'forense_entregar_salida';
+  const FAMILIAS = { documental: 'D', financiero: 'F', relacional: 'R', temporal: 'T', externo: 'E' };
   const AMBITO_TECHO = 'paquete';
   const ESPECIALISTAS = ['documental', 'financiero', 'relacional', 'temporal', 'externo'];
   const catalogo = x.catalogo_prompts || null;
@@ -74,6 +76,11 @@ export function construirCuerpoNodo(x) {
   let versionPrompts = x.version_prompts || (catalogo ? catalogo.version_prompts : null);
   let promptHash = x.prompt_hash || null;
   let herramientas = Array.isArray(x.herramientas) ? x.herramientas : null;
+  // Herramienta de salida estructurada del rol (input_schema = contrato de
+  // salida). Solo la tienen los roles cuyo catálogo la declara.
+  const rCat = catalogo && catalogo.roles ? catalogo.roles[rol] : null;
+  const toolSalida = x.tool_salida || (rCat && rCat.tool_salida) || null;
+  const forzarSalida = toolSalida !== null && x.forzar_salida === true;
 
   if (!system && Array.isArray(x.system_bloques) && x.system_bloques.length > 0) {
     system = x.system_bloques.join(SEPARADOR);
@@ -103,6 +110,20 @@ export function construirCuerpoNodo(x) {
       `cobertura: completa=${c.completa} periodo=${c.periodo ? `${c.periodo.desde}..${c.periodo.hasta_exclusivo} ${c.periodo.timezone}` : 'no declarado'} datos_ausentes=${ausentes.join('; ') || 'ninguno'}`,
       'Todas las ventanas se calculan contra fecha_corte. No puedes cambiar identidad, cuotas ni conjunto de RFC autorizado.',
     ].join('\n');
+    // Directivas del runner para el complemento IA (db/028). Van en un bloque
+    // APARTE y solo en ese modo: el system de la ruta normal sigue siendo byte a
+    // byte el de n8n/prompts/ensamblar.mjs (dueño forense-prompts). Se pidió a
+    // forense-prompts integrar el catálogo de familias en el ensamblador.
+    const directivas = paquete.modo === 'complemento_ia' ? ['## Directivas del complemento IA (runner, no negociables)']
+      .concat(FAMILIAS[rol] ? [
+        `familia_propia=${FAMILIAS[rol]}. Catálogo de familias válidas: D=documental, F=financiero, R=relacional, T=temporal, E=externo.`,
+        `forense_escribir_senal SOLO acepta p_familia="${FAMILIAS[rol]}" (otra familia se rechaza) y exige p_rfcs dentro de rfcs_autorizados, p_ids con prefijo CFDI:|MOV:|ATR:|LISTA:|CICLO:|CADENA:|PAR: y p_detalle {pista_id, descripcion} (pista_id="nuevo" si no parte de una pista).`,
+      ] : [])
+      .concat(toolSalida ? [
+        `Entrega el resultado final UNA vez llamando a ${toolSalida.name} (senal_ids = IDs devueltos por forense_escribir_senal; puede ir vacío). No escribas el JSON como texto.`,
+      ] : [])
+      .concat(paquete.mision ? [`Misión: ${String(paquete.mision).slice(0, 400)}`] : [])
+      .join('\n') : null;
     const listaTools = tools.length === 0
       ? 'Ninguna. No tienes herramientas: no simules llamadas ni pidas datos nuevos.'
       : tools.map((t) => `- ${t}`).join('\n');
@@ -112,7 +133,7 @@ export function construirCuerpoNodo(x) {
       `## Contrato de salida\n\n${r.contrato}`,
       `## Herramientas permitidas en esta tarea\n\n${listaTools}\nCualquier otra herramienta está denegada en el backend; intentarla gasta presupuesto y queda en bitácora.`,
       identidad,
-    ].join(SEPARADOR);
+    ].concat(directivas ? [directivas] : []).join(SEPARADOR);
     versionPrompts = catalogo.version_prompts;
     // Respaldo del prompt_hash: identifica la VARIANTE, no el rol. Dos llamadas del
     // mismo rol con y sin reintento producen prompts distintos; colapsarlas en un
@@ -179,6 +200,11 @@ export function construirCuerpoNodo(x) {
   // Solo en el turno de REPARACIÓN (corte por max_tokens/salida inválida): en
   // cualquier otro turno un tool_use sin resultado es un bug del checkpoint y
   // la validación de abajo debe seguir lanzando.
+  // La entrega inválida por herramienta de salida se conserva como TEXTO para
+  // el mensaje de reparación antes de quitar el tool_use huérfano.
+  const entregaPrevia = x.motivo_request === 'reparacion' && ultimoPrevio && ultimoPrevio.role === 'assistant' && Array.isArray(ultimoPrevio.content)
+    ? ultimoPrevio.content.filter((b) => b.type === 'tool_use' && b.name === SALIDA_TOOL).map((b) => JSON.stringify(b.input ?? null)).join('\n')
+    : '';
   if (x.motivo_request === 'reparacion' && ultimoPrevio && ultimoPrevio.role === 'assistant' && Array.isArray(ultimoPrevio.content)
       && ultimoPrevio.content.some((b) => b.type === 'tool_use')) {
     const sinHuerfanos = Object.assign({}, ultimoPrevio, {
@@ -187,30 +213,40 @@ export function construirCuerpoNodo(x) {
     x.mensajes = x.mensajes.slice(0, -1).concat([limpiarAssistant(sinHuerfanos)]).filter(noVacio);
   }
   const ultimoMensaje = x.mensajes[x.mensajes.length - 1];
-  if (ultimoMensaje && ultimoMensaje.role === 'assistant') {
+  const debeReparar = ultimoMensaje && (ultimoMensaje.role === 'assistant'
+    || (x.motivo_request === 'reparacion' && ultimoMensaje.role === 'user'));
+  if (debeReparar) {
     // `paso.checkpoint` (null) pisa al de la ejecución en el Object.assign del
     // nodo: los errores llegan aparte como `x.errores_contrato`.
     const erroresRep = (x.errores_contrato || (x.checkpoint && x.checkpoint.errores_contrato) || []).slice(0, 20)
       .map((e) => (typeof e === 'string' ? e : `${e.instancePath || '/'}: ${e.message}`));
-    const anteriorRep = (Array.isArray(ultimoMensaje.content) ? ultimoMensaje.content : [])
-      .filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    const anteriorRep = (ultimoMensaje.role === 'assistant' && Array.isArray(ultimoMensaje.content) ? ultimoMensaje.content : [])
+      .filter((b) => b.type === 'text').map((b) => b.text).concat(entregaPrevia ? [entregaPrevia] : []).join('\n');
     const recortadaRep = anteriorRep.length > 2000
       ? `${anteriorRep.slice(0, 2000)}\n[...recortado ${anteriorRep.length - 2000} caracteres]`
       : anteriorRep;
     const contratoRep = catalogo && catalogo.roles && catalogo.roles[rol] ? catalogo.roles[rol].contrato : '(contrato del rol)';
-    x.mensajes = x.mensajes.concat([{
-      role: 'user',
-      content: [{
-        type: 'text',
-        text: [
-          'Tu respuesta anterior no cumple el contrato de salida. Corrígela y responde SOLO con el JSON válido.',
-          `Contrato: ${contratoRep}`,
-          erroresRep.length > 0 ? `Errores de validación:\n${erroresRep.join('\n')}` : 'Errores: el texto no contenía un objeto JSON parseable.',
-          `Salida anterior (recortada):\n${recortadaRep}`,
-          'No uses herramientas. No añadas explicación fuera del JSON.',
-        ].join('\n\n'),
-      }],
-    }]);
+    const bloqueRep = {
+      type: 'text',
+      text: [
+        toolSalida
+          ? `Tu respuesta anterior no cumple el contrato de salida. Corrígela y entrégala llamando a ${toolSalida.name}.`
+          : 'Tu respuesta anterior no cumple el contrato de salida. Corrígela y responde SOLO con el JSON válido.',
+        `Contrato: ${contratoRep}`,
+        erroresRep.length > 0 ? `Errores de validación:\n${erroresRep.join('\n')}` : 'Errores: el texto no contenía un objeto JSON parseable.',
+        `Salida anterior (recortada):\n${recortadaRep}`,
+        toolSalida ? 'No uses otras herramientas.' : 'No uses herramientas. No añadas explicación fuera del JSON.',
+      ].join('\n\n'),
+    };
+    if (ultimoMensaje.role === 'assistant') {
+      x.mensajes = x.mensajes.concat([{ role: 'user', content: [bloqueRep] }]);
+    } else {
+      // El assistant quedó vacío al quitar la entrega huérfana: el aviso va en
+      // el user final, DESPUÉS de sus tool_result (orden que exige la API).
+      const contenido = Array.isArray(ultimoMensaje.content) ? ultimoMensaje.content
+        : [{ type: 'text', text: String(ultimoMensaje.content ?? '') }];
+      x.mensajes = x.mensajes.slice(0, -1).concat([Object.assign({}, ultimoMensaje, { content: contenido.concat([bloqueRep]) })]);
+    }
   }
   // Todo tool_use del último assistant debe tener su tool_result en el
   // siguiente user: compactar borrando pares rompe el protocolo (17 §7).
@@ -259,10 +295,15 @@ export function construirCuerpoNodo(x) {
     cuerpo.temperature = Number(x.temperatura);
   }
   const lista = Array.isArray(herramientas) ? herramientas : [];
-  // Reparación acotada y roles sin tools (Réplica, Redactor, Editor) no reciben
-  // la clave `tools` (17 §5.8).
-  if (x.sin_herramientas !== true && lista.length > 0) {
-    cuerpo.tools = lista;
+  if (forzarSalida) {
+    // Reparación o último turno: SOLO la herramienta de salida y forzada. El
+    // modelo no puede explorar más ni responder texto libre.
+    cuerpo.tools = [toolSalida];
+    cuerpo.tool_choice = { type: 'tool', name: toolSalida.name };
+  } else if (x.sin_herramientas !== true && (lista.length > 0 || toolSalida)) {
+    // Reparación acotada y roles sin tools (Réplica, Redactor, Editor) no reciben
+    // la clave `tools` (17 §5.8). `auto` permite investigar y entregar.
+    cuerpo.tools = toolSalida ? lista.filter((t) => t && t.name !== toolSalida.name).concat([toolSalida]) : lista;
     cuerpo.tool_choice = { type: 'auto' };
   }
   const salida = {
@@ -284,6 +325,7 @@ export function construirCuerpoNodo(x) {
     cuerpo,
     system,
     herramientas_enviadas: cuerpo.tools ? cuerpo.tools.length : 0,
+    salida_forzada: forzarSalida,
     version_prompts: versionPrompts,
     prompt_hash: promptHash,
     variante_prompt: variantePrompt,

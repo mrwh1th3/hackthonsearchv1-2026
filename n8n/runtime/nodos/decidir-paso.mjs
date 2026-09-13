@@ -10,6 +10,7 @@
 // request de modelo O un lote de herramientas, nunca las dos cosas.
 
 export const ACCIONES = Object.freeze(['solicitar_modelo', 'ejecutar_herramienta', 'cerrar']);
+export const MOTIVOS_REQUEST = Object.freeze(['turno', 'reparacion', 'final']);
 
 export function decidirPaso(x) {
   // <<<CODE_NODE_INICIO
@@ -29,7 +30,14 @@ export function decidirPaso(x) {
   const cp = x.checkpoint ?? {};
   const estado = cp.estado_interno ?? 'preparar_contexto';
   const maxReparaciones = Number(x.max_reparaciones ?? 1);
+  // `reparaciones_json` y `turnos` los ESCRIBE «Interpretar respuesta» en el
+  // checkpoint de cada turno. Antes nadie los persistía en el grafo real y cada
+  // salida inválida pedía otra reparación sin tope (bucle de coste, corrida
+  // 2b446f04 del 2026-09-12). El techo de turnos es la misma cifra que
+  // `ia_requests_por_ejecucion` de db/028; el backend lo vuelve a imponer.
   const reparaciones = Number(cp.reparaciones_json ?? 0);
+  const maxTurnos = Number(x.max_turnos ?? 8);
+  const turnos = Number(cp.turnos ?? 0);
   const pendientes = Array.isArray(cp.pending_tool_use_ids) ? cp.pending_tool_use_ids : [];
   const ahora = Number(x.ahora_ms ?? Date.parse(x.ahora ?? new Date().toISOString()));
   const limite = cp.deadline_at ? Date.parse(cp.deadline_at) : Number.POSITIVE_INFINITY;
@@ -57,13 +65,15 @@ export function decidirPaso(x) {
       estado_interno: destino,
       estado_tarea: ESTADO_TAREA[destino] ?? 'error',
       reparaciones_json: reparaciones,
+      turnos,
+      forzar_salida: false,
       pending_tool_use_ids: [],
       // La rama `cerrar` va directo a «Guardar checkpoint»: lleva su propio
       // patch, como las otras dos ramas.
       checkpoint: { estado_interno: destino, ultimo_evento: evento, razon, pending_tool_use_ids: [] },
     });
   };
-  const pedirModelo = (motivo, razon) => Object.assign({}, identidad, {
+  const pedirModeloBase = (motivo, razon) => Object.assign({}, identidad, {
     // request_id determinista: execution:revision:motivo (`paso` no avanza entre turnos; `revision` sí, en cada checkpoint). Un
     // reintento de transporte reusa el mismo; sin él `reserve_request` y
     // `Completar request` no registraban nada (llm_solicitudes quedaba vacía y
@@ -71,9 +81,19 @@ export function decidirPaso(x) {
     request_id: identidad.request_id ?? (identidad.execution_id ? `${identidad.execution_id}:${identidad.revision ?? 0}:${motivo}` : null),
     accion: 'solicitar_modelo', evento: null, razon, motivo_request: motivo,
     estado_interno: estado, estado_tarea: null, reparaciones_json: reparaciones,
+    turnos,
+    // 'final' y 'reparacion' fuerzan la herramienta de salida estructurada.
+    forzar_salida: motivo === 'final' || motivo === 'reparacion',
     pending_tool_use_ids: [],
     checkpoint: null,
   });
+  const pedirModelo = (motivo, razon) => {
+    if (turnos >= maxTurnos) return cerrar('sin_reparacion', `tope de ${maxTurnos} turnos de modelo alcanzado`);
+    // Último turno disponible: se fuerza la entrega en vez de gastar otro turno
+    // explorando y cerrar sin salida.
+    if (motivo === 'turno' && turnos >= maxTurnos - 1) return pedirModeloBase('final', `último turno (${turnos + 1}/${maxTurnos}): entrega forzada`);
+    return pedirModeloBase(motivo, razon);
+  };
 
   let salida;
   if (TERMINALES.indexOf(estado) >= 0) {
@@ -100,6 +120,7 @@ export function decidirPaso(x) {
         request_id: identidad.request_id ?? cp.request_id ?? null,
         razon: `${pendientes.length} tool_use pendiente(s)`,
         estado_interno: estado, estado_tarea: null, reparaciones_json: reparaciones,
+        turnos, forzar_salida: false,
         // TODOS los tool_use de la respuesta, no solo el primero (17 §5.5):
         // el grafo expande esta cola a un ítem por herramienta.
         pending_tool_use_ids: pendientes,
