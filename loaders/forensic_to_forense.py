@@ -22,6 +22,9 @@ Flujo, todo en una transacción:
 4. Compara los conteos cargados contra el SQLite. Si difieren, revierte todo.
 5. Deja `corrida_cargada` en la bitácora.
 
+Si el mismo estate (seed + sha256) ya está cargado como corrida `lista`, no se toca: se
+reutiliza para no borrar sus investigaciones. `--recargar` fuerza el borrado y la recarga.
+
 La clave de evaluación nunca se carga: forense.ground_truth queda vacía para estas corridas.
 """
 from __future__ import annotations
@@ -232,16 +235,30 @@ def main() -> int:
     ap.add_argument("--seed", type=int, help="por omisión se toma del nombre de la carpeta (seed_401 → 401)")
     ap.add_argument("--nombre", help="nombre visible de la corrida (solo con un estate)")
     ap.add_argument("--dry-run", action="store_true", help="valida y escribe el SQL a stdout sin cargar")
+    ap.add_argument("--recargar", action="store_true",
+                    help="borra y recarga la corrida aunque ya exista (se lleva sus investigaciones en cascada)")
     a = ap.parse_args()
     if a.nombre and len(a.estates) > 1:
         ap.error("--nombre solo aplica a un estate")
-    partes, resumen = ["BEGIN;"], []
+    partes, resumen, existentes = ["BEGIN;"], [], []
     for e in a.estates:
         db = Path(e).resolve()
         if not db.is_file():
             print(f"FAIL {e}: no existe", file=sys.stderr)
             return 2
         seed = a.seed if a.seed is not None else seed_de(db)
+        if not (a.recargar or a.dry_run):
+            # El mismo estate ya cargado se reutiliza: recargarlo borraría en cascada las
+            # investigaciones previas de la corrida. Cada "Inspeccionar" abre una nueva sobre ella.
+            cid = corrida_id(seed, hashlib.sha256(db.read_bytes()).hexdigest())
+            r = subprocess.run(["psql", db_url(), "-v", "ON_ERROR_STOP=1", "-At", "-c",
+                                f"SELECT estado FROM forense.corridas WHERE id = {lit(cid)};"], text=True, capture_output=True)
+            if r.returncode:
+                sys.stderr.write(r.stderr[-3000:])
+                return r.returncode
+            if r.stdout.strip() == "lista":
+                existentes.append(cid)
+                continue
         nombre = a.nombre or (f"Prueba jueces · seed {seed} · 4 fraudes / 6 anomalías" if "test_sets" in db.parts else None)
         try:
             cid, sql, conteos = estate_sql(db, seed, nombre)
@@ -253,6 +270,10 @@ def main() -> int:
     partes.append("COMMIT;")
     if a.dry_run:
         sys.stdout.write("\n".join(partes))
+        return 0
+    for cid in existentes:
+        print(f"{cid} ya_cargada")
+    if not resumen:
         return 0
     r = subprocess.run(["psql", db_url(), "-v", "ON_ERROR_STOP=1", "-q", "-f", "-"], input="\n".join(partes),
                        text=True, capture_output=True)

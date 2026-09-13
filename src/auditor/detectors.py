@@ -44,9 +44,13 @@ def run_detectors(e: Estate) -> list[dict]:
                                f"RFC on the Art. 69-B list as '{efos[rfc]['status']}'"))
         if v and v.get("registered_date"):
             gap = days_between(v["registered_date"], invs[0]["issue_date"])
-            if gap <= RECENT_REGISTRATION_DAYS:
+            if 0 <= gap <= RECENT_REGISTRATION_DAYS:
                 leads.append(_lead("phantom_vendor", (rfc,), ent, "recently_registered_vendor",
                                    f"registered {gap} days before its first invoice"))
+            elif gap < 0:
+                # facturó antes de su alta: inconsistencia del padrón, se abre para explicarla como anomalía
+                leads.append(_lead("phantom_vendor", (rfc,), ent, "invoiced_before_registration",
+                                   f"first invoice {-gap} days before its registration date"))
         if rfc not in contracts:
             po_amounts = [p["amount"] for p in pos.get(rfc, [])]
             undoc = [i for i in invs if not any(abs(a - i["total"]) <= 0.01 * i["total"] for a in po_amounts)]

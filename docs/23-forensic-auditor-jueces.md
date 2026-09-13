@@ -21,8 +21,8 @@ El pipeline n8n/Supabase sigue siendo el demo en vivo (docs 17 y 21). No se borr
 
 ## Arquitectura (resumen para el pitch)
 
-1. **Detectores SQL** (`detectors.py`). Abren leads, nunca acusan. Hay 11 señales:
-   - `phantom_vendor`: `efos_list_match`, `recently_registered_vendor`, `undocumented_purchases`
+1. **Detectores SQL** (`detectors.py`). Abren leads, nunca acusan. Hay 12 señales:
+   - `phantom_vendor`: `efos_list_match`, `recently_registered_vendor`, `undocumented_purchases`, `invoiced_before_registration` (anomalía de padrón: se explica, no acusa por sí sola; con desfase ≤180 días el proveedor sigue contando como nuevo)
    - `kickback`: `vendor_to_employee_transfer`, `employee_vendor_shared_bank`
    - `round_tripping`: `funds_returned_to_company`, `vendor_is_customer`
    - `threshold_splitting`: `po_below_approval_limit`

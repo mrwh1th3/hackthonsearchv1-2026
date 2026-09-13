@@ -99,6 +99,26 @@ class Investigator:
             return next((c for c in ctrs if c["start_date"] <= inv["issue_date"]), None)
 
         undoc = [i for i in invs if not po_for(i) and not contract_for(i)]
+        first = invs[0]["issue_date"]
+        gap = days_between(v["registered_date"], first) if v.get("registered_date") else None
+        # Facturar antes del alta es una anomalía de datos maestros (alta re-capturada, RFC migrado o fecha
+        # mal cargada), no un indicio de simulación: por sí sola nunca suma corroboración, solo se explica.
+        # Si el desfase es corto (dentro de la ventana), alta y primera factura siguen siendo simultáneas y
+        # el proveedor cuenta como recién registrado; si hay historial largo previo, es un proveedor
+        # establecido con el registro mal capturado.
+        recent = gap is not None and -RECENT_REGISTRATION_DAYS <= gap <= RECENT_REGISTRATION_DAYS
+        anomalia = ""
+        if gap is not None and gap < 0:
+            anomalia = (f" Anomaly, not fraud: the first invoice ({first}) predates the vendor's registration date "
+                        f"({v['registered_date']}) by {-gap} days. That is a vendor master-data inconsistency "
+                        f"(record re-captured or date mis-keyed), not evidence of simulated operations, so it is "
+                        f"not counted as a fraud signal"
+                        + (" by itself; registration and first billing still fall within "
+                           f"{RECENT_REGISTRATION_DAYS} days of each other, so the vendor is treated as new."
+                           if recent else f"; the vendor was already billing more than {RECENT_REGISTRATION_DAYS} "
+                           "days before the record existed, so it is an established vendor, not a new one."))
+        cuando_alta = (f"registered {gap} days before its first invoice" if gap is not None and gap >= 0
+                       else f"registered {-gap if gap is not None else 0} days after its first invoice")
         efos_def = bool(efos and efos["status"] == "definitivo"
                         and any(i["issue_date"] >= efos["publication_date"] for i in invs))
         defense = []
@@ -114,11 +134,8 @@ class Investigator:
             by = "challenger" if efos or v.get("registered_date") else "investigator"
             return closed(f"{len(invs) - len(undoc)} of {len(invs)} invoices are backed by purchase orders or a "
                           f"contract ({', '.join(docs[:4])}{'…' if len(docs) > 4 else ''}); "
-                          f"deliveries are documented, so the vendor is real.", by, defense)
+                          f"deliveries are documented, so the vendor is real." + anomalia, by, defense)
         cited = undoc if undoc else invs
-        first = invs[0]["issue_date"]
-        gap = days_between(v["registered_date"], first) if v.get("registered_date") else None
-        recent = gap is not None and gap <= RECENT_REGISTRATION_DAYS
         no_approval = []
         for i in cited:
             rows = t.ledger_for_invoice(i["uuid"])
@@ -132,14 +149,14 @@ class Investigator:
         if efos_def:
             evidence.append(f"RFC is on the SAT Art. 69-B list as 'definitivo' since {efos['publication_date']}")
         if recent:
-            evidence.append(f"registered {gap} days before its first invoice ({v['registered_date']} → {first})")
+            evidence.append(f"{cuando_alta} ({v['registered_date']} → {first})")
         if no_approval:
             evidence.append(f"{len(no_approval)} ledger postings carry no approver")
         corroboration = sum([efos_def, recent, bool(no_approval)])
         if corroboration == 0:
             return closed(f"{len(undoc)} invoices lack a PO, but the vendor has operated since "
                           f"{v.get('registered_date', 'unknown')}, is not on the 69-B list and every posting "
-                          f"was approved; missing paperwork alone is not an accusation.", "challenger")
+                          f"was approved; missing paperwork alone is not an accusation." + anomalia, "challenger")
         confidence = "proven" if (undoc and efos_def) or (undoc and recent and no_approval) else "probable"
 
         ex = Exhibits()
@@ -164,7 +181,7 @@ class Investigator:
         amount = round(sum(i["total"] for i in cited), 2)
         narrative = (f"{self.name(rfc)} billed the company {len(cited)} times for {mxn(amount)} of generic services. "
                      f"No purchase order or contract authorizes any of these purchases"
-                     + (f", the vendor was registered only {gap} days before its first invoice" if recent else "")
+                     + (f", the vendor was {cuando_alta}" if recent else "")
                      + (", SAT lists it as a definitive simulated-operations issuer (EFOS)" if efos_def else "")
                      + (", and the accounting entries were posted without an approver" if no_approval else "")
                      + ". The company nevertheless paid, so the money left with nothing verifiable received.")
@@ -176,10 +193,14 @@ class Investigator:
                 "peso_amount": amount, "confidence": confidence, "narrative": narrative,
                 "evidence": evidence, "exhibits": ex.items, "money_trail": trail,
                 "reconciliation": {"table": "invoices", "items": [(i["uuid"], i["total"]) for i in cited]},
-                "defense": defense + [{"argument": "The vendor may simply be new.",
-                                       "held": False,
-                                       "why": "A new vendor would still need a purchase order or contract; none exists "
-                                              "for any cited invoice."}]}
+                "defense": defense + ([{"argument": "The vendor may simply be new.",
+                                        "held": False,
+                                        "why": "A new vendor would still need a purchase order or contract; none exists "
+                                               "for any cited invoice."}] if not anomalia else [])
+                           + ([{"argument": "The vendor invoiced before its registration date.",
+                                "held": False,
+                                "why": anomalia.strip() + " The date gap itself is not what the finding rests on."}]
+                              if anomalia else [])}
 
     # ------------------------------------------------------------------ kickback
     def kickback(self, rfc: str, emp_id: str) -> dict:

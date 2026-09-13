@@ -16,6 +16,8 @@ Por corrida auditada:
   validador) con su motivo, para que el descarte también se vea.
 
 Idempotente: borra y recrea lo que publicó antes para esa corrida (idempotency_key `auditor:`).
+La auditoría en vivo (`actualizar=True`) acota ids y huellas a su investigación: relanzarla
+sobre la misma corrida abre otra investigación y conserva las anteriores.
 El nivel sale del auditor determinista; nunca se escribe "definitivo" (regla 7).
 
     python3 loaders/auditor_to_investigaciones.py            # todas las corridas auditadas
@@ -161,18 +163,24 @@ def publicar(corrida_id: str, run: dict, perfil_id: str, inv_id: str | None = No
     """`actualizar=True`: la investigación ya existe (la creó el runner en vivo) y pasa a
     `investigacion_completa` con UPDATE, para que su trigger emita la notificación."""
     inv_id = inv_id or u("inv", corrida_id)
-    sql = [f"DELETE FROM forense.clusters WHERE corrida_id = {lit(corrida_id)} AND huella LIKE 'auditor:%';"]
-    if not actualizar:
-        sql.insert(0, f"DELETE FROM forense.investigaciones WHERE id = {lit(inv_id)};")
+    # En vivo cada auditoría es una investigación nueva de la corrida: sus clusters y casos se
+    # acotan a la investigación para no pisar ni borrar los de auditorías anteriores.
+    ambito = [inv_id] if actualizar else []
+    prefijo = f"auditor:{inv_id}:" if actualizar else "auditor:"
+    if actualizar:
+        sql = [f"DELETE FROM forense.clusters WHERE corrida_id = {lit(corrida_id)} AND huella LIKE {lit(prefijo + '%')};"]
+    else:
+        sql = [f"DELETE FROM forense.investigaciones WHERE id = {lit(inv_id)};",
+               f"DELETE FROM forense.clusters WHERE corrida_id = {lit(corrida_id)} AND huella ~ '^auditor:[0-9a-f]{{40}}$';"]
     manifest, casos = [], []
 
     def cluster_y_caso(clave: str, rfcs: list[str], score: float, caso: dict) -> str:
-        cl = u("cluster", corrida_id, clave)
-        cs = u("caso", corrida_id, clave)
+        cl = u("cluster", corrida_id, *ambito, clave)
+        cs = u("caso", corrida_id, *ambito, clave)
         principal = rfcs[0] if rfcs else ""
         sql.append("INSERT INTO forense.clusters (id, corrida_id, rfcs, rfc_semilla, n_rfcs, score, huella, estado) VALUES "
                    f"({lit(cl)}, {lit(corrida_id)}, ARRAY[{','.join(lit(r) for r in rfcs) or 'NULL'}]::text[], {lit(principal)}, "
-                   f"{len(rfcs)}, {score}, {lit('auditor:' + hashlib.sha1(clave.encode()).hexdigest())}, 'cerrado');")
+                   f"{len(rfcs)}, {score}, {lit(prefijo + hashlib.sha1(clave.encode()).hexdigest())}, 'cerrado');")
         sql.append("INSERT INTO forense.casos (id, corrida_id, cluster_id, rfc_principal, rfcs_satelite, origen, origen_valor, estado, "
                    "nivel, tipologia, hipotesis, monto_en_riesgo, cobertura_completa, tool_calls, bitacora_seq, creado, terminado, "
                    f"idempotency_key) VALUES ({lit(cs)}, {lit(corrida_id)}, {lit(cl)}, {lit(principal)}, "

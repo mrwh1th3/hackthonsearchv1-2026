@@ -215,10 +215,8 @@ def preparar(v: Vivo, e: Estate):
     claves = [("detectores", 1)] + [(ag, 1) for _, ag in INVESTIGADORES] + ronda2 + \
              [("auditor", 3), ("defensor", 3), ("auditor_final", 3), ("redactor", 3)]
     sentencias = [
-        # una auditoría nueva reemplaza a la anterior de la misma corrida
-        f"DELETE FROM forense.investigaciones WHERE corrida_id = {lit(a.corrida)} AND idempotency_key LIKE 'auditor:%' AND id <> {lit(a.investigacion)};",
-        f"DELETE FROM forense.clusters WHERE corrida_id = {lit(a.corrida)} AND (huella LIKE 'auditor:%' OR huella LIKE 'ancla:%' OR huella LIKE 'agentes:%');",
-        f"DELETE FROM forense.pistas WHERE corrida_id = {lit(a.corrida)} AND huella LIKE 'agentes:%';",
+        # Cada auditoría abre una investigación nueva: las anteriores de la misma corrida se
+        # conservan. Clusters, pistas y casos llevan el caso o la investigación en la huella.
         "INSERT INTO forense.clusters (id, corrida_id, rfcs, rfc_semilla, n_rfcs, huella, estado) VALUES "
         f"({lit(v.cluster)}, {lit(a.corrida)}, ARRAY[{lit(e.company_rfc)}]::text[], {lit(e.company_rfc)}, 1, "
         f"{lit('ancla:' + a.caso)}, 'ronda1');",
