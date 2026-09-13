@@ -1,0 +1,33 @@
+{
+  "external_tuning": {
+    "dirs": [
+      "/Users/victorblanco/Downloads/hackthonsearchv1/data/external/seed_103"
+    ],
+    "rows": [
+      {
+        "schemes_planted": 10,
+        "schemes_found": 10,
+        "recall_pct": 100.0,
+        "decoys_planted": 10,
+        "decoys_accused": 0,
+        "false_accusation_rate_pct": 0.0,
+        "unmatched_findings_n": 0,
+        "peso_claimed": 4022064.36,
+        "peso_actual": 4022064.35,
+        "peso_reconciles": "yes",
+        "unmatched_findings": [],
+        "missed": [],
+        "decoys_hit": [],
+        "peso_mismatch": [],
+        "seed": 103,
+        "source": "external_seed_103",
+        "llm_calls": 0,
+        "mxn_cost": 0.0,
+        "wall_clock_s": 0.257,
+        "format_valid": true,
+        "deterministic": true,
+        "case_file": "/private/tmp/claude-502/-Users-victorblanco-Downloads-hackthonsearchv1/56653abe-65eb-4b39-8c1b-0af92a337407/scratchpad/regr/regression_external_seed_103/external_seed_103/run_a/case_file.html"
+      }
+    ]
+  }
+}

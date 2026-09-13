@@ -262,8 +262,15 @@ def mutation_eval(bases: list, kinds: list, vocab: str, label: str, work: Path, 
                                     str(mdir / "run_a" / "submission.json"), "--estate", str(vexp)],
                                    cwd=ROOT, capture_output=True, text=True) if vexp.exists() else None
             sr = log_a.get("structure_report", {})
+            dis = sr.get("disabled_schemes", {})
+            # degradado honesto: algo se declaró desactivado Y todo esquema perdido es de un tipo desactivado
+            missed_outside = [t for t, _, _ in sc["missed"] if t not in dis]
+            orig_missed = [t for t, _, _ in score_o["missed"]]
+            missed_outside = [t for t in missed_outside if t not in orig_missed or missed_outside.count(t) > orig_missed.count(t)]
             row.update({"identical": same, "found": sc["schemes_found"], "decoys_accused": sc["decoys_accused"],
-                        "outcome_ok": same if man["expect"] == "identical" else bool(sr.get("disabled_schemes")),
+                        "missed_outside_disabled": ";".join(missed_outside),
+                        "outcome_ok": (same if man["expect"] == "identical"
+                                       else bool(dis) and not missed_outside and sc["decoys_accused"] <= score_o["decoys_accused"]),
                         "validator_vs_mutated": "n/a (not SQLite)" if vres is None else
                         ("pass" if vres.returncode == 0 else ("crash" if "Traceback" in vres.stderr else "fail")),
                         "validator_vs_export": "n/a (identity)" if vres2 is None else
@@ -295,7 +302,8 @@ def write_mutation_tables(rows: list, label: str, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     cols = ["base", "seed", "kind", "format", "applied", "vocab", "expect", "exit_code", "outcome_ok", "identical",
             "planted", "orig_found", "found", "decoys", "orig_decoys_accused", "decoys_accused", "validator_vs_mutated",
-            "validator_compatible_expected", "validator_vs_export", "precision_lost", "structure_status",
+            "validator_compatible_expected", "validator_vs_export", "precision_lost", "missed_outside_disabled",
+            "structure_status",
             "disabled_schemes", "low_confidence",
             "llm_assist_calls", "deterministic", "error_message"]
     with (out / f"mutations_{label}.csv").open("w", newline="") as fh:
@@ -322,6 +330,9 @@ def write_mutation_tables(rows: list, label: str, out: Path) -> None:
         k["validator_compatible"] += comp
         k["validator_pass_when_compatible"] += comp and r.get("validator_vs_mutated") == "pass"
         k["validator_export_pass"] = k.get("validator_export_pass", 0) + (r.get("validator_vs_export") == "pass")
+        k["validator_export_na_identity"] = k.get("validator_export_na_identity", 0) + \
+            (r.get("validator_vs_export") == "n/a (identity)")
+        k["validator_export_fail"] = k.get("validator_export_fail", 0) + (r.get("validator_vs_export") == "fail")
         k["deterministic"] += bool(r.get("deterministic"))
     if by:
         with (out / f"mutations_{label}_by_kind.csv").open("w", newline="") as fh:
