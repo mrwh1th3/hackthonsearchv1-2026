@@ -1,0 +1,7 @@
+seed,schemes_planted,schemes_found,recall_pct,decoys_planted,decoys_accused,false_accusation_rate_pct,peso_claimed,peso_actual,peso_reconciles,llm_calls,mxn_cost,wall_clock_s
+1,5,5,100.0,4,0,0.0,3519082.84,3519082.84,yes,0,0.0,0.019
+2,4,4,100.0,9,0,0.0,3068281.45,3068281.45,yes,0,0.0,0.018
+3,3,3,100.0,7,0,0.0,1962124.75,1962124.75,yes,0,0.0,0.02
+4,3,3,100.0,8,0,0.0,3303729.66,3303729.66,yes,0,0.0,0.018
+5,3,3,100.0,5,0,0.0,2435849.53,2435849.53,yes,0,0.0,0.018
+TOTAL,18,18,100.0,33,0,0.0,14289068.23,14289068.23,yes,0,0.0,0.093
