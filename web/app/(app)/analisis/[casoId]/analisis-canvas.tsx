@@ -3,9 +3,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Pause, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CanvasHeader } from "@/components/shared/canvas-header";
+import { MapaLogico } from "@/components/shared/mapa-logico";
 import type { Caso, EventoForense, Senal, Tarea } from "@/lib/data";
 import { mapSenal } from "@/lib/data/supabase";
 import { useCanalForense } from "@/lib/realtime/usar-canal";
@@ -364,42 +366,6 @@ function ModalAgente({
 }
 
 /**
- * Pizarrón del cluster, en orden temporal (`forense.senales.creado`): cada
- * anotación que escribió un especialista, con su agente y de qué ronda/
- * intento salió. Pública + realtime (regla 3) — a diferencia del resto del
- * canvas, esto SÍ puede suscribirse directo, igual que en `resultados.tsx`.
- */
-function Pizarron({ senales }: { senales: Senal[] }) {
-  const ordenadas = [...senales].sort((a, b) => (a.creado || "").localeCompare(b.creado || ""));
-  if (ordenadas.length === 0) {
-    return (
-      <div className="flex w-full flex-col gap-1.5 rounded-[13px] border border-dashed border-border-dashed px-3.5 py-3 text-center">
-        <span className="text-[11px] uppercase tracking-[.05em] text-placeholder">Pizarrón</span>
-        <span className="text-[11.5px] text-placeholder">Todavía no hay anotaciones de agentes en esta investigación.</span>
-      </div>
-    );
-  }
-  return (
-    <div className="flex w-full flex-col gap-2 rounded-[13px] border border-border bg-surface px-3.5 py-3">
-      <span className="text-[11px] uppercase tracking-[.05em] text-text-subtle">Pizarrón ({ordenadas.length})</span>
-      <ol className="m-0 flex max-h-[220px] list-none flex-col gap-1.5 overflow-y-auto p-0">
-        {ordenadas.map((s) => (
-          <li key={s.id} className="flex flex-col gap-0.5 rounded-[8px] border border-border bg-surface-raised px-2.5 py-1.5">
-            <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-text">
-              <span className="font-medium capitalize">{nombreAgente(s.agente)}</span>
-              <span className="text-text-subtle">ronda {s.ronda} · intento {s.intento + 1}</span>
-              {s.refuta && <span className="rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle">descarta</span>}
-              {s.creado && <span className="ml-auto text-[10.5px] text-text-subtle">{fechaHora(s.creado)}</span>}
-            </span>
-            <span className="text-[12px] leading-snug text-text-muted">{s.titular}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
-
-/**
  * Canvas "Análisis en proceso" (pedido del usuario, 2026-09-12) dentro del
  * lienzo punteado del bloque `boardOpen` del diseño: encabezado con los tres
  * puntos, tiempo y tokens; "Árbol de trabajo:" con la etapa actual; el árbol
@@ -462,6 +428,36 @@ export function AnalisisCanvas({
   }
   function pausar() {
     toast.info("Pausar el análisis todavía no está conectado al runtime; la investigación sigue en curso.");
+  }
+
+  // Gate "Continuar" (pedido 2026-09-13): al entrar a una investigación
+  // nueva no se muestra el mapa lógico de inmediato, hay que confirmar
+  // primero. Es URL-addressable (`?continuar=1`), no estado local, para que
+  // sobreviva a un refresh/deep-link — el juez inyecta con el sistema
+  // corriendo y puede recargar en cualquier momento (regla 12).
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const continuar = searchParams.get("continuar") === "1";
+  if (!continuar) {
+    return (
+      <>
+        <CanvasHeader etiqueta={etiqueta} enVivo={enVivo} acciones={null} />
+        <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-[var(--radius-card-lg)] border border-border bg-surface-raised px-4 text-center">
+          <span className="text-[11px] uppercase tracking-[.05em] text-text-subtle">Mapa lógico</span>
+          <h1 className="m-0 text-[20px] font-medium text-text">Esta investigación va a mostrar su mapa lógico</h1>
+          <p className="m-0 max-w-[420px] text-[12.5px] text-text-subtle">
+            El árbol de trabajo y el mapa lógico se actualizan en vivo mientras corre el análisis. Continúa cuando quieras verlo.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.replace(`?continuar=1`)}
+            className="flex h-9 items-center rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+          >
+            Continuar
+          </button>
+        </div>
+      </>
+    );
   }
 
   return (
@@ -540,7 +536,7 @@ export function AnalisisCanvas({
             ))}
           </div>
 
-          <Pizarron senales={senales} />
+          <MapaLogico mode={arbol.terminado ? "historico" : "en_curso"} senales={senales} />
 
           {arbol.terminado && caso?.estado === "dictaminado" && (
             <div className="flex w-full flex-col items-center gap-2.5 rounded-[13px] border border-border-strong bg-surface px-4 py-4 text-center">

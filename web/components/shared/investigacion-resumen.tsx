@@ -9,6 +9,7 @@ import { HallazgoCard, SeccionCorridaAuditor, TablaLeads } from "./auditor-resul
 import { emparejarAuditor } from "@/lib/analisis/emparejar-auditor";
 import { ChartPanel } from "./chart-panel";
 import { ClusterForceGraph } from "./force-graph";
+import { MapaLogico } from "./mapa-logico";
 import type { AuditorHallazgo, AuditorLead, AuditorResultado, CasoDetalle, ClusterResumen, ContrasteCaso, Corrida, EventoForense, GrafoArista, GrafoCluster, GrafoNodo, TrayectoriaPunto } from "@/lib/data";
 import type { AnotacionAgenteIA, EjecucionesCaso } from "@/lib/data/privado";
 import { derivarCadenaExplicacion } from "@/lib/analisis/cadena-explicacion";
@@ -275,8 +276,8 @@ export function ResumenInvestigacion({
         remoto" — ambos caen a `[]` en el BFF hoy (`.catch`), así que el
         texto de abajo se queda deliberadamente neutro.
       */}
-      <SeccionColapsable titulo={`Pizarrón de los agentes IA (${anotacionesIA.length})`} abiertaPorDefecto={false}>
-        {() => <SeccionPizarronIA anotaciones={anotacionesIA} />}
+      <SeccionColapsable titulo="Mapa lógico — histórico de la investigación" abiertaPorDefecto={false}>
+        {() => <MapaLogico mode="historico" senales={[]} anotaciones={anotacionesIA} />}
       </SeccionColapsable>
     </div>
   );
@@ -428,8 +429,8 @@ function CasoFila({
             {() => <SeccionAgentesRuntime ejecuciones={caso.ejecuciones} />}
           </SeccionColapsable>
 
-          <SeccionColapsable titulo={`Pizarrón (${caso.detalle.senales.length})`} abiertaPorDefecto={false}>
-            {() => <SeccionPizarron senales={caso.detalle.senales} />}
+          <SeccionColapsable titulo={`Mapa lógico — histórico (${caso.detalle.senales.length})`} abiertaPorDefecto={false}>
+            {() => <MapaLogico mode="historico" senales={caso.detalle.senales} />}
           </SeccionColapsable>
         </div>
       )}
@@ -799,79 +800,6 @@ function SeccionAgentesRuntime({ ejecuciones }: { ejecuciones: EjecucionesCaso }
         );
       })}
     </div>
-  );
-}
-
-function SeccionPizarron({ senales }: { senales: CasoDetalle["senales"] }) {
-  const ordenadas = [...senales].sort((a, b) => (a.creado || "").localeCompare(b.creado || ""));
-  if (ordenadas.length === 0) return <p className="m-0 text-[12px] text-text-subtle">Todavía no hay anotaciones de agentes en este caso.</p>;
-  return (
-    <ul className="m-0 flex flex-col gap-1.5 p-0">
-      {ordenadas.map((s) => (
-        <li key={s.id} className="flex flex-col gap-0.5 rounded-[8px] border border-border bg-surface-raised px-2.5 py-1.5">
-          <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-text">
-            <span className="font-medium capitalize">{nombreAgente(s.agente)}</span>
-            <span className="text-text-subtle">ronda {s.ronda} · intento {s.intento + 1}</span>
-            {s.refuta && <span className="rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle">descarta</span>}
-          </span>
-          <span className="text-[12px] leading-snug text-text-muted">{s.titular}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-const TIPO_ANOTACION: Record<AnotacionAgenteIA["tipo"], string> = {
-  razonamiento: "razonamiento",
-  consulta: "consulta",
-  salida: "salida",
-  error: "error",
-};
-
-/**
- * Pizarrón de los 5 agentes IA (`forense.anotaciones_agente`, migración 028):
- * lo que cada especialista razonó, consultó o entregó, con sus tokens y
- * costo real por turno. Distinto del "Pizarrón" ya existente (`senales`,
- * `SeccionPizarron`) — ese es el pizarrón determinista del pipeline
- * original; este es el complemento IA de 5 subagentes tras el auditor.
- */
-function SeccionPizarronIA({ anotaciones }: { anotaciones: AnotacionAgenteIA[] }) {
-  if (anotaciones.length === 0) return <p className="m-0 text-[12px] text-text-subtle">Sin anotaciones del complemento IA para este caso todavía.</p>;
-  const ordenadas = [...anotaciones].sort((a, b) => a.turno - b.turno || a.creado.localeCompare(b.creado));
-  return (
-    <ul className="m-0 flex flex-col gap-1.5 p-0">
-      {ordenadas.map((a) => (
-        <li
-          key={a.id}
-          className={cn(
-            "flex flex-col gap-0.5 rounded-[8px] border px-2.5 py-1.5",
-            a.tipo === "error" ? "border-red-200 bg-red-50" : "border-border bg-surface-raised",
-          )}
-        >
-          <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-text">
-            <span className="font-medium capitalize">{nombreAgente(a.rol)}</span>
-            {a.familia && <span className="font-mono text-[10.5px] text-text-subtle">familia {a.familia}</span>}
-            <span className="text-text-subtle">turno {a.turno}</span>
-            <span
-              className={cn(
-                "rounded-[var(--radius-pill)] border px-1.5 text-[10px] uppercase",
-                a.tipo === "error" ? "border-red-300 text-red-700" : "border-border text-text-subtle",
-              )}
-            >
-              {TIPO_ANOTACION[a.tipo]}
-            </span>
-            {a.herramientas.length > 0 && <span className="font-mono text-[10.5px] text-text-subtle">{a.herramientas.join(", ")}</span>}
-            <span className="ml-auto text-[10.5px] text-text-subtle">{soloHora(a.creado)}</span>
-          </span>
-          {a.texto && <span className="text-[12px] leading-snug text-text-muted">{a.texto}</span>}
-          <span className="text-[10.5px] text-text-subtle">
-            {a.tokens_in != null || a.tokens_out != null ? `${numero(a.tokens_in ?? 0)} in / ${numero(a.tokens_out ?? 0)} out` : "tokens no disp."}
-            {a.costo_usd != null ? ` · $${a.costo_usd.toFixed(4)}` : ""}
-            {a.senal_ids.length > 0 ? ` · señales ${a.senal_ids.join(", ")}` : ""}
-          </span>
-        </li>
-      ))}
-    </ul>
   );
 }
 

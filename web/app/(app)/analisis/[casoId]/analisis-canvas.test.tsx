@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useSearchParams } from "next/navigation";
 import { AnalisisCanvas } from "./analisis-canvas";
 import type { Caso, EventoForense, Tarea } from "@/lib/data";
 
 vi.mock("@/components/shared/app-shell", () => ({ useInspectorPanel: () => ({ abrir: () => {}, abierto: false }) }));
+// `continuar=1` para que el test siga viendo el árbol/mapa lógico directo,
+// sin pasar primero por la pantalla de gate "Continuar" (pedido 2026-09-13).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: () => {} }),
+  useSearchParams: vi.fn(() => new URLSearchParams("continuar=1")),
+}));
 
 const caso = {
   id: "00000000-0000-4000-8000-000000000100",
@@ -71,8 +78,14 @@ describe("AnalisisCanvas", () => {
     expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "Salir" })).not.toBeInTheDocument();
     expect(within(dialog).getByText(/todavía no ha anotado hallazgos/)).toBeInTheDocument();
+  });
 
-    await user.click(within(dialog).getByRole("button", { name: "Cerrar" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  it("sin ?continuar=1 muestra el gate y no el árbol/mapa lógico", () => {
+    vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams() as ReturnType<typeof useSearchParams>);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    render(<AnalisisCanvas casoId={caso.id} etiqueta="Demo" enVivo={false} inicial={{ caso, tareas, eventos }} />);
+
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
+    expect(screen.queryByText("Árbol de trabajo:")).not.toBeInTheDocument();
   });
 });
