@@ -10,6 +10,7 @@ import path from "node:path";
  */
 export const RAIZ_REPO = path.resolve(process.cwd(), "..");
 export const DIR_ESTATES = path.join(RAIZ_REPO, "data", "forensic", "estates");
+export const DIR_UPLOADS = path.join(RAIZ_REPO, "data", "forensic", "uploads");
 const PYTHON = process.env.FORENSE_PYTHON ?? "python3";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -20,6 +21,13 @@ export function esUuid(v: unknown): v is string {
 export function rutaEstate(datasetHash: string): string | null {
   if (!/^[0-9a-f]{64}$/.test(datasetHash)) return null;
   const ruta = path.join(DIR_ESTATES, `${datasetHash}.db`);
+  return existsSync(ruta) ? ruta : null;
+}
+
+/** `structure_report` que dejó `loaders/ingestar_estate.py` junto al estate canónico. */
+export function rutaEstructura(datasetHash: string): string | null {
+  if (!/^[0-9a-f]{64}$/.test(datasetHash)) return null;
+  const ruta = path.join(DIR_ESTATES, `${datasetHash}.structure.json`);
   return existsSync(ruta) ? ruta : null;
 }
 
