@@ -68,9 +68,11 @@ describe("AnalisisCanvas", () => {
     expect(within(dialog).getByText("Etapa de ronda 1")).toBeInTheDocument();
     expect(within(dialog).getByText("Revisa pagos del cluster")).toBeInTheDocument();
     expect(within(dialog).getByText(/En proceso/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("textbox", { name: "Nota (opcional)" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Salir" })).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/todavía no ha anotado hallazgos/)).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "Salir" }));
+    await user.click(within(dialog).getByRole("button", { name: "Cerrar" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

@@ -771,6 +771,38 @@ export async function leerInvestigacionPrivada(id: string, perfilId: string): Pr
   return data ? mapInvestigacion(data as FilaInvestigacion) : null;
 }
 
+/**
+ * Borra una investigación del perfil de la sesión y todo lo que cuelga de
+ * ella (notificaciones/eventos_salida, `on delete cascade` en 007). Usa la
+ * RPC `forense.eliminar_investigacion` (029) en vez de `.delete()` directo
+ * porque esta deja rastro en `forense.auditoria_borrados` ANTES de borrar
+ * (CLAUDE.md regla 2) — una fila borrada de `investigaciones` no puede
+ * dejar su propio rastro en una tabla que cuelga de ella.
+ * `.eq("perfil_id", perfilId)` primero, para no llamar a la RPC (que sí
+ * borraría) con el id de la investigación de otro perfil.
+ */
+export async function eliminarInvestigacionPrivada(perfilId: string, id: string): Promise<void> {
+  const client = clientePrivilegiado();
+  const { data: fila, error: errLectura } = await client.from("investigaciones").select("id").eq("id", id).eq("perfil_id", perfilId).maybeSingle();
+  if (errLectura) throw new Error(`eliminarInvestigacionPrivada: ${errLectura.message}`);
+  if (!fila) throw new Error("eliminarInvestigacionPrivada: investigación no encontrada para este perfil");
+  const { error } = await client.rpc("eliminar_investigacion", { p_investigacion_id: id });
+  if (error) throw new Error(`eliminarInvestigacionPrivada: ${error.message}`);
+}
+
+/**
+ * Borra una corrida (dataset) completa: cascada de 001 se lleva cfdi,
+ * movimientos, pistas, clusters, casos, investigaciones y bitácora de esa
+ * corrida. Sin filtro de perfil — una corrida es del despliegue completo,
+ * no de un perfil (docs/22, `AdministrarDatosModal`) — por eso la ruta que
+ * llama a esto exige sesión, no dueño de la fila.
+ */
+export async function eliminarCorridaPrivada(id: string): Promise<void> {
+  const client = clientePrivilegiado();
+  const { error } = await client.rpc("eliminar_corrida", { p_corrida_id: id });
+  if (error) throw new Error(`eliminarCorridaPrivada: ${error.message}`);
+}
+
 export async function leerNotificacionesPrivadas(perfilId: string): Promise<Notificacion[]> {
   const client = clientePrivilegiado();
   const { data, error } = await client.from("notificaciones").select("*").eq("perfil_id", perfilId).order("creado", { ascending: false });

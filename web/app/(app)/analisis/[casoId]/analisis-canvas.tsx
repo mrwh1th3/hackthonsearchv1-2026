@@ -1,9 +1,8 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { Pause, Send, X } from "lucide-react";
+import { Pause, X } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CanvasHeader } from "@/components/shared/canvas-header";
@@ -52,11 +51,17 @@ const INTERVALO_MS = 3000;
  * criterio que `useNotificacionesPolling`: arranca al montar, no sondea con la
  * pestaña oculta y se detiene al desmontar o al terminar.
  */
-function useEstadoAnalisis(casoId: string, inicial: EstadoAnalisis) {
+function useEstadoAnalisis(casoId: string, inicial: EstadoAnalisis, sondear: boolean) {
   const [estado, setEstado] = useState(inicial);
   const terminadoRef = useRef(false);
 
+  // Preview de desarrollo: pinta el estado inicial tal cual, sin pedir nada.
   useEffect(() => {
+    if (!sondear) setEstado(inicial);
+  }, [sondear, inicial]);
+
+  useEffect(() => {
+    if (!sondear) return;
     let cancelado = false;
     let temporizador: ReturnType<typeof setTimeout>;
     let ciclo = 0;
@@ -80,7 +85,7 @@ function useEstadoAnalisis(casoId: string, inicial: EstadoAnalisis) {
       cancelado = true;
       clearTimeout(temporizador);
     };
-  }, [casoId]);
+  }, [casoId, sondear]);
 
   return { estado, terminadoRef };
 }
@@ -220,32 +225,25 @@ function Etapa({ etapa, ahora, onAbrir, ultima }: { etapa: EtapaArbol; ahora: nu
 
 function ModalAgente({
   nodo,
+  senales,
   ahora,
   onCerrar,
 }: {
   nodo: NodoAgente | null;
+  senales: Senal[];
   ahora: number;
   onCerrar: () => void;
 }) {
-  const [nota, setNota] = useState("");
   const abierto = nodo != null;
   const fin = nodo?.detenido ? new Date(nodo.detenido).getTime() : ahora;
-
-  // Sin backend de control todavía: no hay estado `pausada` en
-  // `forense.tareas_agente` ni webhook de pausa/nota en `n8n/workflows`. Se
-  // dice en pantalla en vez de fingir que la corrida se detuvo (regla 3: la
-  // UI no llama a n8n directo para suplirlo).
-  function pausar() {
-    toast.info("Pausar un subagente todavía no está conectado al runtime; el agente sigue en ejecución.");
-  }
-  function enviar(e: React.FormEvent) {
-    e.preventDefault();
-    if (!nota.trim()) {
-      toast.info("La nota es opcional: escribe algo para enviarla.");
-      return;
-    }
-    toast.info("Las notas a subagentes todavía no se persisten; la nota no se envió.");
-  }
+  // Lo que descubrió este subagente: sus anotaciones en el pizarrón
+  // (`forense.senales`) de la misma ronda. El id del nodo es `agente:ronda`.
+  const ronda = nodo ? Number(nodo.id.split(":")[1]) : NaN;
+  const hallazgos = nodo
+    ? senales
+        .filter((s) => s.agente === nodo.agente && (Number.isNaN(ronda) || s.ronda === ronda))
+        .sort((a, b) => (a.creado || "").localeCompare(b.creado || ""))
+    : [];
 
   return (
     <Dialog.Root open={abierto} onOpenChange={(v) => !v && onCerrar()}>
@@ -255,17 +253,15 @@ function ModalAgente({
           aria-describedby={undefined}
           className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 focus:outline-none"
         >
-          {/* "X" fuera de la caja visual, en su esquina superior derecha. */}
-          <Dialog.Close
-            aria-label="Cerrar"
-            className="insp-focus-ring absolute -top-11 right-0 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-text-muted shadow-[0_1px_3px_rgba(20,20,19,.08)] transition-colors hover:bg-surface-hover"
-          >
-            <X size={15} aria-hidden />
-          </Dialog.Close>
-
           {nodo && (
-            <div className="flex max-h-[80vh] flex-col gap-4 rounded-[var(--radius-composer)] border border-border bg-surface p-5 shadow-xl">
-              <div className="flex flex-col gap-1">
+            <div className="relative flex max-h-[80vh] flex-col gap-4 rounded-[var(--radius-composer)] border border-border bg-surface p-5 shadow-xl">
+              <Dialog.Close
+                aria-label="Cerrar"
+                className="insp-focus-ring absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-hover"
+              >
+                <X size={15} aria-hidden />
+              </Dialog.Close>
+              <div className="flex flex-col gap-1 pr-8">
                 <Dialog.Title className="m-0 text-[18px] font-semibold tracking-tight text-text">
                   Subagente de {nombreAgente(nodo.agente)}
                 </Dialog.Title>
@@ -314,8 +310,37 @@ function ModalAgente({
                 </div>
               )}
 
-              <ol className="m-0 flex min-h-0 list-none flex-col gap-2.5 overflow-y-auto border-t border-border p-0 pt-3.5">
-                {nodo.logs.length === 0 && <li className="text-[12.5px] text-text-subtle">Sin pasos registrados en la bitácora todavía.</li>}
+              <div className="flex min-h-0 flex-col gap-1.5 border-t border-border pt-3">
+                <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Hallazgos ({hallazgos.length})</span>
+                {hallazgos.length === 0 ? (
+                  <p className="m-0 text-[12.5px] text-text-subtle">
+                    {nodo.estado === "pendiente" || nodo.estado === "ejecutando"
+                      ? "Este agente todavía no ha anotado hallazgos en el pizarrón."
+                      : "Este agente no anotó hallazgos en el pizarrón."}
+                  </p>
+                ) : (
+                  <ul className="m-0 flex max-h-[220px] list-none flex-col gap-1.5 overflow-y-auto p-0">
+                    {hallazgos.map((s) => (
+                      <li key={s.id} className="flex flex-col gap-0.5 rounded-[8px] border border-border bg-surface-raised px-2.5 py-1.5">
+                        <span className="text-[12.5px] leading-snug text-text">{s.titular}</span>
+                        <span className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-text-subtle">
+                          confianza {s.confianza}
+                          {s.refuta && <span className="rounded-[var(--radius-pill)] border border-border px-1.5">descarta</span>}
+                          {s.ids.length > 0 && (
+                            <span className="font-mono">
+                              {s.ids.slice(0, 3).join(", ")}
+                              {s.ids.length > 3 ? ` +${s.ids.length - 3}` : ""}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {nodo.logs.length > 0 && (
+                <ol className="m-0 flex min-h-0 list-none flex-col gap-2.5 overflow-y-auto border-t border-border p-0 pt-3.5">
                 {nodo.logs.map((log) => (
                   <li key={log.id} className="flex flex-col gap-0.5">
                     <span className="break-words text-[13px] text-text">{log.nombre}</span>
@@ -328,41 +353,8 @@ function ModalAgente({
                     )}
                   </li>
                 ))}
-              </ol>
-
-              <form onSubmit={enviar} className="flex items-center gap-2">
-                <input
-                  value={nota}
-                  onChange={(e) => setNota(e.target.value)}
-                  maxLength={2000}
-                  placeholder="Nota para el subagente (opcional)"
-                  aria-label="Nota (opcional)"
-                  className="h-9 min-w-0 flex-1 rounded-[var(--radius-input)] border border-border bg-surface-raised px-3 text-[13px] text-text outline-none transition-colors placeholder:text-placeholder focus:border-primary focus:bg-surface"
-                />
-                <button
-                  type="button"
-                  onClick={pausar}
-                  aria-label="Pausar"
-                  className="flex h-9 flex-none items-center gap-1.5 rounded-[10px] border border-border bg-surface px-3 text-[12.5px] text-text-muted transition-colors hover:bg-surface-hover"
-                >
-                  <Pause size={13} aria-hidden /> Pausar
-                </button>
-                <button
-                  type="submit"
-                  aria-label="Enviar"
-                  className="flex h-9 flex-none items-center gap-1.5 rounded-[10px] bg-primary px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover"
-                >
-                  <Send size={13} aria-hidden /> Enviar
-                </button>
-              </form>
-
-              <button
-                type="button"
-                onClick={onCerrar}
-                className="h-9 w-full rounded-[10px] border border-border bg-surface text-[12.5px] text-text-muted transition-colors hover:bg-surface-hover"
-              >
-                Salir
-              </button>
+                </ol>
+              )}
             </div>
           )}
         </Dialog.Content>
@@ -419,13 +411,16 @@ export function AnalisisCanvas({
   etiqueta,
   enVivo,
   inicial,
+  sondear = true,
 }: {
   casoId: string;
   etiqueta: string;
   enVivo: boolean;
   inicial: EstadoAnalisis;
+  /** `false` solo en `/analisis/preview` (datos de ejemplo, sin BFF). */
+  sondear?: boolean;
 }) {
-  const { estado, terminadoRef } = useEstadoAnalisis(casoId, inicial);
+  const { estado, terminadoRef } = useEstadoAnalisis(casoId, inicial, sondear);
   const arbol = useMemo(
     () => construirArbol(estado.caso, estado.tareas, estado.eventos, estado.runtime?.ejecuciones ?? []),
     [estado],
@@ -456,15 +451,9 @@ export function AnalisisCanvas({
   });
 
   // Auditoría de un estate: al dictaminarse, todo se muestra en su investigación
-  // (hallazgos, descartes, reporte), en el mismo lugar que el resto de investigaciones.
-  const router = useRouter();
+  // (hallazgos, descartes, reporte). No se navega solo: el usuario decide seguir.
   const investigacionAuditoria = caso?.origen === "auditoria" ? (caso.origen_valor ?? null) : null;
   const destinoResultados = investigacionAuditoria ? `/documentos/${investigacionAuditoria}?doc=0` : `/casos/${casoId}/expediente`;
-  useEffect(() => {
-    if (!investigacionAuditoria || caso?.estado !== "dictaminado") return;
-    const t = setTimeout(() => router.push(`/documentos/${investigacionAuditoria}?doc=0`), 2500);
-    return () => clearTimeout(t);
-  }, [investigacionAuditoria, caso?.estado, router]);
 
   // Control de la corrida: mismo motivo que en el modal — no existe todavía
   // la ruta BFF → webhook de cancelación/pausa, así que no se finge.
@@ -553,6 +542,19 @@ export function AnalisisCanvas({
 
           <Pizarron senales={senales} />
 
+          {arbol.terminado && caso?.estado === "dictaminado" && (
+            <div className="flex w-full flex-col items-center gap-2.5 rounded-[13px] border border-border-strong bg-surface px-4 py-4 text-center">
+              <span className="text-[13.5px] font-medium text-text">El análisis terminó</span>
+              <span className="text-[12px] text-text-subtle">Revisa el árbol y los hallazgos; cuando quieras, continúa a los resultados.</span>
+              <Link
+                href={destinoResultados}
+                className="flex h-9 items-center rounded-[10px] bg-primary px-4 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-hover"
+              >
+                Continuar a resultados
+              </Link>
+            </div>
+          )}
+
           {!arbol.terminado && (
             <div className="flex items-center gap-2">
               <button
@@ -574,7 +576,7 @@ export function AnalisisCanvas({
         </div>
       </div>
 
-      <ModalAgente key={abiertoId ?? "cerrado"} nodo={nodoAbierto} ahora={ahora} onCerrar={() => setAbiertoId(null)} />
+      <ModalAgente key={abiertoId ?? "cerrado"} nodo={nodoAbierto} senales={senales} ahora={ahora} onCerrar={() => setAbiertoId(null)} />
     </>
   );
 }

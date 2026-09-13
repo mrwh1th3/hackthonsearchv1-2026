@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "./app-shell";
 import type { Investigacion, Perfil } from "@/lib/data";
@@ -113,5 +113,38 @@ describe("AppShell (puerto fiel del panel del diseño)", () => {
     await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
 
     expect(screen.getByText(/Todavía no hay investigaciones/i)).toBeTruthy();
+  });
+});
+
+describe("AppShell — borrar investigación (2026-09-12)", () => {
+  it("pide confirmación, y solo tras confirmar llama a DELETE /api/investigaciones/:id y quita la fila", async () => {
+    const fetchFalso = vi.fn().mockResolvedValue({ ok: true, status: 204, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchFalso);
+    render(<AppShell perfilNombre="Ana" perfil={PERFIL} perfilEsFixture investigaciones={[investigacion()]}>{null}</AppShell>);
+    await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /borrar sigue el dinero del cluster 200/i }));
+    expect(fetchFalso).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "Borrar" }));
+
+    expect(fetchFalso).toHaveBeenCalledWith("/api/investigaciones/00000000-0000-4000-8000-000000000900", { method: "DELETE" });
+    await waitFor(() => expect(screen.queryByText("Sigue el dinero del cluster 200")).toBeNull());
+    vi.unstubAllGlobals();
+  });
+
+  it("cancelar no llama a fetch y deja la fila", async () => {
+    const fetchFalso = vi.fn();
+    vi.stubGlobal("fetch", fetchFalso);
+    render(<AppShell perfilNombre="Ana" perfil={PERFIL} perfilEsFixture investigaciones={[investigacion()]}>{null}</AppShell>);
+    await userEvent.click(screen.getByRole("button", { name: /abrir navegación/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /borrar sigue el dinero del cluster 200/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(fetchFalso).not.toHaveBeenCalled();
+    expect(screen.getByText("Sigue el dinero del cluster 200")).toBeTruthy();
+    vi.unstubAllGlobals();
   });
 });

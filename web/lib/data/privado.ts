@@ -1,6 +1,8 @@
 import { FixtureDataSource } from "./fixture";
 import {
   borrarVistaPrivada as borrarVistaPrivadaSupabase,
+  eliminarCorridaPrivada as eliminarCorridaPrivadaSupabase,
+  eliminarInvestigacionPrivada as eliminarInvestigacionPrivadaSupabase,
   guardarVistaPrivada as guardarVistaPrivadaSupabase,
   isPrivadoSupabaseConfigured,
   leerAnotacionesAgenteInvestigacion,
@@ -134,5 +136,19 @@ export async function guardarVistaGuardadaPrivada(input: { perfilId: string; nom
 export async function borrarVistaGuardadaPrivada(perfilId: string, id: string): Promise<boolean> {
   if (!usaSupabase) return false;
   await borrarVistaPrivadaSupabase(perfilId, id);
+  return true;
+}
+
+/** Sin Supabase privado (fixture) no hay nada real que borrar: no finge éxito. */
+export async function borrarInvestigacionPrivada(perfilId: string, id: string): Promise<boolean> {
+  if (!usaSupabase) return false;
+  await eliminarInvestigacionPrivadaSupabase(perfilId, id);
+  return true;
+}
+
+/** Igual: borrar una corrida (dataset) requiere Supabase privado configurado. */
+export async function borrarCorridaPrivada(id: string): Promise<boolean> {
+  if (!usaSupabase) return false;
+  await eliminarCorridaPrivadaSupabase(id);
   return true;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Menu, UserRound } from "lucide-react";
+import { Home, Menu, Trash2, UserRound } from "lucide-react";
 import { createContext, useContext, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -76,6 +76,31 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
   // no hacía nada visible mientras el servidor armaba la página.
   const [navegando, startNavegacion] = useTransition();
   const [destino, setDestino] = useState<string | null>(null);
+  const [confirmandoBorrar, setConfirmandoBorrar] = useState<{ id: string; titulo: string } | null>(null);
+  const [borrandoId, setBorrandoId] = useState<string | null>(null);
+  const [investigacionesBorradas, setInvestigacionesBorradas] = useState<Set<string>>(new Set());
+  const [errorBorrado, setErrorBorrado] = useState<string | null>(null);
+
+  async function borrarInvestigacion(id: string) {
+    setBorrandoId(id);
+    setErrorBorrado(null);
+    try {
+      const res = await fetch(`/api/investigaciones/${id}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) {
+        const body = await res.json().catch(() => ({}));
+        setErrorBorrado(body.detalle ?? body.error ?? `No se pudo borrar (${res.status})`);
+        return;
+      }
+      setInvestigacionesBorradas((prev) => new Set(prev).add(id));
+      if (pathname === `/documentos/${id}`) router.push("/");
+      router.refresh();
+    } catch {
+      setErrorBorrado("No se pudo conectar con el servidor.");
+    } finally {
+      setBorrandoId(null);
+      setConfirmandoBorrar(null);
+    }
+  }
 
   function navegar(href: string) {
     setDestino(href);
@@ -103,6 +128,7 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return investigaciones
+      .filter((inv) => !investigacionesBorradas.has(inv.id))
       .map((inv) => {
         const enCurso = ESTADOS_EN_CURSO.has(inv.estado);
         const titulo = inv.titulo ?? inv.mensaje ?? "Investigación";
@@ -115,7 +141,7 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
       })
       .sort((a, b) => Number(a.enCurso ? 0 : 1) - Number(b.enCurso ? 0 : 1))
       .filter((f) => !q || f.titulo.toLowerCase().includes(q));
-  }, [investigaciones, busqueda]);
+  }, [investigaciones, busqueda, investigacionesBorradas]);
 
   async function salir() {
     try {
@@ -230,31 +256,42 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
             const href = `/documentos/${f.id}?doc=0`;
             const abriendo = navegando && destino === href;
             return (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => navegar(href)}
-              onMouseEnter={() => router.prefetch(href)}
-              onFocus={() => router.prefetch(href)}
-              disabled={abriendo}
-              aria-busy={abriendo || undefined}
-              className={cn(
-                "flex items-center gap-[9px] rounded-[9px] border-none px-2.5 py-[9px] text-left transition-colors duration-150 hover:bg-[#f7f6f4]",
-                abriendo ? "bg-[#f7f6f4]" : "bg-transparent",
-              )}
-            >
-              {(f.enCurso || abriendo) && (
-                <span
-                  aria-hidden
-                  className="h-4 w-4 flex-none rounded-full border-2 border-[#e3e0da] border-t-text"
-                  style={{ animation: "insp-spin .8s linear infinite" }}
-                />
-              )}
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="max-w-[200px] truncate text-[13.5px] text-text">{f.titulo}</span>
-                <span className="text-[11.5px] text-text-subtle">{abriendo ? "Abriendo…" : f.estado}</span>
-              </span>
-            </button>
+            <div key={f.id} className="group flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => navegar(href)}
+                onMouseEnter={() => router.prefetch(href)}
+                onFocus={() => router.prefetch(href)}
+                disabled={abriendo}
+                aria-busy={abriendo || undefined}
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-[9px] rounded-[9px] border-none px-2.5 py-[9px] text-left transition-colors duration-150 hover:bg-[#f7f6f4]",
+                  abriendo ? "bg-[#f7f6f4]" : "bg-transparent",
+                )}
+              >
+                {(f.enCurso || abriendo) && (
+                  <span
+                    aria-hidden
+                    className="h-4 w-4 flex-none rounded-full border-2 border-[#e3e0da] border-t-text"
+                    style={{ animation: "insp-spin .8s linear infinite" }}
+                  />
+                )}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="max-w-[200px] truncate text-[13.5px] text-text">{f.titulo}</span>
+                  <span className="text-[11.5px] text-text-subtle">{abriendo ? "Abriendo…" : f.estado}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmandoBorrar({ id: f.id, titulo: f.titulo })}
+                disabled={borrandoId === f.id}
+                aria-label={`Borrar ${f.titulo}`}
+                title="Borrar investigación"
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-lg border-none bg-transparent text-text-subtle opacity-0 transition-colors duration-150 hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+              >
+                <Trash2 size={13} aria-hidden />
+              </button>
+            </div>
             );
           })}
 
@@ -263,6 +300,7 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
               {busqueda.trim() ? `Ninguna investigación coincide con “${busqueda.trim()}”.` : "Todavía no hay investigaciones."}
             </p>
           )}
+          {errorBorrado && <p className="px-2 py-1 text-[12px] text-error">{errorBorrado}</p>}
         </div>
 
         <div className="flex items-center gap-1.5 border-t border-[#f0eee9] p-3">
@@ -296,6 +334,44 @@ export function AppShell({ children, perfilNombre, investigaciones, perfil, perf
       {lienzoCompleto || pathname === "/" ? children : <div className="px-6 pb-10 pt-[70px]">{children}</div>}
 
       <ProfileDialog perfil={perfil} esFixture={perfilEsFixture} abierto={perfilAbierto} onOpenChange={setPerfilAbierto} />
+
+      {confirmandoBorrar && (
+        <div
+          onClick={() => (borrandoId ? null : setConfirmandoBorrar(null))}
+          className="fixed inset-0 z-[9] flex items-center justify-center bg-[rgba(20,20,19,.22)] p-5"
+          role="alertdialog"
+          aria-modal
+          aria-label={`Confirmar borrado de ${confirmandoBorrar.titulo}`}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex w-[360px] max-w-full flex-col gap-3 rounded-[18px] border border-border bg-surface p-5 shadow-[0_18px_60px_rgba(20,20,19,.16)]"
+          >
+            <h3 className="m-0 text-[15px] font-semibold tracking-tight text-text">Borrar “{confirmandoBorrar.titulo}”</h3>
+            <p className="m-0 text-[13px] leading-relaxed text-text-subtle">
+              Se borra la investigación y sus notificaciones asociadas. No se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmandoBorrar(null)}
+                disabled={borrandoId === confirmandoBorrar.id}
+                className="h-[32px] rounded-[var(--radius-control)] border border-border bg-surface px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => borrarInvestigacion(confirmandoBorrar.id)}
+                disabled={borrandoId === confirmandoBorrar.id}
+                className="h-[32px] rounded-[var(--radius-control)] bg-error px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:opacity-90 disabled:opacity-50"
+              >
+                {borrandoId === confirmandoBorrar.id ? "Borrando…" : "Borrar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </PanelContext.Provider>
   );

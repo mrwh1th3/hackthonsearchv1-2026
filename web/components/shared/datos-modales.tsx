@@ -1,8 +1,9 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import type { Corrida } from "@/lib/data";
 import { soloFecha } from "@/lib/date/formato";
 
@@ -323,14 +324,40 @@ export function AdministrarDatosModal({
   const [query, setQuery] = useState("");
   const [tipoAbierto, setTipoAbierto] = useState(false);
   const [preview, setPreview] = useState<Corrida | null>(null);
+  const [confirmando, setConfirmando] = useState<Corrida | null>(null);
+  const [borrando, setBorrando] = useState<string | null>(null);
+  const [borradas, setBorradas] = useState<Set<string>>(new Set());
+  const [errorBorrado, setErrorBorrado] = useState<string | null>(null);
+  const router = useRouter();
   // Con un pop-up encima, Escape cierra solo el de arriba.
-  useEscape(tipoAbierto || preview ? () => {} : onClose);
+  useEscape(tipoAbierto || preview || confirmando ? () => {} : onClose);
+
+  async function borrarCorrida(c: Corrida) {
+    setBorrando(c.id);
+    setErrorBorrado(null);
+    try {
+      const res = await fetch(`/api/corridas/${c.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setErrorBorrado(body.detalle ?? body.error ?? `No se pudo borrar (${res.status})`);
+        return;
+      }
+      setBorradas((prev) => new Set(prev).add(c.id));
+      router.refresh();
+    } catch {
+      setErrorBorrado("No se pudo conectar con el servidor.");
+    } finally {
+      setBorrando(null);
+      setConfirmando(null);
+    }
+  }
 
   // El original ordena "dynamic first"; aquí eso es real: las corridas
   // clonadas por inyección en vivo van primero, y luego por fecha de corte.
   const filas = useMemo(() => {
     const q = query.trim().toLowerCase();
     return corridas
+      .filter((c) => !borradas.has(c.id))
       .filter((c) => !q || c.nombre.toLowerCase().includes(q) || c.dataset.toLowerCase().includes(q))
       .slice()
       .sort(
@@ -338,7 +365,7 @@ export function AdministrarDatosModal({
           Number(b.corrida_origen_id != null) - Number(a.corrida_origen_id != null) ||
           new Date(b.fecha_corte).getTime() - new Date(a.fecha_corte).getTime(),
       );
-  }, [corridas, query]);
+  }, [corridas, query, borradas]);
 
   return (
     <Portal>
@@ -407,6 +434,16 @@ export function AdministrarDatosModal({
               >
                 Inspeccionar
               </button>
+              <button
+                type="button"
+                onClick={() => setConfirmando(c)}
+                disabled={borrando === c.id}
+                aria-label={`Borrar ${c.nombre}`}
+                title="Borrar dataset"
+                className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-[var(--radius-control)] border border-border bg-surface text-error transition-colors duration-150 hover:bg-error/10 disabled:opacity-50"
+              >
+                <Trash2 size={14} aria-hidden />
+              </button>
             </div>
           ))}
           {filas.length === 0 && (
@@ -414,11 +451,49 @@ export function AdministrarDatosModal({
               {corridas.length === 0 ? "Sin corridas todavía. Añade un dataset para empezar." : "Ninguna corrida coincide."}
             </p>
           )}
+          {errorBorrado && <p className="m-0 px-1 text-[12px] text-error">{errorBorrado}</p>}
         </div>
       </div>
     </div>
     {tipoAbierto && <TipoDatasetModal onClose={() => setTipoAbierto(false)} />}
     {preview && <DatasetPreviewModal corrida={preview} onClose={() => setPreview(null)} />}
+    {confirmando && (
+      <div
+        onClick={() => (borrando ? null : setConfirmando(null))}
+        className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(20,20,19,.22)] p-5"
+        role="alertdialog"
+        aria-modal
+        aria-label={`Confirmar borrado de ${confirmando.nombre}`}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex w-[360px] max-w-full flex-col gap-3 rounded-[18px] border border-border bg-surface p-5 shadow-[0_18px_60px_rgba(20,20,19,.16)]"
+        >
+          <h3 className="m-0 text-[15px] font-semibold tracking-tight text-text">Borrar “{confirmando.nombre}”</h3>
+          <p className="m-0 text-[13px] leading-relaxed text-text-subtle">
+            Se borra la corrida completa: sus CFDI, movimientos, pistas, clusters, casos e investigaciones. No se puede deshacer.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmando(null)}
+              disabled={borrando === confirmando.id}
+              className="h-[32px] rounded-[var(--radius-control)] border border-border bg-surface px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:bg-surface-hover disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => borrarCorrida(confirmando)}
+              disabled={borrando === confirmando.id}
+              className="h-[32px] rounded-[var(--radius-control)] bg-error px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:opacity-90 disabled:opacity-50"
+            >
+              {borrando === confirmando.id ? "Borrando…" : "Borrar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </Portal>
   );
 }

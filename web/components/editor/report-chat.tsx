@@ -1,8 +1,7 @@
 "use client";
 
-import * as Tabs from "@radix-ui/react-tabs";
 import { AlertTriangle, Loader2, Send, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { Propuesta, Reporte } from "@/lib/document/tipos";
@@ -117,8 +116,15 @@ export function ReportChat({
   const [enviando, setEnviando] = useState(false);
   const [modoEnvio, setModoEnvio] = useState<"propuesta" | "pregunta">("propuesta");
   const [evidenciaElegida, setEvidenciaElegida] = useState<string[]>([]);
+  const finMensajesRef = useRef<HTMLDivElement>(null);
 
   const agregar = useCallback((mensaje: Mensaje) => setMensajes((previos) => [...previos, mensaje]), []);
+
+  // Feedback 2026-09-13: el hilo debe bajar solo al mensaje más reciente
+  // cuando se envía o contesta, en vez de dejar al usuario scrolleando.
+  useEffect(() => {
+    finMensajesRef.current?.scrollIntoView({ block: "end" });
+  }, [mensajes.length, enviando]);
 
   const describirError = (error: ErrorBFF): string => {
     switch (error.error) {
@@ -271,23 +277,14 @@ export function ReportChat({
       className="flex h-full min-h-0 w-full flex-col bg-surface px-3.5 print:hidden"
       aria-label="Chat del reporte"
     >
-      <Tabs.Root defaultValue="chat" className="flex min-h-0 flex-1 flex-col">
-        <Tabs.List className="flex shrink-0 items-center gap-[7px] px-0.5 pb-3 pt-1" aria-label="Panel lateral">
-          {[
-            { valor: "chat", etiqueta: "Chat" },
-            { valor: "evidencia", etiqueta: `Evidencia (${evidencia.length})` },
-          ].map((t) => (
-            <Tabs.Trigger
-              key={t.valor}
-              value={t.valor}
-              className="h-[26px] whitespace-nowrap rounded-[var(--radius-pill)] bg-surface-muted px-2.5 text-[11.5px] text-text-muted transition-colors duration-150 hover:bg-surface-hover data-[state=active]:bg-primary data-[state=active]:text-white"
-            >
-              {t.etiqueta}
-            </Tabs.Trigger>
-          ))}
-        </Tabs.List>
-
-        <Tabs.Content value="chat" className="flex min-h-0 flex-1 flex-col focus:outline-none">
+      {/*
+        La pestaña "Evidencia" se ocultó a pedido (feedback 2026-09-13): el
+        chat ya no tiene tabs, es un solo panel. `evidenciaElegida` queda sin
+        una UI que la alimente por ahora — adjuntar evidencia a una propuesta
+        necesitará otra entrada cuando se pida de vuelta.
+      */}
+      <div className="flex min-h-0 flex-1 flex-col pt-1">
+        <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-auto px-3 py-3" data-testid="chat-mensajes">
             <ul className="flex flex-col gap-3">
               {mensajes.map((m) => (
@@ -393,6 +390,7 @@ export function ReportChat({
                 <Loader2 size={12} className="animate-spin" aria-hidden /> Consultando al Editor…
               </p>
             )}
+            <div ref={finMensajesRef} />
           </div>
 
           <div className="shrink-0 pt-3">
@@ -466,7 +464,9 @@ export function ReportChat({
                 placeholder={modoLectura ? "Modo lectura" : seleccion ? "Qué cambio quieres en la selección…" : "Pregunta sobre el reporte…"}
                 className="w-full resize-none border-none bg-transparent text-[12.5px] leading-relaxed text-text outline-none disabled:opacity-50"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  // Feedback 2026-09-13: Enter envía (como en cualquier chat);
+                  // Shift+Enter sigue insertando un salto de línea.
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     enviar(texto);
                   }
@@ -482,46 +482,8 @@ export function ReportChat({
               </button>
             </form>
           </div>
-        </Tabs.Content>
-
-        <Tabs.Content value="evidencia" className="min-h-0 flex-1 overflow-auto p-3 focus:outline-none">
-          {evidencia.length === 0 ? (
-            <p className="text-xs text-text-subtle">Este caso no tiene evidencia validada cargada.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {evidencia.map((e) => (
-                <li key={e.referencia} className="rounded-[var(--radius-card)] border border-border p-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onAbrirCita(e.referencia)}
-                      className="break-all text-left font-mono text-[11px] text-text hover:underline"
-                    >
-                      [{e.referencia}]
-                    </button>
-                    <label className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
-                      <input
-                        type="checkbox"
-                        checked={evidenciaElegida.includes(e.id)}
-                        onChange={(ev) =>
-                          setEvidenciaElegida((previos) =>
-                            ev.target.checked ? [...previos, e.id] : previos.filter((x) => x !== e.id),
-                          )
-                        }
-                      />
-                      adjuntar
-                    </label>
-                  </div>
-                  <p className="mt-1 text-[11px] text-text-subtle">
-                    {e.familia} · {e.pista_codigo} · {e.tipo}
-                    {e.refutada && " · refutada"}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Tabs.Content>
-      </Tabs.Root>
+        </div>
+      </div>
     </aside>
   );
 }

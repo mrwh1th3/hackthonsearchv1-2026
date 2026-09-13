@@ -14,6 +14,8 @@ const {
   borrarVistaPrivada,
   buscarCasoPorRfc,
   codigosPorRfc,
+  eliminarCorridaPrivada,
+  eliminarInvestigacionPrivada,
   guardarVistaPrivada,
   isPrivadoSupabaseConfigured,
   leerInvestigacionesPrivadas,
@@ -569,6 +571,45 @@ describe("vistas guardadas (forense.vistas_guardadas, 006 §3)", () => {
   it("borrarVistaPrivada no lanza cuando el borrado no encuentra filas (id de otro perfil o ya borrado): delete es idempotente", async () => {
     _inyectarClienteParaTests(clienteFalso({ vistas_guardadas: { data: null, error: null } }));
     await expect(borrarVistaPrivada("perfil-1", "v-no-existe")).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Borrado de investigaciones y corridas (029 — RPCs que dejan rastro en
+// `forense.auditoria_borrados` antes de borrar, CLAUDE.md regla 2).
+// ---------------------------------------------------------------------------
+describe("eliminarInvestigacionPrivada / eliminarCorridaPrivada", () => {
+  beforeEach(() => _resetClientePrivadoParaTests());
+
+  it("eliminarInvestigacionPrivada llama a la RPC cuando la investigación existe para ese perfil", async () => {
+    _inyectarClienteParaTests(
+      clienteFalso({ investigaciones: { data: { id: "inv-1" }, error: null }, __rpc__: { data: null, error: null } }),
+    );
+    await expect(eliminarInvestigacionPrivada("perfil-1", "inv-1")).resolves.toBeUndefined();
+  });
+
+  it("eliminarInvestigacionPrivada no llama a la RPC (y lanza) si el id no es de ese perfil: no confía en que la RPC filtre dueño", async () => {
+    _inyectarClienteParaTests(
+      clienteFalso({ investigaciones: { data: null, error: null }, __rpc__: { data: null, error: { message: "no debería llamarse" } } }),
+    );
+    await expect(eliminarInvestigacionPrivada("perfil-1", "inv-de-otro-perfil")).rejects.toThrow(/no encontrada/);
+  });
+
+  it("eliminarInvestigacionPrivada propaga un error real de la RPC en vez de fingir éxito", async () => {
+    _inyectarClienteParaTests(
+      clienteFalso({ investigaciones: { data: { id: "inv-1" }, error: null }, __rpc__: { data: null, error: { message: "fk violation" } } }),
+    );
+    await expect(eliminarInvestigacionPrivada("perfil-1", "inv-1")).rejects.toThrow(/fk violation/);
+  });
+
+  it("eliminarCorridaPrivada llama directo a la RPC (una corrida no tiene dueño de perfil)", async () => {
+    _inyectarClienteParaTests(clienteFalso({ __rpc__: { data: null, error: null } }));
+    await expect(eliminarCorridaPrivada("corrida-1")).resolves.toBeUndefined();
+  });
+
+  it("eliminarCorridaPrivada propaga el error si la corrida no existe", async () => {
+    _inyectarClienteParaTests(clienteFalso({ __rpc__: { data: null, error: { message: "corrida no existe" } } }));
+    await expect(eliminarCorridaPrivada("corrida-fantasma")).rejects.toThrow(/no existe/);
   });
 });
 

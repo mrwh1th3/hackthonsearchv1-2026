@@ -1,11 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AdministrarDatosModal, TipoDatasetModal } from "./datos-modales";
 import type { Corrida } from "@/lib/data";
 
 const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 
 function corrida(over: Partial<Corrida> = {}): Corrida {
   return {
@@ -71,6 +72,40 @@ describe("Pop-ups de datos del diseño Inspector", () => {
     expect(screen.getByRole("columnheader", { name: /A\s*rfc/ })).toBeInTheDocument();
     expect(screen.getByText("NULL")).toBeInTheDocument();
     expect(screen.getByText("Filas 1–2 de 2")).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("Administrar datos — borrar corrida (2026-09-12)", () => {
+  it("pide confirmación y solo tras confirmar llama a DELETE /api/corridas/:id y quita la fila", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AdministrarDatosModal corridas={[corrida()]} onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /borrar demo enero 2026/i }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Borrar" }));
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/corridas/00000000-0000-4000-8000-000000000001", { method: "DELETE" });
+    await waitFor(() => expect(screen.queryByText("Demo enero 2026")).not.toBeInTheDocument());
+    expect(refresh).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("muestra el error del servidor y deja la fila si el borrado falla", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ detalle: "corrida no existe" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AdministrarDatosModal corridas={[corrida()]} onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /borrar demo enero 2026/i }));
+    await user.click(screen.getByRole("button", { name: "Borrar" }));
+
+    expect(await screen.findByText("corrida no existe")).toBeInTheDocument();
+    expect(screen.getByText("Demo enero 2026")).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 });
