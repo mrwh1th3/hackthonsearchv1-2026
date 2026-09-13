@@ -2,7 +2,7 @@ import { FixtureDataSource } from "./fixture";
 import { quiereFuenteSupabase, SupabaseDataSource } from "./supabase";
 import type { DataSource } from "./source";
 
-export type { AuditorResultado, DataSource, CasoDetalle, EntidadPerfil, EstadisticasCorrida } from "./source";
+export type { AuditorHallazgo, AuditorLead, AuditorResultado, DataSource, CasoDetalle, EntidadPerfil, EstadisticasCorrida } from "./source";
 export * from "./types";
 
 let cached: DataSource | null = null;
