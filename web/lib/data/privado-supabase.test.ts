@@ -23,6 +23,7 @@ const {
   leerNotificacionesPrivadas,
   leerPerfilPrivado,
   leerVistasGuardadasPrivadas,
+  mapAnotacionAgente,
   mapEjecucionAgente,
   mapInvestigacion,
   mapInyeccionResumen,
@@ -629,5 +630,79 @@ describe("mapEjecucionAgente", () => {
     expect(r.tokens_in).toBe(0);
     expect(r.tokens_out).toBe(0);
     expect(r.duracion_ms).toBe(0);
+  });
+
+  // --- Migración 028: costo_usd/tokens/tool_en_curso reales -----------------
+
+  it("028: costo_usd real (>0) llega como STRING de PostgREST (numeric) y se normaliza a number", () => {
+    const r = mapEjecucionAgente({ ...filaBase, costo_usd: "1.234500" }, [], []);
+    expect(r.costo).toBe(1.2345);
+  });
+
+  it("028: costo_usd=0 (default de la columna, o precio de modelo desconocido en precios_modelo) se trata como 'no disponible', nunca como $0 real", () => {
+    const r = mapEjecucionAgente({ ...filaBase, costo_usd: 0 }, [], []);
+    expect(r.costo).toBeNull();
+  });
+
+  it("028: sin solicitudes en llm_solicitudes, cae a tokens_in/out de la propia columna de ejecuciones_agente (también puede venir como string)", () => {
+    const r = mapEjecucionAgente({ ...filaBase, tokens_in: "120", tokens_out: "40" }, [], []);
+    expect(r.tokens_in).toBe(120);
+    expect(r.tokens_out).toBe(40);
+  });
+
+  it("028: tool_en_curso de la columna se usa cuando ninguna tool_ejecuciones está 'ejecutando' (caso típico del complemento IA)", () => {
+    const r = mapEjecucionAgente({ ...filaBase, tool_en_curso: "consultar_padron" }, [], []);
+    expect(r.toolEnCurso).toEqual({ nombre: "consultar_padron", desde: filaBase.actualizado });
+  });
+
+  it("028: una fila 'ejecutando' en tool_ejecuciones sigue teniendo prioridad sobre la columna (trae 'desde' real)", () => {
+    const tools = [{ id: 1, ejecucion_id: "e1", request_id: "r1", tool_use_id: "u1", nombre: "consultar_cfdi", args_hash: "h", estado: "ejecutando", resultado_ref: null, duracion_ms: null, creado: "c1", terminado: null }];
+    const r = mapEjecucionAgente({ ...filaBase, tool_en_curso: "otra_tool" }, [], tools);
+    expect(r.toolEnCurso).toEqual({ nombre: "consultar_cfdi", desde: "c1" });
+  });
+});
+
+describe("mapAnotacionAgente (pizarrón IA, migración 028)", () => {
+  const filaBase = {
+    id: 7,
+    investigacion_id: "inv1",
+    caso_id: "caso1",
+    ejecucion_id: "e1",
+    rol: "financiero",
+    familia: "F",
+    turno: 2,
+    tipo: "salida" as const,
+    texto: "resumen del turno",
+    herramientas: ["consultar_cfdi"],
+    senal_ids: [10, 11],
+    tokens_in: 200,
+    tokens_out: 80,
+    costo_usd: 0.0125,
+    creado: "2026-09-12T10:00:00Z",
+  };
+
+  it("mapea senal_ids (bigint) a string y conserva herramientas", () => {
+    const a = mapAnotacionAgente(filaBase);
+    expect(a.senal_ids).toEqual(["10", "11"]);
+    expect(a.herramientas).toEqual(["consultar_cfdi"]);
+    expect(a.tipo).toBe("salida");
+  });
+
+  it("herramientas/senal_ids null (columna array vacía servida como null) se normalizan a []", () => {
+    const a = mapAnotacionAgente({ ...filaBase, herramientas: null, senal_ids: null });
+    expect(a.herramientas).toEqual([]);
+    expect(a.senal_ids).toEqual([]);
+  });
+
+  it("tipo 'error' se conserva tal cual (no se reetiqueta como 'razonamiento')", () => {
+    const a = mapAnotacionAgente({ ...filaBase, tipo: "error" });
+    expect(a.tipo).toBe("error");
+  });
+
+  it("costo_usd/tokens llegan como string (numeric de Postgres) y se normalizan a number", () => {
+    const a = mapAnotacionAgente({ ...filaBase, costo_usd: "0.012500", tokens_in: "200", tokens_out: "80" });
+    expect(a.costo_usd).toBe(0.0125);
+    expect(a.tokens_in).toBe(200);
+    expect(a.tokens_out).toBe(80);
   });
 });

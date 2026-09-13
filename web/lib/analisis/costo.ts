@@ -41,3 +41,27 @@ export function estimarCostoUsd(modelId: string | null, tokensIn: number | null,
 export function formatoCostoEstimado(usd: number | null): string {
   return usd == null ? "costo no disp." : `~$${usd.toFixed(3)} (estimado)`;
 }
+
+/**
+ * Selector, no reemplazo: desde la migración 028 `ejecuciones_agente.costo_usd`
+ * existe y es real (calculado por `forense.costo_usd` con `precios_modelo`).
+ * Cuando esa columna trae un valor se usa TAL CUAL, sin la etiqueta
+ * "(estimado)" — es una factura, no una proyección. Cuando la fila no lo
+ * trae (fixture, corridas previas a 028, o el precio del modelo no está
+ * cargado en `precios_modelo`) se cae al estimado por tokens públicos, y
+ * ESE sí lleva la etiqueta. Nunca se borra `estimarCostoUsd`/
+ * `formatoCostoEstimado`: siguen siendo el único camino cuando no hay costo
+ * real.
+ */
+export function costoMostrado(
+  modelId: string | null,
+  tokensIn: number | null,
+  tokensOut: number | null,
+  costoRealUsd: number | null,
+): { valor: number | null; esReal: boolean; texto: string } {
+  if (costoRealUsd != null) {
+    return { valor: costoRealUsd, esReal: true, texto: `$${costoRealUsd.toFixed(4)}` };
+  }
+  const estimado = estimarCostoUsd(modelId, tokensIn, tokensOut);
+  return { valor: estimado, esReal: false, texto: formatoCostoEstimado(estimado) };
+}

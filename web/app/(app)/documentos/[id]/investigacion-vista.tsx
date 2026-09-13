@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { ResultadosCaso } from "../../casos/[id]/resultados";
 import { CanvasHeader } from "@/components/shared/canvas-header";
 import type { CasoDetalle, ContrasteCaso, Corrida, EventoForense, Investigacion, TrayectoriaPunto } from "@/lib/data";
+import type { AnotacionAgenteIA } from "@/lib/data/privado";
 import { DocumentWorkspace } from "@/components/editor/document-workspace";
 import { ReportChat } from "@/components/editor/report-chat";
 import type { EvidenciaCita } from "@/components/editor/cita-drawer";
@@ -62,6 +63,7 @@ export function InvestigacionVista({
   corrida,
   casos,
   tokensCorrida,
+  anotacionesIA,
 }: {
   etiqueta: string;
   enVivo: boolean;
@@ -80,6 +82,8 @@ export function InvestigacionVista({
   corrida: Corrida | null;
   casos: CasoConContexto[];
   tokensCorrida: number | null;
+  /** Pizarrón de los 5 agentes IA de TODA la investigación (migración 028). */
+  anotacionesIA: AnotacionAgenteIA[];
 }) {
   const searchParams = useSearchParams();
   const [doc, setDoc] = useState(searchParams.get("doc") !== "0");
@@ -151,7 +155,7 @@ export function InvestigacionVista({
             contraste={contraste}
             trayectoria={trayectoria}
             onAbrirReporte={documento ? () => setDoc(true) : undefined}
-            extraSecciones={<ResumenInvestigacion corrida={corrida} casos={casos} tokensCorrida={tokensCorrida} />}
+            extraSecciones={<ResumenInvestigacion corrida={corrida} casos={casos} tokensCorrida={tokensCorrida} anotacionesIA={anotacionesIA} />}
             soloResumen
           />
         ) : (

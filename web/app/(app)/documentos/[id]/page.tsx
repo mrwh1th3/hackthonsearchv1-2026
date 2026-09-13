@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getDataSource } from "@/lib/data";
-import { obtenerEjecucionesPrivadas, obtenerInvestigacionPrivada } from "@/lib/data/privado";
+import { obtenerAnotacionesAgenteIAPrivadas, obtenerEjecucionesPrivadas, obtenerInvestigacionPrivada } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
 import { desdeMarkdown } from "@/lib/document/markdown";
 import { cargarCasoEditor } from "@/lib/document/servidor";
@@ -94,6 +94,15 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   ]);
   const casos = casosCargados.map((c) => ({ ...c, auditorResultado }));
 
+  // Pizarrón de los 5 agentes IA (`forense.anotaciones_agente`, migración
+  // 028): por `investigacion_id`, NO por `caso_id` — el caso del
+  // complemento IA (`origen='ia_complemento'`) no está en `inv.caso_ids`
+  // (ver `leerAnotacionesAgenteInvestigacion`). Fixture o error (028 sin
+  // aplicar en remoto, falta el grant) caen igual a `[]`: la sección lo
+  // dice como "sin anotaciones todavía", que es honesto en ambos casos —
+  // ninguno finge un dato que sí existe.
+  const anotacionesIA = await obtenerAnotacionesAgenteIAPrivadas(inv.id).catch(() => []);
+
   const documento = casoEditor
     ? casoEditor.versionActual.contenido_json
     : detalle?.redactor
@@ -140,6 +149,7 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
         corrida={corrida}
         casos={casos}
         tokensCorrida={estadisticas?.operacion.tokens_total ?? null}
+        anotacionesIA={anotacionesIA}
       />
     </section>
   );

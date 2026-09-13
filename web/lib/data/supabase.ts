@@ -757,6 +757,7 @@ export class SupabaseDataSource implements DataSource {
       findings: aArreglo(log.findings),
       leads: aArreglo(log.leads),
       run_metadata: (log.run_metadata ?? { llm_calls: 0, mxn_cost: 0, wall_clock_seconds: 0, deterministic: true }) as AuditorResultado["run_metadata"],
+      run_log: log,
     };
   }
 
