@@ -127,6 +127,40 @@ En cada caso: MXN 0 y menos de 0.02 s por estate.
 
 Esto está declarado en la sección 5 de cada expediente.
 
+### Agente de estructura, entradas CSV/XLSX/ZIP y fraud_flag (2026-09-13)
+
+Método completo, tablas y límites: `reports/forensic/ESTRUCTURA.md`; CSV en `reports/forensic/structure/`.
+
+- `--estate` acepta SQLite, directorio de CSV, CSV, XLSX o ZIP. El formato se detecta por contenido.
+- Antes de investigar, `src/auditor/structure/`:
+  - mapea tablas y columnas al esquema canónico por nombre, sinónimos es/en, firma de valores y relaciones;
+  - consulta el LLM solo ante empates, y valida su propuesta;
+  - normaliza fechas, montos, RFC, CLABE, catálogos y nulls.
+- `record_id` cita el id original. `DIR/validator_estate.db` permite correr `validate_format.py` cuando la
+  entrada no es el SQLite canónico.
+- Lo que falta se declara:
+  - error claro (código 2) si faltan las columnas core de facturas;
+  - tipología desactivada si falta algo requerido;
+  - "evidencia reducida" si falta evidencia opcional.
+- Salidas nuevas: `fraud_flag` en cada hallazgo (true) y lead (false), más `triage.json`, `branch_fraud.json`
+  y `branch_no_fraud.json` (esquema en `src/auditor/schemas/triage_schema.json`). `python3 -m auditor branch`
+  exporta una rama sin volver a correr.
+- Un estate canónico da la misma huella y los mismos resultados que antes. Las tablas de arriba se
+  re-corrieron con el código nuevo y dan cifras idénticas.
+
+| Conjunto (mutaciones y formatos) | Corridas como se esperaba | Idénticas al original | Falsas |
+|---|---|---|---|
+| Ajuste: clásico 1–5, variantes 1–3, seed_103; vocabulario `tuning` | 225/225 | 189 (las 36 restantes son degradación o error esperados) | 0 |
+| **Held-out**: clásico 501–505, variantes 506–510; vocabulario `heldout` | **236/250** | 196 | 0 |
+
+- **CSV, XLSX, ZIP y XLSX "sucio".** Idénticos al SQLite en 10/10 held-out.
+- **Mutaciones.** Renombrado de tablas, orden, columnas extra, formatos de fecha y monto, catálogos, prefijos
+  RFC/EMP, CLABE numérica, nulls e ids: 10/10 cada una.
+- **Falla en held-out: renombrado de columnas** con nombres que el vocabulario no conoce. Idénticas 0/10 y
+  recall 42 → 28; en `combo`, 6/10.
+  - En 5 corridas la pérdida no se declaraba. Se corrigió después, declarando la evidencia reducida; la
+    re-corrida de esas semillas ya no es held-out y da 0 pérdidas no declaradas.
+
 ## Aislamiento de la clave de evaluación
 
 - `grep -r 'ground_truth' src/ --include='*.py'` no devuelve nada.

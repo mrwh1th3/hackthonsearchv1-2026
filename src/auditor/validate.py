@@ -27,6 +27,11 @@ def validate_finding(e: Estate, f: dict) -> list[str]:
         if not rows:
             errs.append(f"{x['source_table']}.{x['record_id']} does not exist")
             continue
+        st = getattr(e, "structure", None)
+        if st is not None and not st.identity and not st.original_exists(x["source_table"], x["record_id"]):
+            errs.append(f"{x['source_table']}.{x['record_id']} does not resolve in the original estate "
+                        f"(as {st.original_id(x['source_table'], x['record_id'])})")
+            continue
         amt = AMOUNT_COLUMN.get(x["source_table"])
         if amt:
             per_table[x["source_table"]] = per_table.get(x["source_table"], 0.0) + float(rows[0][amt] or 0)

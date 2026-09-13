@@ -21,6 +21,7 @@ th{background:#f1f3f6;font-weight:600}.scroll{overflow-x:auto}
 .proven{background:#fde3d6;color:var(--warn)}.probable{background:#fff1c7;color:#7a5a00}
 .num{font-variant-numeric:tabular-nums;white-space:nowrap}code{font-size:13px}
 .held{color:var(--ok)}.broke{color:var(--warn)}
+.flag-true{background:#fde3d6;color:var(--warn)}.flag-false{background:#e3f1e6;color:var(--ok)}
 .lead{border-left:4px solid var(--line);padding:8px 14px;margin:10px 0;background:var(--card)}
 """
 
@@ -61,6 +62,56 @@ def trail_svg(trail: list[dict], labels: dict[str, str]) -> str:
                    f'{escape(mxn(s["amount"]))} · {escape(str(s["date"]))} · {escape(s["exhibit_id"])}</text>')
     out.append("</svg>")
     return "".join(out)
+
+
+def structure_html(r: dict) -> str:
+    """Subsección breve de cómo se leyó el estate (structure_report en run_log.json)."""
+    sr = r.get("structure_report")
+    if not sr:
+        return ""
+    inp = sr.get("input", {})
+    fmt = inp.get("input_format", "sqlite")
+    parts = [f"<h4>Estate structure</h4><p>Input format: <code>{escape(fmt)}</code>. {escape(sr.get('summary', ''))}"]
+    if sr.get("status") != "identity":
+        tables = sr.get("tables", {})
+        mapped = [f"{escape(ct)} ← <code>{escape(str(t.get('source')))}</code>" for ct, t in tables.items()
+                  if isinstance(t, dict) and t.get("source") and t["source"] != ct]
+        if mapped:
+            parts.append(" Tables read from other names: " + ", ".join(mapped) + ".")
+        if sr.get("missing_tables"):
+            parts.append(" Missing or unusable tables: " + escape(", ".join(sr["missing_tables"])) + ".")
+        if sr.get("precision_lost"):
+            parts.append(" Values discarded for numeric precision loss (not guessed): "
+                         + escape(", ".join(f"{k} ×{v}" for k, v in sr["precision_lost"].items())) + ".")
+        if sr.get("validator_estate"):
+            parts.append(f" Cited record ids are the original input ids; <code>{escape(sr['validator_estate'])}</code> "
+                         f"is a canonical copy with those ids for <code>validate_format.py --estate</code>.")
+        parts.append(" Column-by-column mapping, confidence, method and every transformation are in "
+                     "<code>run_log.json → structure_report</code>.")
+    parts.append("</p>")
+    dis = sr.get("disabled_schemes") or {}
+    if dis:
+        parts.append("<p><b>Not evaluated for missing data:</b></p><ul>" + "".join(
+            f"<li>{escape(SCHEME_LABEL.get(s, s))}: needs {escape(', '.join(m))}, which the estate does not provide. "
+            f"No lead of this type was opened, so its absence from the findings is not a clean result.</li>"
+            for s, m in dis.items()) + "</ul>")
+    weak = sr.get("weakened_schemes") or {}
+    if weak:
+        parts.append("<p><b>Evaluated with reduced evidence:</b></p><ul>" + "".join(
+            f"<li>{escape(SCHEME_LABEL.get(s, s))}: the estate lacks {escape(', '.join(m))}. Signals built on those "
+            f"records could not fire, so a scheme of this type may be missed here.</li>" for s, m in weak.items()) + "</ul>")
+    return "".join(parts)
+
+
+def triage_html(r: dict) -> str:
+    t = r.get("triage") or {}
+    c = t.get("counts")
+    if not c:
+        return ""
+    return (f"<h4>Fraud flag split</h4><p>Every evaluated subject carries an explicit <code>fraud_flag</code>: "
+            f"{c['fraud_flag_true']} record(s) flagged true (findings) and {c['fraud_flag_false']} flagged false "
+            f"({c['by_status']['closed_lead']} closed leads, {c['by_status']['no_signal']} subjects no detector raised), "
+            f"covering {c['subjects']} subjects, {c['subjects_flagged']} of them in at least one finding.</p>")
 
 
 def render_html(r: dict) -> str:
@@ -115,7 +166,7 @@ def render_html(r: dict) -> str:
         for ent in f["entities"]:
             labels[ent] = f["subject_name"].split(" / ")[0] if ent.startswith("RFC:") else f.get("employee_label", "Employee")
         h.append(f"<h3>Finding {i} — {escape(f['subject_name'])} ({escape(', '.join(f['entities']))}): "
-                 f"{SCHEME_LABEL[f['scheme_type']]}</h3>")
+                 f"{SCHEME_LABEL[f['scheme_type']]} <span class='pill flag-true'>fraud_flag: true</span></h3>")
         h.append(f"<h4>Rule broken</h4><p>{escape(f['rule_broken'])}</p>")
         h.append(f"<h4>Amount and confidence</h4><p><b class='num'>{mxn(f['peso_amount'])}</b> · "
                  f"<span class='pill {f['confidence']}'>{f['confidence']}</span></p>")
@@ -146,7 +197,9 @@ def render_html(r: dict) -> str:
         h.append("</ul>")
 
     # 4. Leads not pursued
-    h.append(f"<h2>4. Leads not pursued</h2><p>{len(leads)} leads were investigated and closed without an accusation.</p>")
+    h.append(f"<h2>4. Leads not pursued</h2><p>{len(leads)} leads were investigated and closed without an accusation. "
+             f"Each carries <code>fraud_flag: false</code>; the full per-subject split is in <code>triage.json</code>, "
+             f"<code>branch_fraud.json</code> and <code>branch_no_fraud.json</code>.</p>")
     h.append("<div class='scroll'><table><tr><th>Entity</th><th>Signal</th><th>Why it was closed</th>"
              "<th>Tools called</th><th>Closed by</th></tr>")
     for l in leads:
@@ -154,7 +207,7 @@ def render_html(r: dict) -> str:
                  f"{escape(SCHEME_LABEL[l['investigated_as']].lower())}</span></td>"
                  f"<td>{escape(l['signal'])}<br><span class='meta'>{escape(l['signal_detail'])}</span></td>"
                  f"<td>{escape(l['reason'])}</td><td class='meta'>{escape(', '.join(l['tool_calls_made']))}</td>"
-                 f"<td>{CLOSED_LABEL[l['closed_by']]}</td></tr>")
+                 f"<td>{CLOSED_LABEL[l['closed_by']]}<br><span class='pill flag-false'>fraud_flag: false</span></td></tr>")
     h.append("</table></div>")
 
     # 5. Method and limits
@@ -165,7 +218,7 @@ per scheme type gathers evidence through logged, read-only tools and applies exp
 refunds, shared-bank coincidence) and can close the lead. A validator checks every cited record exists and that the
 amount reconciles within 2% per table before anything is printed. An optional LLM writes a defence argument; it
 never changes amounts, evidence or confidence.</p>
-<h4>Out of scope for this run</h4><p>Physical delivery evidence, e-mail and document review, CFDI XML signature
+""" + structure_html(r) + triage_html(r) + """<h4>Out of scope for this run</h4><p>Physical delivery evidence, e-mail and document review, CFDI XML signature
 verification against SAT, related-party ownership data, payroll, and any period outside the estate.</p>
 <h4>What this system cannot detect</h4><ul>
 <li>Kickbacks paid in cash or through accounts not present in <code>bank_txns</code>.</li>
