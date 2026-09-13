@@ -15,12 +15,14 @@ def d(s: str) -> date:
 
 
 class Estate:
-    def __init__(self, path: str):
+    def __init__(self, path: str, conn: sqlite3.Connection | None = None, structure=None):
+        """`conn`: estate canónico ya normalizado por structure.prepare; None abre el archivo tal cual."""
         p = Path(path)
         if not p.is_file():
             raise FileNotFoundError(f"estate not found: {path}")
         self.path = str(p)
-        self.conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+        self.structure = structure
+        self.conn = conn if conn is not None else sqlite3.connect(f"file:{p}?mode=ro", uri=True)
         self.conn.row_factory = sqlite3.Row
         self.tables = {r[0] for r in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.vendors = {r["rfc"]: dict(r) for r in self.q("SELECT * FROM vendors ORDER BY rfc")}
@@ -49,8 +51,9 @@ class Estate:
         for c in self.company_clabes:
             self.clabe_owner[c] = "COMPANY"
         dates = [r[0] for r in self.q("SELECT max(date) FROM bank_txns")]
-        self.bank_horizon = d(dates[0]) if dates and dates[0] else date.today()
         span = self.q("SELECT min(issue_date), max(issue_date) FROM invoices")[0]
+        # sin banco, el horizonte es la última factura (determinista); nunca la fecha del reloj
+        self.bank_horizon = d(dates[0]) if dates and dates[0] else (d(span[1]) if span[1] else date.today())
         self.period = (span[0], span[1])
 
     def q(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
