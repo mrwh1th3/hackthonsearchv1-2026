@@ -3,6 +3,7 @@ import {
   borrarVistaPrivada as borrarVistaPrivadaSupabase,
   guardarVistaPrivada as guardarVistaPrivadaSupabase,
   isPrivadoSupabaseConfigured,
+  leerAnotacionesAgenteInvestigacion,
   leerEjecucionesCaso,
   leerInvestigacionesPrivadas,
   leerInvestigacionPrivada,
@@ -11,11 +12,12 @@ import {
   leerNotificacionesPrivadas,
   leerPerfilPrivado,
   leerVistasGuardadasPrivadas,
+  type AnotacionAgenteIA,
   type EjecucionesCaso,
 } from "./privado-supabase";
 import type { Investigacion, InyeccionResumen, Notificacion, Perfil, VistaGuardada } from "./types";
 
-export type { EjecucionesCaso, EjecucionAgenteInfo } from "./privado-supabase";
+export type { AnotacionAgenteIA, EjecucionesCaso, EjecucionAgenteInfo } from "./privado-supabase";
 
 /**
  * Datos privados por perfil: perfil, teléfono, investigaciones, notificaciones
@@ -87,6 +89,20 @@ export async function obtenerInvestigacionPrivada(id: string, perfilId: string):
 export async function obtenerEjecucionesPrivadas(casoId: string): Promise<EjecucionesCaso> {
   if (!usaSupabase) return { ejecuciones: [], tokensTotales: null, costoTotal: null };
   return leerEjecucionesCaso(casoId);
+}
+
+/**
+ * Pizarrón de los 5 agentes IA de TODA una investigación
+ * (`forense.anotaciones_agente`, migración 028), filtrado por
+ * `investigacion_id` (ver `leerAnotacionesAgenteInvestigacion` para por qué
+ * no puede ser por `caso_id`). `[]` en fixture (nunca hubo tabla que
+ * respalde esto ahí); si Supabase está configurado pero la consulta falla
+ * (028 no aplicada en remoto, o falta el grant a `service_role`) el error se
+ * propaga — el llamador decide si lo traduce a "no disponible" o lo traga.
+ */
+export async function obtenerAnotacionesAgenteIAPrivadas(investigacionId: string): Promise<AnotacionAgenteIA[]> {
+  if (!usaSupabase) return [];
+  return leerAnotacionesAgenteInvestigacion(investigacionId);
 }
 
 export async function obtenerInyeccionesPrivadas(perfilId: string): Promise<InyeccionResumen[]> {

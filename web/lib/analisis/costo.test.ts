@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimarCostoUsd, formatoCostoEstimado } from "./costo";
+import { costoMostrado, estimarCostoUsd, formatoCostoEstimado } from "./costo";
 
 describe("estimarCostoUsd", () => {
   it("calcula el estimado con precio conocido y tokens reales", () => {
@@ -26,5 +26,29 @@ describe("formatoCostoEstimado", () => {
   });
   it("un valor real se etiqueta 'estimado'", () => {
     expect(formatoCostoEstimado(0.5)).toBe("~$0.500 (estimado)");
+  });
+});
+
+describe("costoMostrado", () => {
+  it("prefiere el costo real (migración 028) y no lo etiqueta 'estimado'", () => {
+    const r = costoMostrado("modelo-fantasma", null, null, 1.2345);
+    expect(r.esReal).toBe(true);
+    expect(r.valor).toBe(1.2345);
+    expect(r.texto).toBe("$1.2345");
+    expect(r.texto).not.toMatch(/estimado/);
+  });
+
+  it("sin costo real cae al estimado por tokens, y sí lo etiqueta", () => {
+    const r = costoMostrado("claude-sonnet-4", 1_000_000, 1_000_000, null);
+    expect(r.esReal).toBe(false);
+    expect(r.valor).toBeCloseTo(18, 5);
+    expect(r.texto).toMatch(/estimado/);
+  });
+
+  it("sin costo real y sin modelo conocido: no disp., nunca $0.00", () => {
+    const r = costoMostrado(null, null, null, null);
+    expect(r.esReal).toBe(false);
+    expect(r.valor).toBeNull();
+    expect(r.texto).toBe("costo no disp.");
   });
 });

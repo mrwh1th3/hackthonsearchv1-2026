@@ -353,6 +353,24 @@ export interface FilaEjecucionAgente {
   cancelada: boolean;
   creado: string;
   actualizado: string;
+  /**
+   * Telemetría real de la migración 028 (`forense.ejecuciones_agente`):
+   * `costo_usd` calculado por `forense.costo_usd()`/`precios_modelo`, no una
+   * proyección. `null`/`undefined` en filas anteriores a 028 o en fixture —
+   * ahí `EjecucionAgenteInfo.costo` sigue cayendo al estimado por tokens
+   * (`lib/analisis/costo.ts::costoMostrado`).
+   */
+  investigacion_id?: string | null;
+  familia?: string | null;
+  /** `int`/`numeric` de Postgres: PostgREST puede mandarlos como string (ver `aNumeroOnull`). */
+  tokens_in?: number | string | null;
+  tokens_out?: number | string | null;
+  costo_usd?: number | string | null;
+  tool_en_curso?: string | null;
+  paso_actual?: string | null;
+  iniciado_at?: string | null;
+  terminado_at?: string | null;
+  duracion_ms?: number | string | null;
 }
 
 export interface FilaLlmSolicitud {
@@ -437,19 +455,56 @@ function resumenResultado(ref: Record<string, unknown> | null): string | null {
   }
 }
 
+/**
+ * `numeric`/`bigint` de Postgres llegan por PostgREST como STRING (para no
+ * perder precisión) — este archivo ya lo sabe para `monto_en_riesgo`
+ * (`lib/data/supabase.ts::aTexto`), pero los campos nuevos de 028
+ * (`costo_usd`, `tokens_in/out`) son `number | string | null` según venga de
+ * un mapper local (tests) o de un cliente Supabase real. Se normaliza aquí
+ * una sola vez.
+ */
+function aNumeroOnull(v: number | string | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "string" ? Number(v) : v;
+  return Number.isFinite(n) ? n : null;
+}
+
 export function mapEjecucionAgente(
   fila: FilaEjecucionAgente,
   solicitudes: FilaLlmSolicitud[],
   tools: FilaToolEjecucion[],
 ): EjecucionAgenteInfo {
-  const tokensIn = solicitudes.length > 0 ? solicitudes.reduce((s, r) => s + (r.tokens_in ?? 0), 0) : null;
-  const tokensOut = solicitudes.length > 0 ? solicitudes.reduce((s, r) => s + (r.tokens_out ?? 0), 0) : null;
+  const tokensInSolicitudes = solicitudes.some((r) => r.tokens_in != null)
+    ? solicitudes.reduce((s, r) => s + (r.tokens_in ?? 0), 0)
+    : null;
+  const tokensOutSolicitudes = solicitudes.some((r) => r.tokens_out != null)
+    ? solicitudes.reduce((s, r) => s + (r.tokens_out ?? 0), 0)
+    : null;
   const duracion = solicitudes.some((r) => r.duracion_ms != null)
     ? solicitudes.reduce((s, r) => s + (r.duracion_ms ?? 0), 0)
     : null;
   const enCurso = tools.find((t) => t.estado === "ejecutando");
   const erroresRaw = fila.checkpoint_json?.errores_contrato;
   const erroresContrato = Array.isArray(erroresRaw) ? erroresRaw.map((e) => String(e)) : null;
+  // Migración 028: `ejecuciones_agente.tool_en_curso` (texto, csv) cubre el
+  // caso del complemento IA, que no siempre deja fila en `tool_ejecuciones`
+  // con `estado='ejecutando'` en el instante exacto del sondeo; se prefiere
+  // `tool_ejecuciones` cuando existe (trae `desde`) y se cae a la columna.
+  const toolEnCurso = enCurso
+    ? { nombre: enCurso.nombre ?? null, desde: enCurso.creado }
+    : fila.tool_en_curso
+      ? { nombre: fila.tool_en_curso, desde: fila.actualizado }
+      : null;
+  // `costo_usd` es `not null default 0` en 028: 0 puede ser "de verdad costó
+  // cero" pero TAMBIÉN es lo que devuelve `forense.costo_usd()` cuando el
+  // `model_id` no está en `precios_modelo` (precio desconocido). No hay
+  // columna que distinga ambos casos hoy, así que 0 se trata como "no
+  // disponible" — `costoMostrado()` cae al estimado por tokens y lo
+  // etiqueta, en vez de pintar un "$0.0000 real" que puede ser fingido.
+  const costoRaw = aNumeroOnull(fila.costo_usd);
+  const costo = costoRaw != null && costoRaw > 0 ? costoRaw : null;
+  const tokensInFila = aNumeroOnull(fila.tokens_in);
+  const tokensOutFila = aNumeroOnull(fila.tokens_out);
   return {
     id: fila.id,
     caso_id: fila.caso_id,
@@ -461,12 +516,14 @@ export function mapEjecucionAgente(
     cancelada: Boolean(fila.cancelada),
     creado: fila.creado,
     actualizado: fila.actualizado,
-    tokens_in: tokensIn,
-    tokens_out: tokensOut,
-    // `llm_solicitudes`/`ejecuciones_agente` no tienen columna de costo (ver EjecucionAgenteInfo.costo).
-    costo: null,
-    duracion_ms: duracion,
-    toolEnCurso: enCurso ? { nombre: enCurso.nombre ?? null, desde: enCurso.creado } : null,
+    tokens_in: tokensInSolicitudes ?? tokensInFila,
+    tokens_out: tokensOutSolicitudes ?? tokensOutFila,
+    // Real desde 028 (`costo_usd`, solo cuando > 0); `null` en filas/fuentes
+    // anteriores o con precio desconocido — `costoMostrado()` cae entonces
+    // al estimado por tokens y lo etiqueta.
+    costo,
+    duracion_ms: duracion ?? aNumeroOnull(fila.duracion_ms),
+    toolEnCurso,
     erroresContrato,
     tools: tools
       .slice()
@@ -484,14 +541,39 @@ export function mapEjecucionAgente(
   };
 }
 
+const COLUMNAS_EJECUCION_BASE =
+  "id,corrida_id,caso_id,tarea_id,editor_operacion_id,rol,estado_interno,paso,revision,checkpoint_json,model_id,cancelada,creado,actualizado";
+const COLUMNAS_EJECUCION_028 =
+  "investigacion_id,familia,tokens_in,tokens_out,costo_usd,tool_en_curso,paso_actual,iniciado_at,terminado_at,duracion_ms";
+
 export async function leerEjecucionesCaso(casoId: string): Promise<EjecucionesCaso> {
   const client = clientePrivilegiado();
-  const { data: ejecucionesData, error: errEjec } = await client
-    .from("ejecuciones_agente")
-    .select("id,corrida_id,caso_id,tarea_id,editor_operacion_id,rol,estado_interno,paso,revision,checkpoint_json,model_id,cancelada,creado,actualizado")
-    .eq("caso_id", casoId)
-    .order("creado", { ascending: true });
-  if (errEjec) throw new Error(`leerEjecucionesCaso: ${errEjec.message}`);
+  // Se intenta primero con las columnas de la migración 028 (telemetría real
+  // del complemento IA). Solo el integrador designado la aplica en remoto
+  // (CLAUDE.md, cabecera de `db/028_ia_complemento.sql`); mientras eso no
+  // ocurra, Postgres responde "column does not exist" para TODA la fila —
+  // un solo campo nuevo tumbaría la telemetría de ejecuciones que sí
+  // funcionaba antes de 028. Por eso hay reintento con las columnas base:
+  // degrada a "sin costo/tool_en_curso reales" en vez de "sin ejecuciones".
+  let ejecucionesData: FilaEjecucionAgente[] | null = null;
+  {
+    const { data, error } = await client
+      .from("ejecuciones_agente")
+      .select(`${COLUMNAS_EJECUCION_BASE},${COLUMNAS_EJECUCION_028}`)
+      .eq("caso_id", casoId)
+      .order("creado", { ascending: true });
+    if (error) {
+      const { data: dataBase, error: errorBase } = await client
+        .from("ejecuciones_agente")
+        .select(COLUMNAS_EJECUCION_BASE)
+        .eq("caso_id", casoId)
+        .order("creado", { ascending: true });
+      if (errorBase) throw new Error(`leerEjecucionesCaso: ${errorBase.message}`);
+      ejecucionesData = dataBase as FilaEjecucionAgente[] | null;
+    } else {
+      ejecucionesData = data as FilaEjecucionAgente[] | null;
+    }
+  }
   const filasEjecucion = (ejecucionesData ?? []) as FilaEjecucionAgente[];
   const ids = filasEjecucion.map((e) => e.id);
   if (ids.length === 0) return { ejecuciones: [], tokensTotales: null, costoTotal: null };
@@ -533,7 +615,103 @@ export async function leerEjecucionesCaso(casoId: string): Promise<EjecucionesCa
         }
       : null;
 
-  return { ejecuciones, tokensTotales, costoTotal: null };
+  // Suma de costo real (028): solo si AL MENOS una ejecución trae `costo`
+  // no-nulo; si ninguna lo trae (fuente sin 028, o precio de modelo
+  // ausente en `precios_modelo`) queda `null` — nunca 0 fingido, y la UI
+  // sigue el estimado por tokens en cada fila (`costoMostrado`).
+  const costoTotal = ejecuciones.some((e) => e.costo != null)
+    ? ejecuciones.reduce((s, e) => s + (e.costo ?? 0), 0)
+    : null;
+
+  return { ejecuciones, tokensTotales, costoTotal };
+}
+
+// ---------------------------------------------------------------------------
+// Pizarrón de agentes IA (`forense.anotaciones_agente`, migración 028)
+// ---------------------------------------------------------------------------
+
+interface FilaAnotacionAgente {
+  id: number;
+  investigacion_id: string | null;
+  caso_id: string | null;
+  ejecucion_id: string;
+  rol: string;
+  familia: string | null;
+  turno: number;
+  tipo: "razonamiento" | "consulta" | "salida" | "error";
+  texto: string | null;
+  herramientas: string[] | null;
+  senal_ids: (string | number)[] | null;
+  /** `int`/`numeric`: PostgREST puede mandarlos como string. */
+  tokens_in: number | string | null;
+  tokens_out: number | string | null;
+  costo_usd: number | string | null;
+  creado: string;
+}
+
+export interface AnotacionAgenteIA {
+  id: string;
+  casoId: string | null;
+  ejecucionId: string;
+  rol: string;
+  familia: string | null;
+  turno: number;
+  tipo: "razonamiento" | "consulta" | "salida" | "error";
+  texto: string | null;
+  herramientas: string[];
+  senal_ids: string[];
+  tokens_in: number | null;
+  tokens_out: number | null;
+  costo_usd: number | null;
+  creado: string;
+}
+
+export function mapAnotacionAgente(f: FilaAnotacionAgente): AnotacionAgenteIA {
+  // `costo_usd` es `numeric(12,6)` sin default 0 aquí (a diferencia de
+  // `ejecuciones_agente`), pero puede llegar como string por PostgREST; se
+  // normaliza igual. No hay ambigüedad de "0 real vs desconocido" en esta
+  // tabla (cada fila es un turno con costo real de ESE turno, nunca un
+  // acumulado con default), así que 0 se deja como 0.
+  return {
+    id: String(f.id),
+    casoId: f.caso_id,
+    ejecucionId: f.ejecucion_id,
+    rol: f.rol,
+    familia: f.familia,
+    turno: f.turno,
+    tipo: f.tipo,
+    texto: f.texto,
+    herramientas: f.herramientas ?? [],
+    senal_ids: (f.senal_ids ?? []).map((x) => String(x)),
+    tokens_in: aNumeroOnull(f.tokens_in),
+    tokens_out: aNumeroOnull(f.tokens_out),
+    costo_usd: aNumeroOnull(f.costo_usd),
+    creado: f.creado,
+  };
+}
+
+/**
+ * Pizarrón de los 5 agentes IA de TODA una investigación
+ * (`forense.anotaciones_agente`, migración 028 — sin política SELECT, solo
+ * `service_role`/BFF privado). Se filtra por `investigacion_id`, no por
+ * `caso_id`: el caso del complemento IA (`origen='ia_complemento'`) no
+ * queda listado en `investigaciones.caso_ids` (eso solo indexa los casos
+ * del pipeline determinista, ver `leerInvestigacionPrivada`), así que
+ * filtrar por `caso_id` dejaría esta sección vacía siempre. El error se
+ * propaga (no se traga en `[]`): "028 no aplicada"/"sin permiso" y "0 filas
+ * reales" son hechos distintos, y el llamador (`obtenerAnotacionesAgenteIAPrivadas`)
+ * ya envuelve esto en `.catch` donde hace falta distinguirlo.
+ */
+export async function leerAnotacionesAgenteInvestigacion(investigacionId: string): Promise<AnotacionAgenteIA[]> {
+  const client = clientePrivilegiado();
+  const { data, error } = await client
+    .from("anotaciones_agente")
+    .select("id,investigacion_id,caso_id,ejecucion_id,rol,familia,turno,tipo,texto,herramientas,senal_ids,tokens_in,tokens_out,costo_usd,creado")
+    .eq("investigacion_id", investigacionId)
+    .order("turno", { ascending: true })
+    .order("creado", { ascending: true });
+  if (error) throw new Error(`leerAnotacionesAgenteInvestigacion: ${error.message}`);
+  return ((data ?? []) as FilaAnotacionAgente[]).map(mapAnotacionAgente);
 }
 
 // ---------------------------------------------------------------------------

@@ -5,12 +5,13 @@ import { ChevronDown } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { NivelBadge } from "./badges";
 import { CasoDetalleCompleto } from "./caso-detalle-completo";
+import { AuditorResultadoCompleto } from "./auditor-resultado";
 import { ChartPanel } from "./chart-panel";
 import { ClusterForceGraph } from "./force-graph";
 import type { AuditorResultado, CasoDetalle, ClusterResumen, ContrasteCaso, Corrida, EventoForense, GrafoArista, GrafoCluster, GrafoNodo, TrayectoriaPunto } from "@/lib/data";
-import type { EjecucionesCaso } from "@/lib/data/privado";
+import type { AnotacionAgenteIA, EjecucionesCaso } from "@/lib/data/privado";
 import { derivarCadenaExplicacion } from "@/lib/analisis/cadena-explicacion";
-import { estimarCostoUsd, formatoCostoEstimado } from "@/lib/analisis/costo";
+import { costoMostrado } from "@/lib/analisis/costo";
 import { nombreAgente } from "@/lib/analisis/arbol";
 import { soloFecha, soloHora } from "@/lib/date/formato";
 import { dividirEnSecciones, partirEnCitas } from "@/lib/expediente/citas";
@@ -29,7 +30,7 @@ export interface CasoConContexto {
   trayectoria: TrayectoriaPunto[];
   /** Runtime de agentes de este caso (BFF privado, `obtenerEjecucionesPrivadas`): `ejecuciones: []` cuando la fuente no tiene runtime configurado (fixture) o el caso todavía no registró ninguna. */
   ejecuciones: EjecucionesCaso;
-  /** Resultado del auditor determinista de la corrida, si aplica — único origen hoy para derivar "Cadena de explicación" (ver `lib/analisis/cadena-explicacion.ts`). */
+  /** Resultado del auditor determinista de la corrida, si aplica — único origen hoy para derivar "Cadena de explicación" (ver `lib/analisis/cadena-explicacion.ts`) y para el bloque "sin filtrar" (`AuditorResultadoCompleto`). */
   auditorResultado: AuditorResultado | null;
 }
 
@@ -75,10 +76,13 @@ export function ResumenInvestigacion({
   corrida,
   casos,
   tokensCorrida,
+  anotacionesIA = [],
 }: {
   corrida: Corrida | null;
   casos: CasoConContexto[];
   tokensCorrida: number | null;
+  /** Pizarrón de los 5 agentes IA de TODA la investigación (`obtenerAnotacionesAgenteIAPrivadas`, migración 028). `[]` en fixture o sin complemento IA todavía. */
+  anotacionesIA?: AnotacionAgenteIA[];
 }) {
   const duraciones = casos.map(duracionCaso);
   const duracionTotal = duraciones.some((d) => d !== null) ? duraciones.reduce<number>((a, d) => a + (d ?? 0), 0) : null;
@@ -227,6 +231,32 @@ export function ResumenInvestigacion({
           </div>
         </div>
       )}
+
+      {/*
+        Resultado del auditor determinista SIN filtrar, UNA sola vez para
+        toda la investigación (no por caso): `casos[i].auditorResultado` es
+        el mismo objeto de `forense.auditor_resultados` (una fila por
+        corrida, no por caso) repetido en cada `CasoConContexto` — pintarlo
+        una vez evita duplicar hasta 330 KB de JSON por cada fila de
+        `CasoFila` (feedback del coordinador). "Sin filtrar": cada hallazgo,
+        exhibit, defensa, lead cerrado y run_metadata, con render genérico
+        para cualquier campo que `AuditorHallazgo`/`AuditorLead` no tipen.
+      */}
+      <SeccionColapsable titulo="Resultado completo del auditor determinista (sin filtrar)" abiertaPorDefecto={false}>
+        {() => <AuditorResultadoCompleto resultado={casos[0]?.auditorResultado ?? null} />}
+      </SeccionColapsable>
+
+      {/*
+        Pizarrón de los 5 agentes IA de la investigación (no por caso: el
+        caso `origen='ia_complemento'` no está en `inv.caso_ids`, ver
+        `leerAnotacionesAgenteInvestigacion`). `anotacionesIA.length === 0`
+        no distingue "sin complemento IA todavía" de "028 no aplicada en
+        remoto" — ambos caen a `[]` en el BFF hoy (`.catch`), así que el
+        texto de abajo se queda deliberadamente neutro.
+      */}
+      <SeccionColapsable titulo={`Pizarrón de los agentes IA (${anotacionesIA.length})`} abiertaPorDefecto={false}>
+        {() => <SeccionPizarronIA anotaciones={anotacionesIA} />}
+      </SeccionColapsable>
     </div>
   );
 }
@@ -332,19 +362,19 @@ function CasoFila({ caso, duracionMs }: { caso: CasoConContexto; duracionMs: num
           </Seccion>
 
           <SeccionColapsable titulo="Hallazgos completos, defensa, dictamen, Contraste y Trayectoria" abiertaPorDefecto={false}>
-            <CasoDetalleCompleto detalle={caso.detalle} bitacora={caso.bitacora} contraste={caso.contraste} trayectoria={caso.trayectoria} />
+            {() => <CasoDetalleCompleto detalle={caso.detalle} bitacora={caso.bitacora} contraste={caso.contraste} trayectoria={caso.trayectoria} />}
           </SeccionColapsable>
 
           <SeccionColapsable titulo="Cadena de explicación" abiertaPorDefecto={false}>
-            <CadenaExplicacionVista auditorResultado={caso.auditorResultado} rfc={c.rfc_principal} />
+            {() => <CadenaExplicacionVista auditorResultado={caso.auditorResultado} rfc={c.rfc_principal} />}
           </SeccionColapsable>
 
-          <SeccionColapsable titulo="Agentes (runtime)" abiertaPorDefecto={false}>
-            <SeccionAgentesRuntime ejecuciones={caso.ejecuciones} />
+          <SeccionColapsable titulo="Agentes IA (runtime + telemetría real)" abiertaPorDefecto={false}>
+            {() => <SeccionAgentesRuntime ejecuciones={caso.ejecuciones} />}
           </SeccionColapsable>
 
           <SeccionColapsable titulo={`Pizarrón (${caso.detalle.senales.length})`} abiertaPorDefecto={false}>
-            <SeccionPizarron senales={caso.detalle.senales} />
+            {() => <SeccionPizarron senales={caso.detalle.senales} />}
           </SeccionColapsable>
         </div>
       )}
@@ -608,8 +638,16 @@ function Seccion({ titulo, children }: { titulo: string; children: React.ReactNo
   );
 }
 
-/** Secciones colapsables (pedido del coordinador 2026-09-12): `/documentos` no filtra nada, pero cada bloque grande arranca cerrado. */
-function SeccionColapsable({ titulo, abiertaPorDefecto, children }: { titulo: string; abiertaPorDefecto: boolean; children: React.ReactNode }) {
+/**
+ * Secciones colapsables (pedido del coordinador 2026-09-12): `/documentos` no
+ * filtra nada, pero cada bloque grande arranca cerrado. `children` es una
+ * función: para un `run_log` de 330 KB (`AuditorResultado`, corrida
+ * 2b446f04-...), `{abierta && children}` seguía EVALUANDO el `.map()` de los
+ * hallazgos en cada render del padre aunque no los pintara — el costo se
+ * pagaba con la sección cerrada. Con `children()` invocada solo dentro del
+ * `if (abierta)` ese trabajo no ocurre hasta que el usuario expande.
+ */
+function SeccionColapsable({ titulo, abiertaPorDefecto, children }: { titulo: string; abiertaPorDefecto: boolean; children: () => React.ReactNode }) {
   const [abierta, setAbierta] = useState(abiertaPorDefecto);
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-[10px] border border-border bg-surface px-3 py-2.5">
@@ -617,7 +655,7 @@ function SeccionColapsable({ titulo, abiertaPorDefecto, children }: { titulo: st
         <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">{titulo}</span>
         <ChevronDown size={14} className={cn("flex-none text-text-subtle transition-transform duration-150", abierta && "rotate-180")} aria-hidden />
       </button>
-      {abierta && children}
+      {abierta && children()}
     </div>
   );
 }
@@ -677,18 +715,23 @@ function SeccionAgentesRuntime({ ejecuciones }: { ejecuciones: EjecucionesCaso }
   return (
     <div className="flex flex-col gap-1.5">
       {ejecuciones.ejecuciones.map((e) => {
-        const costoEstimado = estimarCostoUsd(e.model_id, e.tokens_in, e.tokens_out);
+        // `e.costo` es real (`ejecuciones_agente.costo_usd`, migración 028)
+        // cuando la fila lo trae; si no, cae al estimado por tokens Y lo dice
+        // ("estimado" en la etiqueta) — nunca se pinta un estimado sin marcar
+        // (regla: no simular certeza que no hay).
+        const costo = costoMostrado(e.model_id, e.tokens_in, e.tokens_out, e.costo);
         return (
           <div key={e.id} className="flex flex-col gap-1 rounded-[8px] border border-border bg-surface-raised px-2.5 py-2">
             <span className="flex flex-wrap items-center gap-2 text-[12px] text-text">
               <span className="font-medium capitalize">{nombreAgente(e.rol)}</span>
               <span className="text-text-subtle">{e.estado_interno.replaceAll("_", " ")}</span>
+              {e.toolEnCurso && <span className="rounded-[6px] border border-border bg-surface px-1.5 text-[10.5px] text-text-muted">tool: {e.toolEnCurso.nombre ?? "en curso"}</span>}
               <span className="ml-auto font-mono text-[10.5px] text-text-subtle">paso {e.paso}</span>
             </span>
             <span className="text-[11px] text-text-subtle">
               {e.tokens_in != null || e.tokens_out != null ? `${numero(e.tokens_in ?? 0)} in / ${numero(e.tokens_out ?? 0)} out` : "tokens no disp."} ·{" "}
               {e.duracion_ms != null ? `${numero(e.duracion_ms)} ms` : "duración no disp."} · {e.tools.length} tool call{e.tools.length === 1 ? "" : "s"} ·{" "}
-              {formatoCostoEstimado(costoEstimado)}
+              {costo.texto}
             </span>
             <span className={cn("text-[11px]", e.erroresContrato && e.erroresContrato.length > 0 ? "text-red-600" : "text-text-subtle")}>
               {e.erroresContrato == null
@@ -717,6 +760,60 @@ function SeccionPizarron({ senales }: { senales: CasoDetalle["senales"] }) {
             {s.refuta && <span className="rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle">descarta</span>}
           </span>
           <span className="text-[12px] leading-snug text-text-muted">{s.titular}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const TIPO_ANOTACION: Record<AnotacionAgenteIA["tipo"], string> = {
+  razonamiento: "razonamiento",
+  consulta: "consulta",
+  salida: "salida",
+  error: "error",
+};
+
+/**
+ * Pizarrón de los 5 agentes IA (`forense.anotaciones_agente`, migración 028):
+ * lo que cada especialista razonó, consultó o entregó, con sus tokens y
+ * costo real por turno. Distinto del "Pizarrón" ya existente (`senales`,
+ * `SeccionPizarron`) — ese es el pizarrón determinista del pipeline
+ * original; este es el complemento IA de 5 subagentes tras el auditor.
+ */
+function SeccionPizarronIA({ anotaciones }: { anotaciones: AnotacionAgenteIA[] }) {
+  if (anotaciones.length === 0) return <p className="m-0 text-[12px] text-text-subtle">Sin anotaciones del complemento IA para este caso todavía.</p>;
+  const ordenadas = [...anotaciones].sort((a, b) => a.turno - b.turno || a.creado.localeCompare(b.creado));
+  return (
+    <ul className="m-0 flex flex-col gap-1.5 p-0">
+      {ordenadas.map((a) => (
+        <li
+          key={a.id}
+          className={cn(
+            "flex flex-col gap-0.5 rounded-[8px] border px-2.5 py-1.5",
+            a.tipo === "error" ? "border-red-200 bg-red-50" : "border-border bg-surface-raised",
+          )}
+        >
+          <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-text">
+            <span className="font-medium capitalize">{nombreAgente(a.rol)}</span>
+            {a.familia && <span className="font-mono text-[10.5px] text-text-subtle">familia {a.familia}</span>}
+            <span className="text-text-subtle">turno {a.turno}</span>
+            <span
+              className={cn(
+                "rounded-[var(--radius-pill)] border px-1.5 text-[10px] uppercase",
+                a.tipo === "error" ? "border-red-300 text-red-700" : "border-border text-text-subtle",
+              )}
+            >
+              {TIPO_ANOTACION[a.tipo]}
+            </span>
+            {a.herramientas.length > 0 && <span className="font-mono text-[10.5px] text-text-subtle">{a.herramientas.join(", ")}</span>}
+            <span className="ml-auto text-[10.5px] text-text-subtle">{soloHora(a.creado)}</span>
+          </span>
+          {a.texto && <span className="text-[12px] leading-snug text-text-muted">{a.texto}</span>}
+          <span className="text-[10.5px] text-text-subtle">
+            {a.tokens_in != null || a.tokens_out != null ? `${numero(a.tokens_in ?? 0)} in / ${numero(a.tokens_out ?? 0)} out` : "tokens no disp."}
+            {a.costo_usd != null ? ` · $${a.costo_usd.toFixed(4)}` : ""}
+            {a.senal_ids.length > 0 ? ` · señales ${a.senal_ids.join(", ")}` : ""}
+          </span>
         </li>
       ))}
     </ul>

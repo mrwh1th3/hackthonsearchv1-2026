@@ -30,6 +30,7 @@ const resultadoBase: AuditorResultado = {
   ],
   leads: [],
   run_metadata: { llm_calls: 0, mxn_cost: 0, wall_clock_seconds: 0, deterministic: true },
+  run_log: {},
 };
 
 describe("derivarCadenaExplicacion", () => {

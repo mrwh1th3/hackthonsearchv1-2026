@@ -147,6 +147,15 @@ export interface AuditorResultado {
   findings: AuditorHallazgo[];
   leads: AuditorLead[];
   run_metadata: { llm_calls: number; mxn_cost: number; wall_clock_seconds: number; deterministic: boolean; llm_mode?: string };
+  /**
+   * `run_log` completo tal cual está en `forense.auditor_resultados`, sin
+   * recortar a los campos ya tipados arriba (CLAUDE.md regla 1: "no
+   * filtrar"). Sirve para el render genérico de claves no mapeadas — cuando
+   * el generador (`src/auditor`) añade un campo nuevo a `findings[]`,
+   * `leads[]` o al objeto raíz, aparece aquí aunque nadie haya actualizado
+   * este archivo. `{}` en fixture (no hay backing real, ver `FixtureDataSource`).
+   */
+  run_log: Record<string, unknown>;
 }
 
 export interface CasoDetalle {
