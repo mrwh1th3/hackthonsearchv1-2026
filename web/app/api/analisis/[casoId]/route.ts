@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { checkRateLimit, clientKeyFromRequest } from "@/lib/security/rate-limit";
 import { getDataSource } from "@/lib/data";
+import { obtenerEjecucionesPrivadas } from "@/lib/data/privado";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ casoId: 
 
   const { casoId } = await params;
   const ds = getDataSource();
-  const [detalle, eventos] = await Promise.all([ds.getCasoDetalle(casoId), ds.getBitacoraCaso(casoId)]);
-  return NextResponse.json({ caso: detalle?.caso ?? null, tareas: detalle?.tareas ?? [], eventos });
+  // `runtime` (ejecuciones_agente/llm_solicitudes/tool_ejecuciones) es BFF
+  // privado (regla 3): sin política de SELECT, solo esta ruta con sesión ya
+  // verificada arriba puede leerlo. Si esa consulta falla no se cae el resto
+  // del canvas — se manda vacío, y el panel de runtime lo muestra como
+  // "no disponible" en vez de tirar el árbol de tareas/bitácora que sí sirvió.
+  const [detalle, eventos, runtime] = await Promise.all([
+    ds.getCasoDetalle(casoId),
+    ds.getBitacoraCaso(casoId),
+    obtenerEjecucionesPrivadas(casoId).catch(() => ({ ejecuciones: [], tokensTotales: null, costoTotal: null })),
+  ]);
+  // Pizarrón: `senales` es pública + realtime (regla 3), pero el cluster_id
+  // sólo se conoce con el caso ya cargado por esta misma ruta con sesión —
+  // se manda la siembra aquí y el cliente sigue en vivo con `useCanalForense`.
+  const senales = detalle ? await ds.listSenalesCluster(detalle.caso.cluster_id) : [];
+  return NextResponse.json({ caso: detalle?.caso ?? null, tareas: detalle?.tareas ?? [], eventos, runtime, senales });
 }

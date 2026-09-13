@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getDataSource } from "@/lib/data";
-import { obtenerInvestigacionPrivada } from "@/lib/data/privado";
+import { obtenerEjecucionesPrivadas, obtenerInvestigacionPrivada } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
 import { desdeMarkdown } from "@/lib/document/markdown";
 import { cargarCasoEditor } from "@/lib/document/servidor";
@@ -47,17 +47,28 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   // primero. Se traen todos con su cluster (para el puntaje de riesgo real,
   // `clusters.score`) y su propio recorte de bitácora — nada inventado, todo
   // sale de lo ya persistido.
-  const [casosCargados, estadisticas, [contraste, trayectoria, entidad], casoEditor] = await Promise.all([
+  const [casosCargados, estadisticas, [contraste, trayectoria, entidad], casoEditor, auditorResultado] = await Promise.all([
     Promise.all(
       detalles
         .filter((d): d is NonNullable<typeof d> => d !== null)
         .map(async (d) => {
-          const [cluster, grafo] = await Promise.all([ds.getCluster(d.caso.cluster_id), ds.getClusterGrafo(d.caso.cluster_id)]);
+          const [cluster, grafo, contrasteCaso, trayectoriaCaso, ejecucionesCaso] = await Promise.all([
+            ds.getCluster(d.caso.cluster_id),
+            ds.getClusterGrafo(d.caso.cluster_id),
+            ds.getContraste(d.caso.id),
+            ds.getTrayectoria(d.caso.rfc_principal, d.caso.corrida_id),
+            obtenerEjecucionesPrivadas(d.caso.id).catch(() => ({ ejecuciones: [], tokensTotales: null, costoTotal: null })),
+          ]);
           return {
             detalle: d,
             cluster,
             grafo,
             bitacora: bitacoraCorrida.filter((e) => e.caso_id === d.caso.id),
+            contraste: contrasteCaso,
+            trayectoria: trayectoriaCaso,
+            ejecuciones: ejecucionesCaso,
+            // Se completa abajo una vez que `auditorResultado` está resuelto (misma corrida para todos los casos).
+            auditorResultado: null as Awaited<ReturnType<typeof ds.getAuditorResultado>>,
           };
         }),
     ),
@@ -79,8 +90,9 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
     // repositorio configurado se cae al Markdown original del Redactor en
     // versión 1. Sin Redactor no hay documento y se dice.
     detalle?.redactor ? cargarCasoEditor(detalle.caso.id) : Promise.resolve(null),
+    ds.getAuditorResultado(inv.corrida_id).catch(() => null),
   ]);
-  const casos = casosCargados;
+  const casos = casosCargados.map((c) => ({ ...c, auditorResultado }));
 
   const documento = casoEditor
     ? casoEditor.versionActual.contenido_json

@@ -3,6 +3,7 @@ import {
   borrarVistaPrivada as borrarVistaPrivadaSupabase,
   guardarVistaPrivada as guardarVistaPrivadaSupabase,
   isPrivadoSupabaseConfigured,
+  leerEjecucionesCaso,
   leerInvestigacionesPrivadas,
   leerInvestigacionPrivada,
   leerInyeccionesPrivadas,
@@ -10,8 +11,11 @@ import {
   leerNotificacionesPrivadas,
   leerPerfilPrivado,
   leerVistasGuardadasPrivadas,
+  type EjecucionesCaso,
 } from "./privado-supabase";
 import type { Investigacion, InyeccionResumen, Notificacion, Perfil, VistaGuardada } from "./types";
+
+export type { EjecucionesCaso, EjecucionAgenteInfo } from "./privado-supabase";
 
 /**
  * Datos privados por perfil: perfil, teléfono, investigaciones, notificaciones
@@ -71,6 +75,18 @@ export async function obtenerHistorialPrivado(perfilId: string): Promise<Investi
 
 export async function obtenerInvestigacionPrivada(id: string, perfilId: string): Promise<Investigacion | null> {
   return usaSupabase ? leerInvestigacionPrivada(id, perfilId) : fuentePrivada.getInvestigacion(id);
+}
+
+/**
+ * Runtime de agentes de UN caso (`ejecuciones_agente`/`llm_solicitudes`/
+ * `tool_ejecuciones`, sin política de SELECT — ver `privado-supabase.ts`).
+ * El canvas (`/analisis/[casoId]`) lo consume vía `/api/analisis/[casoId]`,
+ * con la sesión ya verificada por esa ruta. En fixtures no existe corrida de
+ * runtime real: se devuelve vacío, nunca inventado.
+ */
+export async function obtenerEjecucionesPrivadas(casoId: string): Promise<EjecucionesCaso> {
+  if (!usaSupabase) return { ejecuciones: [], tokensTotales: null, costoTotal: null };
+  return leerEjecucionesCaso(casoId);
 }
 
 export async function obtenerInyeccionesPrivadas(perfilId: string): Promise<InyeccionResumen[]> {

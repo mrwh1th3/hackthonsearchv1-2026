@@ -157,6 +157,8 @@ export interface Senal {
   frontera: string[];
   confianza: "baja" | "media" | "alta";
   refuta: boolean;
+  /** `forense.senales.creado` (001_schema): orden temporal real del pizarrón. `""` si la fuente no la trae todavía. */
+  creado: string;
 }
 
 export interface Pista {

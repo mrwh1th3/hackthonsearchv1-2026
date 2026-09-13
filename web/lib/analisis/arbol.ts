@@ -1,4 +1,6 @@
 import type { Caso, EventoForense, Tarea } from "@/lib/data";
+import type { EjecucionAgenteInfo } from "@/lib/data/privado";
+import { estimarCostoUsd } from "./costo";
 
 /**
  * Derivación pura del canvas "Análisis en proceso" (feedback 2026-09-12,
@@ -93,6 +95,13 @@ export interface NodoAgente {
   detenido: string | null;
   tokens: number;
   logs: LogAgente[];
+  /**
+   * Runtime real (`forense.ejecuciones_agente`/`llm_solicitudes`/
+   * `tool_ejecuciones`, BFF privado): `null` cuando esta tarea todavía no
+   * tiene una ejecución de runtime asociada (p.ej. corridas anteriores a que
+   * el runtime instrumentara este paso) — nunca se rellena con ceros.
+   */
+  runtime: EjecucionAgenteInfo | null;
 }
 
 export interface EtapaArbol {
@@ -175,9 +184,26 @@ export interface ArbolAnalisis {
   etapaActual: string;
   tokens: number;
   terminado: boolean;
+  /** Suma real de `llm_solicitudes.tokens_in/out` del caso; `null` si el runtime todavía no registró ninguna. */
+  tokensRuntime: { in: number; out: number } | null;
+  /** No hay columna de costo persistida todavía (ver `EjecucionAgenteInfo.costo`); siempre `null` hoy. */
+  costoRuntime: number | null;
+  /** Suma de estimados por ejecución (`estimarCostoUsd`, precios públicos): `null` si ninguna ejecución tiene modelo/tokens conocidos. */
+  costoEstimadoUsd: number | null;
+  /** `desde` = primer `creado`, `hasta` = último `actualizado` (o ahora si alguna ejecución sigue activa); `null` sin ejecuciones. */
+  runtimeSpan: { desde: string; hasta: string | null } | null;
 }
 
-export function construirArbol(caso: Caso | null, tareas: Tarea[], eventos: EventoForense[]): ArbolAnalisis {
+export function construirArbol(
+  caso: Caso | null,
+  tareas: Tarea[],
+  eventos: EventoForense[],
+  runtime: EjecucionAgenteInfo[] = [],
+): ArbolAnalisis {
+  const runtimePorTarea = new Map<string, EjecucionAgenteInfo>();
+  for (const r of runtime) {
+    if (r.tarea_id) runtimePorTarea.set(r.tarea_id, r);
+  }
   const porNodo = new Map<string, Tarea>();
   for (const t of tareas) {
     const clave = `${t.agente}:${t.ronda}`;
@@ -200,6 +226,10 @@ export function construirArbol(caso: Caso | null, tareas: Tarea[], eventos: Even
     // Una tarea en error/timeout que nunca escribió `terminado` no sigue
     // "ejecutándose": su reloj para en su último rastro persistido.
     const detenido = t.terminado ?? (estado === "error" || estado === "completada" || estado === "omitida" ? (ultimoTs ?? t.iniciado ?? null) : null);
+    // Varios intentos de la misma clave `agente:ronda` pueden tener runtime
+    // propio; se toma el de la tarea que ganó el nodo (la del último intento).
+    const runtimeIds = [...ids].map((idTarea) => runtimePorTarea.get(idTarea)).filter((r): r is EjecucionAgenteInfo => r != null);
+    const runtimeNodo = runtimeIds.find((r) => r.tarea_id === t.id) ?? runtimeIds[runtimeIds.length - 1] ?? null;
     return {
       id: clave,
       agente: t.agente,
@@ -211,6 +241,7 @@ export function construirArbol(caso: Caso | null, tareas: Tarea[], eventos: Even
       detenido,
       tokens: tokensDe(propios),
       logs: logsDe(propios, estado),
+      runtime: runtimeNodo,
     };
   }
 
@@ -234,11 +265,32 @@ export function construirArbol(caso: Caso | null, tareas: Tarea[], eventos: Even
     etapas.push({ id: rol.agente, titulo, nodos, pendiente: nodos.length === 0 });
   }
 
+  const tokensRuntime =
+    runtime.length > 0
+      ? { in: runtime.reduce((s, r) => s + (r.tokens_in ?? 0), 0), out: runtime.reduce((s, r) => s + (r.tokens_out ?? 0), 0) }
+      : null;
+
+  const costos = runtime.map((r) => estimarCostoUsd(r.model_id, r.tokens_in, r.tokens_out)).filter((c): c is number => c != null);
+  const costoEstimadoUsd = costos.length > 0 ? costos.reduce((a, b) => a + b, 0) : null;
+
+  const activasRuntime = runtime.filter((r) => r.estado_interno !== "terminado" && r.estado_interno !== "error" && r.estado_interno !== "timeout" && !r.cancelada);
+  const runtimeSpan =
+    runtime.length > 0
+      ? {
+          desde: runtime.reduce((min, r) => (r.creado < min ? r.creado : min), runtime[0].creado),
+          hasta: activasRuntime.length > 0 ? null : runtime.reduce((max, r) => (r.actualizado > max ? r.actualizado : max), runtime[0].actualizado),
+        }
+      : null;
+
   return {
     etapas,
     etapaActual: etapaCaso(caso?.estado),
     tokens: tokensDe(eventos),
     terminado: casoTerminado(caso?.estado),
+    tokensRuntime,
+    costoRuntime: null,
+    costoEstimadoUsd,
+    runtimeSpan,
   };
 }
 

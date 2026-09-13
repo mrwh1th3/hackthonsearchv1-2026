@@ -23,6 +23,7 @@ const {
   leerNotificacionesPrivadas,
   leerPerfilPrivado,
   leerVistasGuardadasPrivadas,
+  mapEjecucionAgente,
   mapInvestigacion,
   mapInyeccionResumen,
   mapNotificacion,
@@ -567,5 +568,66 @@ describe("vistas guardadas (forense.vistas_guardadas, 006 §3)", () => {
   it("borrarVistaPrivada no lanza cuando el borrado no encuentra filas (id de otro perfil o ya borrado): delete es idempotente", async () => {
     _inyectarClienteParaTests(clienteFalso({ vistas_guardadas: { data: null, error: null } }));
     await expect(borrarVistaPrivada("perfil-1", "v-no-existe")).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mapEjecucionAgente: lectura tolerante a columnas/filas ausentes (runtime,
+// 001_schema §"Control de runtime"). Tres lecturas distintas por diseño: un
+// valor real, un cero persistido, y "no disponible todavía" — nunca se
+// confunden (CLAUDE.md regla 2: pintar 0 cuando el sistema no produjo el
+// dato es simular progreso).
+// ---------------------------------------------------------------------------
+describe("mapEjecucionAgente", () => {
+  const filaBase = {
+    id: "e1",
+    corrida_id: "c1",
+    caso_id: "caso1",
+    tarea_id: "t1",
+    editor_operacion_id: null,
+    rol: "financiero",
+    estado_interno: "ejecutar_herramienta",
+    paso: 3,
+    revision: 0,
+    checkpoint_json: {},
+    model_id: "claude-x",
+    cancelada: false,
+    creado: "2026-09-12T10:00:00Z",
+    actualizado: "2026-09-12T10:00:05Z",
+  };
+
+  it("con solicitudes y tools reales: tokens/duración sumados, tool en curso detectado, costo sigue null (no existe la columna)", () => {
+    const solicitudes = [
+      { request_id: "r1", ejecucion_id: "e1", paso: 1, estado: "completado", bolsa: "investigacion", modelo: "x", tokens_in: 100, tokens_out: 40, duracion_ms: 900, error: null, creado: "t" },
+      { request_id: "r2", ejecucion_id: "e1", paso: 2, estado: "completado", bolsa: "investigacion", modelo: "x", tokens_in: 50, tokens_out: 10, duracion_ms: 300, error: null, creado: "t" },
+    ];
+    const tools = [
+      { id: 1, ejecucion_id: "e1", request_id: "r1", tool_use_id: "u1", nombre: "consultar_cfdi", args_hash: "abc123", estado: "completado", resultado_ref: { n: 3 }, duracion_ms: 120, creado: "a", terminado: "b" },
+      { id: 2, ejecucion_id: "e1", request_id: "r2", tool_use_id: "u2", nombre: "consultar_banco", args_hash: "def456", estado: "ejecutando", resultado_ref: null, duracion_ms: null, creado: "c", terminado: null },
+    ];
+    const r = mapEjecucionAgente(filaBase, solicitudes, tools);
+    expect(r.tokens_in).toBe(150);
+    expect(r.tokens_out).toBe(50);
+    expect(r.duracion_ms).toBe(1200);
+    expect(r.costo).toBeNull();
+    expect(r.toolEnCurso).toEqual({ nombre: "consultar_banco", desde: "c" });
+    expect(r.tools).toHaveLength(2);
+    expect(r.tools[0].resultado_resumen).toBe('{"n":3}');
+  });
+
+  it("fila sin solicitudes ni tools (recién creada): tokens/duración null, no cero — 'no disponible', no un valor fingido", () => {
+    const r = mapEjecucionAgente(filaBase, [], []);
+    expect(r.tokens_in).toBeNull();
+    expect(r.tokens_out).toBeNull();
+    expect(r.duracion_ms).toBeNull();
+    expect(r.toolEnCurso).toBeNull();
+    expect(r.tools).toEqual([]);
+  });
+
+  it("solicitud con tokens en 0 (cero persistido real) se distingue de 'sin solicitudes': el 0 sí se refleja", () => {
+    const r = mapEjecucionAgente(filaBase, [{ request_id: "r1", ejecucion_id: "e1", paso: 1, estado: "completado", bolsa: "investigacion", modelo: "x", tokens_in: 0, tokens_out: 0, duracion_ms: 0, error: null, creado: "t" }], []);
+    expect(r.tokens_in).toBe(0);
+    expect(r.tokens_out).toBe(0);
+    expect(r.duracion_ms).toBe(0);
   });
 });
