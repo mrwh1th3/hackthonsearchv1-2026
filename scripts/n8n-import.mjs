@@ -8,11 +8,17 @@ import path from 'node:path';
 import { leerEnv, exigir, root } from './env.mjs';
 
 const ORDEN = ['FORENSE_ejecutar_agente', 'FORENSE_reintento', 'FORENSE_editar_expediente', 'FORENSE_investigar_cluster',
-  'FORENSE_corrida', 'FORENSE_inyectar', 'FORENSE_notificar_completada', 'FORENSE_resultado_llamada', 'FORENSE_reconciliador', 'FORENSE_errores'];
+  'FORENSE_corrida', 'FORENSE_inyectar', 'FORENSE_notificar_completada', 'FORENSE_resultado_llamada', 'FORENSE_ia_complemento', 'FORENSE_reconciliador', 'FORENSE_errores'];
 const PENDIENTE = {
   PENDIENTE_FORENSE_EJECUTAR_AGENTE: 'FORENSE_ejecutar_agente', PENDIENTE_FORENSE_REINTENTO: 'FORENSE_reintento',
   PENDIENTE_FORENSE_NOTIFICAR_COMPLETADA: 'FORENSE_notificar_completada', PENDIENTE_FORENSE_INVESTIGAR_CLUSTER: 'FORENSE_investigar_cluster',
   PENDIENTE_FORENSE_EDITAR_EXPEDIENTE: 'FORENSE_editar_expediente', PENDIENTE_FORENSE_CORRIDA: 'FORENSE_corrida', PENDIENTE_FORENSE_INYECTAR: 'FORENSE_inyectar',
+  PENDIENTE_FORENSE_IA_COMPLEMENTO: 'FORENSE_ia_complemento',
+};
+// IDs de credenciales del proyecto personal Forense (n8n list_credentials 2026-09-13).
+const CREDENCIALES = {
+  'Forense Postgres': 'G61PZm3lwWM7LdiR', 'Forense Supabase': 'bPyDp4RQqI4716uJ', 'Forense Webhook': 'FPuQLMJYz3TadH84',
+  'ElevenLabs Forense': 'AW5oXBN1OSZ9EJcc', 'Anthropic account': 'QJog88Rn91Iuirjz',
 };
 const args = process.argv.slice(2);
 const dry = args.includes('--dry-run');
@@ -47,6 +53,13 @@ function preparar(nombre, wf) {
   }
   if (supabaseUrl) texto = texto.split('https://PENDIENTE_SUPABASE_REF.supabase.co').join(supabaseUrl);
   const w = JSON.parse(texto);
+  // Sin id, n8n asigna la primera credencial del tipo, incluso de proyectos de clientes. Fijar por id.
+  for (const n of w.nodes) for (const [tipo, c] of Object.entries(n.credentials || {})) {
+    const id = CREDENCIALES[c.name];
+    if (!id && c.name === 'Gemini API key') continue; // no existe credencial httpQueryAuth en la instancia: nada que suplantar
+    if (!id) throw new Error(`credencial sin id conocido: ${c.name} (${tipo}) en ${nombre}/${n.name}`);
+    n.credentials[tipo] = { id, name: c.name };
+  }
   // La API pública solo admite estos campos en create/update.
   const cuerpo = { name: nombre, nodes: w.nodes, connections: w.connections, settings: w.settings || { executionOrder: 'v1' } };
   if (w.staticData) cuerpo.staticData = w.staticData;
