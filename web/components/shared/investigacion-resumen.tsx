@@ -5,10 +5,11 @@ import { ChevronDown } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { NivelBadge } from "./badges";
 import { CasoDetalleCompleto } from "./caso-detalle-completo";
-import { AuditorResultadoCompleto } from "./auditor-resultado";
+import { HallazgoCard, SeccionCorridaAuditor, TablaLeads } from "./auditor-resultado";
+import { emparejarAuditor } from "@/lib/analisis/emparejar-auditor";
 import { ChartPanel } from "./chart-panel";
 import { ClusterForceGraph } from "./force-graph";
-import type { AuditorResultado, CasoDetalle, ClusterResumen, ContrasteCaso, Corrida, EventoForense, GrafoArista, GrafoCluster, GrafoNodo, TrayectoriaPunto } from "@/lib/data";
+import type { AuditorHallazgo, AuditorLead, AuditorResultado, CasoDetalle, ClusterResumen, ContrasteCaso, Corrida, EventoForense, GrafoArista, GrafoCluster, GrafoNodo, TrayectoriaPunto } from "@/lib/data";
 import type { AnotacionAgenteIA, EjecucionesCaso } from "@/lib/data/privado";
 import { derivarCadenaExplicacion } from "@/lib/analisis/cadena-explicacion";
 import { costoMostrado } from "@/lib/analisis/costo";
@@ -84,6 +85,18 @@ export function ResumenInvestigacion({
   /** Pizarrón de los 5 agentes IA de TODA la investigación (`obtenerAnotacionesAgenteIAPrivadas`, migración 028). `[]` en fixture o sin complemento IA todavía. */
   anotacionesIA?: AnotacionAgenteIA[];
 }) {
+  // Emparejamiento determinista caso↔hallazgo/lead del auditor (feedback
+  // 2026-09-12): `casos[i].auditorResultado` es el mismo objeto de
+  // `forense.auditor_resultados` repetido por caso (una fila por corrida),
+  // así que basta tomar el del primer caso. Lo que no calza con ningún caso
+  // de esta investigación queda en "Corrida" (`SeccionCorridaAuditor`), no
+  // se pierde ni se repite.
+  const auditorResultado = casos[0]?.auditorResultado ?? null;
+  const emparejamiento = useMemo(
+    () => emparejarAuditor(casos.map((c) => c.detalle.caso), auditorResultado),
+    [casos, auditorResultado],
+  );
+
   const duraciones = casos.map(duracionCaso);
   const duracionTotal = duraciones.some((d) => d !== null) ? duraciones.reduce<number>((a, d) => a + (d ?? 0), 0) : null;
 
@@ -226,24 +239,32 @@ export function ResumenInvestigacion({
           <span className="text-[11px] uppercase tracking-[0.05em] text-text-subtle">Casos encontrados ({casos.length})</span>
           <div className="flex flex-col gap-1.5">
             {casos.map((c, i) => (
-              <CasoFila key={c.detalle.caso.id} caso={c} duracionMs={duraciones[i]} />
+              <CasoFila
+                key={c.detalle.caso.id}
+                caso={c}
+                duracionMs={duraciones[i]}
+                auditor={emparejamiento.porCaso.get(c.detalle.caso.id) ?? { hallazgo: null, leads: [] }}
+              />
             ))}
           </div>
         </div>
       )}
 
       {/*
-        Resultado del auditor determinista SIN filtrar, UNA sola vez para
-        toda la investigación (no por caso): `casos[i].auditorResultado` es
-        el mismo objeto de `forense.auditor_resultados` (una fila por
-        corrida, no por caso) repetido en cada `CasoConContexto` — pintarlo
-        una vez evita duplicar hasta 330 KB de JSON por cada fila de
-        `CasoFila` (feedback del coordinador). "Sin filtrar": cada hallazgo,
-        exhibit, defensa, lead cerrado y run_metadata, con render genérico
-        para cualquier campo que `AuditorHallazgo`/`AuditorLead` no tipen.
+        Lo que NO pertenece a ningún caso mostrado (feedback 2026-09-12: la
+        info del auditor va segmentada DENTRO de cada caso; aquí sólo queda
+        el residuo de la corrida — run_metadata, métricas globales, y
+        hallazgos/leads que no emparejaron con ningún `caso_id` de esta
+        investigación). El resto ya se ve en cada `CasoFila` de abajo.
       */}
-      <SeccionColapsable titulo="Resultado completo del auditor determinista (sin filtrar)" abiertaPorDefecto={false}>
-        {() => <AuditorResultadoCompleto resultado={casos[0]?.auditorResultado ?? null} />}
+      <SeccionColapsable titulo="Corrida (fuera de los casos de esta investigación)" abiertaPorDefecto={false}>
+        {() => (
+          <SeccionCorridaAuditor
+            resultado={auditorResultado}
+            hallazgosSinCaso={emparejamiento.hallazgosSinCaso}
+            leadsSinCaso={emparejamiento.leadsSinCaso}
+          />
+        )}
       </SeccionColapsable>
 
       {/*
@@ -261,7 +282,16 @@ export function ResumenInvestigacion({
   );
 }
 
-function CasoFila({ caso, duracionMs }: { caso: CasoConContexto; duracionMs: number | null }) {
+function CasoFila({
+  caso,
+  duracionMs,
+  auditor,
+}: {
+  caso: CasoConContexto;
+  duracionMs: number | null;
+  /** Hallazgo y leads del auditor determinista que emparejan con ESTE caso (`lib/analisis/emparejar-auditor.ts`). */
+  auditor: { hallazgo: AuditorHallazgo | null; leads: AuditorLead[] };
+}) {
   const [abierto, setAbierto] = useState(false);
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const { caso: c, pistas } = caso.detalle;
@@ -364,6 +394,31 @@ function CasoFila({ caso, duracionMs }: { caso: CasoConContexto; duracionMs: num
           <SeccionColapsable titulo="Hallazgos completos, defensa, dictamen, Contraste y Trayectoria" abiertaPorDefecto={false}>
             {() => <CasoDetalleCompleto detalle={caso.detalle} bitacora={caso.bitacora} contraste={caso.contraste} trayectoria={caso.trayectoria} />}
           </SeccionColapsable>
+
+          {(auditor.hallazgo || auditor.leads.length > 0) && (
+            <SeccionColapsable
+              titulo={`Hallazgo del auditor determinista${auditor.hallazgo ? "" : " (sin hallazgo propio)"} y leads relacionados (${auditor.leads.length})`}
+              abiertaPorDefecto={false}
+            >
+              {() => (
+                <div className="flex flex-col gap-4">
+                  {auditor.hallazgo ? (
+                    <HallazgoCard f={auditor.hallazgo} />
+                  ) : (
+                    <p className="text-[13px] text-text-subtle">
+                      Este caso no tiene un hallazgo propio en <code className="font-mono">forense.auditor_resultados</code>; sólo leads relacionados por RFC.
+                    </p>
+                  )}
+                  {auditor.leads.length > 0 && (
+                    <div>
+                      <div className="mb-2 text-[11.5px] uppercase tracking-wide text-text-muted">Leads cerrados relacionados (mismo RFC)</div>
+                      <TablaLeads leads={auditor.leads} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </SeccionColapsable>
+          )}
 
           <SeccionColapsable titulo="Cadena de explicación" abiertaPorDefecto={false}>
             {() => <CadenaExplicacionVista auditorResultado={caso.auditorResultado} rfc={c.rfc_principal} />}
