@@ -923,6 +923,28 @@ language sql stable security definer set search_path = '' as $$
    limit greatest(coalesce(p_limite, 2), 0)
 $$;
 
+-- Red de seguridad del cierre: si la ejecución n8n de FORENSE_ia_complemento
+-- muere, nadie más llamaría a cerrar_ia_complemento y el caso quedaría en
+-- ronda1 sin nivel ni evento de fin. El reconciliador cierra los complementos
+-- cuyos agentes ya terminaron o cuya barrera venció.
+create or replace function forense.ia_complementos_por_cerrar(p_limite int default 4)
+returns table (caso_id uuid, investigacion_id text)
+language sql stable security definer set search_path = '' as $$
+  select c.id, c.origen_valor
+    from forense.casos c
+   where c.origen = 'ia_complemento'
+     and c.estado <> 'dictaminado'
+     and (not exists (select 1 from forense.ejecuciones_agente e
+                       where e.caso_id = c.id and e.estado_interno not in ('terminado','error','timeout'))
+          or exists (select 1 from forense.pasos_pipeline p
+                      where p.caso_id = c.id and p.paso = 'ia'
+                        and p.deadline is not null and p.deadline < now()))
+     -- Margen para que el propio workflow cierre primero (sondea cada 15 s).
+     and c.creado < now() - interval '60 seconds'
+   order by c.creado
+   limit greatest(coalesce(p_limite, 4), 0)
+$$;
+
 -- Vista para el BFF: telemetría sin checkpoint ni transcript.
 create or replace view forense.v_agentes_ia as
   select e.id as ejecucion_id, e.investigacion_id, e.corrida_id, e.caso_id, e.tarea_id, e.rol, e.familia,
@@ -969,7 +991,8 @@ begin
     'forense.abrir_ia_complemento(uuid)',
     'forense.registrar_turno_ia(uuid,text,jsonb,text,text,text[],text,text,boolean,jsonb)',
     'forense.registrar_fin_agente(uuid)', 'forense.cerrar_ia_complemento(uuid)',
-    'forense.recuperar_pasos(text,int)', 'forense.ia_complementos_pendientes(int)'
+    'forense.recuperar_pasos(text,int)', 'forense.ia_complementos_pendientes(int)',
+    'forense.ia_complementos_por_cerrar(int)'
   ] loop
     execute format('revoke execute on function %s from public', f);
     if exists (select 1 from pg_roles where rolname = 'service_role') then

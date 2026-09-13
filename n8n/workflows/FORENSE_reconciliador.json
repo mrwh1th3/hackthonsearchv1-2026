@@ -204,6 +204,25 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "-- DEPENDE de db/028. Agentes terminados o barrera vencida y nadie cerró: nivel por código determinista.\nSELECT h.caso_id, x.ok, x.nivel\n  FROM forense.ia_complementos_por_cerrar(4) h\n  CROSS JOIN LATERAL jsonb_to_record(forense.cerrar_ia_complemento(h.caso_id))\n    AS x(ok boolean, nivel text)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        420
+      ],
+      "name": "Cerrar complementos IA huérfanos",
+      "credentials": {
+        "postgres": {
+          "name": "Forense Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
         "content": "FORENSE_reconciliador (17 §3).\n\nCada 10 s, configurable y a validar en la instancia.\nEs la RED DE SEGURIDAD, no el camino normal.\nNo hace polling al LLM.",
         "height": 200,
         "width": 400,
@@ -234,6 +253,11 @@
           },
           {
             "node": "Complementos IA pendientes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cerrar complementos IA huérfanos",
             "type": "main",
             "index": 0
           }

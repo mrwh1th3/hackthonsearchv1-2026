@@ -187,8 +187,28 @@ begin
   perform pruebas.assert('028 recuperaciones agotadas cierran en error',
     (select estado_interno = 'error' from forense.ejecuciones_agente where investigacion_id = v_inv and familia = 'T'), '');
 
+  -- Forma del paquete (no solo su tamaño).
+  perform pruebas.assert('028 paquete: entidades son strings y registros son referencias canónicas',
+    (select jsonb_typeof(a.contenido#>'{determinista,hallazgos,0,entidades,0}') = 'string'
+        and jsonb_array_length(a.contenido#>'{determinista,hallazgos,0,entidades}') = 3
+        and a.contenido#>>'{determinista,hallazgos,0,registros,0}' like 'ATR:contracts:%'
+        and a.contenido#>>'{determinista,leads_cerrados,0,cerrado_por}' = 'challenger'
+       from forense.artefactos_contexto a where a.caso_id = v_caso), '');
+
+  -- Red de seguridad: workflow muerto → el reconciliador encuentra el caso por cerrar.
+  -- Un agente (E) sigue vivo pero la barrera venció: también se cierra y se corta.
+  update forense.ejecuciones_agente set estado_interno = 'terminado'
+   where investigacion_id = v_inv and familia <> 'E' and estado_interno not in ('error','timeout');
+  update forense.ejecuciones_agente set estado_interno = 'solicitar_modelo' where investigacion_id = v_inv and familia = 'E';
+  update forense.pasos_pipeline set deadline = now() - interval '1 minute' where caso_id = v_caso and paso = 'ia';
+  update forense.casos set creado = now() - interval '10 minutes' where id = v_caso;
+  perform pruebas.assert('028 ia_complementos_por_cerrar encuentra el complemento huérfano',
+    exists (select 1 from forense.ia_complementos_por_cerrar(4) p where p.caso_id = v_caso), '');
+
   -- Cierre determinista.
   r := forense.cerrar_ia_complemento(v_caso);
+  perform pruebas.assert('028 cerrado ya no aparece por cerrar',
+    not exists (select 1 from forense.ia_complementos_por_cerrar(4) p where p.caso_id = v_caso), '');
   perform pruebas.assert('028 cierre sin señales = sin_hallazgos',
     r->>'nivel' = 'sin_hallazgos' and (select estado = 'dictaminado' from forense.casos where id = v_caso), r::text);
   perform pruebas.assert('028 cierre corta agentes vivos',

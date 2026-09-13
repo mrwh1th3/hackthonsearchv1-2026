@@ -2432,6 +2432,22 @@ export function reconciliador() {
     investigacion_id: '={{ $json.investigacion_id }}',
   }, { esperar: false, modo: 'each' }));
 
+  // Red de seguridad del cierre: si la ejecución de FORENSE_ia_complemento
+  // murió, el caso IA quedaría sin nivel ni `ia_complemento_fin`. Una sola
+  // consulta por vuelta; cerrar_ia_complemento es idempotente.
+  fila = 3; columna = 1;
+  add(sql(
+    'Cerrar complementos IA huérfanos',
+    [
+      'SELECT h.caso_id, x.ok, x.nivel',
+      '  FROM forense.ia_complementos_por_cerrar(4) h',
+      '  CROSS JOIN LATERAL jsonb_to_record(forense.cerrar_ia_complemento(h.caso_id))',
+      '    AS x(ok boolean, nivel text)',
+    ].join('\n'),
+    null,
+    'DEPENDE de db/028. Agentes terminados o barrera vencida y nadie cerró: nivel por código determinista.',
+  ));
+
   fila = 3; columna = 0;
   add(nota('Nota reconciliador', [
     'FORENSE_reconciliador (17 §3).',
@@ -2442,7 +2458,7 @@ export function reconciliador() {
   ].join('\n'), 200, 400));
 
   const connections = conectar([
-    ['Cada 10 s', ['Slots vencidos', 'Barreras vencidas', 'Complementos IA pendientes']],
+    ['Cada 10 s', ['Slots vencidos', 'Barreras vencidas', 'Complementos IA pendientes', 'Cerrar complementos IA huérfanos']],
     ['Complementos IA pendientes', 'Lanzar complemento IA'],
     ['Slots vencidos', 'Pasos recuperables'],
     ['Pasos recuperables', 'Redespachar pasos'],
@@ -2886,6 +2902,7 @@ export const CONTRATOS_NODOS = Object.freeze({
     'Pasos recuperables': ['execution_id', 'caso_id', 'tarea_id', 'corrida_id', 'rol', 'owner'],
     'Complementos IA pendientes': ['investigacion_id', 'corrida_id'],
     'Lanzar complemento IA': [],
+    'Cerrar complementos IA huérfanos': ['caso_id', 'ok', 'nivel'],
     'Redespachar pasos': [],
     'Barreras vencidas': ['caso_id', 'paso', 'cerradas', 'limitaciones'],
     'Outbox pendiente': ['evento_id', 'investigacion_id', 'intentos'],
