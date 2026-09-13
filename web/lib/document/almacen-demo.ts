@@ -131,6 +131,8 @@ export function borradorActual(casoId: string): Borrador | null {
 export type ResultadoEscritura<T> =
   | { ok: true; valor: T }
   | { ok: false; motivo: "conflicto_version"; version_actual: number }
+  /** La versión vigente ya está `validado`: el autoguardado no la sobrescribe (no es conflicto). */
+  | { ok: false; motivo: "version_validada"; version_actual: number }
   | {
       ok: false;
       motivo:

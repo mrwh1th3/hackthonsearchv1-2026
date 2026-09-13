@@ -52,6 +52,8 @@ export interface PropsDocumentWorkspace {
   evidencia: EvidenciaCita[];
   origen: "fixture" | "supabase";
   nivel?: string;
+  /** Avisa cuando la versión vigente cambia aquí (p. ej. editar una validada abre la siguiente). */
+  onVersionCambiada?: (version: number) => void;
 }
 
 type Modo = "editar" | "sugerir" | "lectura";
@@ -60,6 +62,7 @@ type EstadoGuardado =
   | { tipo: "guardando" }
   | { tipo: "guardado"; hora: string }
   | { tipo: "conflicto"; versionActual: number }
+  | { tipo: "validada"; versionActual: number }
   | { tipo: "error"; mensaje: string };
 
 const ZOOMS = [75, 100, 125, 150] as const;
@@ -77,6 +80,7 @@ export function DocumentWorkspace({
   evidencia,
   origen,
   nivel,
+  onVersionCambiada,
 }: PropsDocumentWorkspace) {
   const validadas = useMemo(() => new Set(referenciasValidadas), [referenciasValidadas]);
   const [documentoActual, setDocumentoActual] = useState<Documento>(documento);
@@ -97,6 +101,11 @@ export function DocumentWorkspace({
   const lienzoRef = useRef<HTMLDivElement>(null);
   const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
   const versionRef = useRef(version);
+  // Documento tal como quedó al montar (ya normalizado por las extensiones) o
+  // tras el último guardado. Abrir el reporte hace que TipTap normalice el
+  // contenido y dispare `onUpdate` sin que nadie escriba: sin esta referencia
+  // eso lanzaba un autoguardado y el servidor lo rechazaba sólo por mirar.
+  const baseRef = useRef<string | null>(null);
   versionRef.current = version;
 
   const abrirCita = useCallback((referencia: string) => setCitaAbierta(referencia), []);
@@ -119,9 +128,19 @@ export function DocumentWorkspace({
     editorProps: {
       attributes: { class: "hoja-prosa", "aria-label": "Documento del reporte", role: "textbox" },
     },
+    onCreate: ({ editor: instancia }) => {
+      baseRef.current = JSON.stringify(normalizarDocumento(instancia.getJSON()));
+    },
     onUpdate: ({ editor: instancia }) => {
       const actualizado = normalizarDocumento(instancia.getJSON());
       setDocumentoActual(actualizado);
+      const serializado = JSON.stringify(actualizado);
+      // La primera normalización (ids de bloque, etc.) llega antes o sin `onCreate`: se adopta como base.
+      if (baseRef.current === null) {
+        baseRef.current = serializado;
+        return;
+      }
+      if (serializado === baseRef.current) return;
       programarAutoguardado(actualizado);
     },
     onSelectionUpdate: ({ editor: instancia }) => {
@@ -154,12 +173,24 @@ export function DocumentWorkspace({
       setGuardado({ tipo: "guardando" });
       const resultado = await guardarBorradorRemoto({ caso_id: casoId, version_base: versionRef.current, documento: doc });
       if (resultado.ok) {
+        baseRef.current = JSON.stringify(doc);
+        // Editar una versión validada abre la siguiente como borrador: se sigue sobre esa.
+        if (resultado.datos.version_base > versionRef.current) {
+          versionRef.current = resultado.datos.version_base;
+          setVersion(resultado.datos.version_base);
+          setRevision("borrador");
+          onVersionCambiada?.(resultado.datos.version_base);
+        }
         setGuardado({ tipo: "guardado", hora: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) });
         return;
       }
       if (resultado.error.error === "conflicto_version" && resultado.error.version_actual) {
         // El borrador local NO se descarta ni se sobrescribe con el servidor.
         setGuardado({ tipo: "conflicto", versionActual: resultado.error.version_actual });
+        return;
+      }
+      if (resultado.error.error === "version_validada" && resultado.error.version_actual) {
+        setGuardado({ tipo: "validada", versionActual: resultado.error.version_actual });
         return;
       }
       setGuardado({
@@ -170,7 +201,7 @@ export function DocumentWorkspace({
             : `No se pudo guardar (${resultado.error.error}).`,
       });
     },
-    [casoId],
+    [casoId, onVersionCambiada],
   );
 
   const programarAutoguardado = useCallback(
@@ -204,6 +235,7 @@ export function DocumentWorkspace({
     setDocumentoActual(reporte.contenido_json);
     // `emitUpdate: false` evita disparar onUpdate y, con él, un autoguardado espurio.
     editor?.commands.setContent(reporte.contenido_json, { emitUpdate: false });
+    baseRef.current = editor ? JSON.stringify(normalizarDocumento(editor.getJSON())) : null;
     setGuardado({ tipo: "limpio" });
     if (revisarCitas) toast.warning("La versión nueva tiene citas por revisar");
   }
@@ -314,7 +346,7 @@ export function DocumentWorkspace({
             aria-live="polite"
             className={cn(
               "inline-flex items-center gap-1 text-[11px]",
-              guardado.tipo === "error" || guardado.tipo === "conflicto" ? "text-error" : "text-text-subtle",
+              guardado.tipo === "error" || guardado.tipo === "conflicto" || guardado.tipo === "validada" ? "text-error" : "text-text-subtle",
             )}
           >
             {guardado.tipo === "guardando" && (
@@ -331,6 +363,12 @@ export function DocumentWorkspace({
               <>
                 <AlertTriangle size={11} aria-hidden /> Conflicto: el reporte está en la v{guardado.versionActual}. Tu borrador
                 se conserva.
+              </>
+            )}
+            {guardado.tipo === "validada" && (
+              <>
+                <AlertTriangle size={11} aria-hidden /> La v{guardado.versionActual} está validada y no se sobrescribe. Pide el
+                cambio en el chat y usa Aplicar para crear una versión nueva.
               </>
             )}
             {guardado.tipo === "error" && (

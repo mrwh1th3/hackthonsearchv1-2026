@@ -58,6 +58,9 @@ export async function POST(req: Request) {
     if (resultado.motivo === "conflicto_version") {
       return NextResponse.json({ error: "conflicto_version", version_actual: resultado.version_actual }, { status: 409 });
     }
+    if (resultado.motivo === "version_validada") {
+      return NextResponse.json({ error: "version_validada", version_actual: resultado.version_actual }, { status: 409 });
+    }
     return NextResponse.json({ error: resultado.motivo }, { status: 404 });
   }
 

@@ -158,7 +158,7 @@ export function ResumenInvestigacion({
                 <XAxis dataKey="rfc" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v) => (typeof v === "number" ? v.toLocaleString("es-MX") : String(v ?? ""))} />
-                <Bar dataKey="monto" fill="var(--primary)" />
+                <Bar dataKey="monto" fill="var(--primary)" radius={[10, 10, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartPanel>
@@ -193,7 +193,7 @@ export function ResumenInvestigacion({
                 <XAxis dataKey="nivel" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={50} />
                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="n" fill="var(--border-strong)" />
+                <Bar dataKey="n" fill="var(--border-strong)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </ChartPanel>

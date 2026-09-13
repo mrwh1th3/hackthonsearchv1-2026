@@ -45,7 +45,7 @@ import {
   type ResultadoEscritura,
 } from "./almacen-demo";
 import { normalizarDocumento } from "./documento";
-import { aMarkdown } from "./markdown";
+import { aMarkdown, desdeMarkdown } from "./markdown";
 import type { Documento, Propuesta, Reporte } from "./tipos";
 
 /**
@@ -199,7 +199,14 @@ interface FilaExpediente {
 }
 
 function aReporte(fila: FilaExpediente): Reporte {
-  const documento = normalizarDocumento(fila.contenido_json ?? { type: "doc", content: [] });
+  // Los expedientes que publica el Redactor/auditor solo traen `markdown`
+  // (`contenido_json` NULL): sin este respaldo el editor abría una hoja en blanco.
+  // `desdeMarkdown` da ids `blk-N` deterministas, los mismos en cada lectura.
+  const documento = fila.contenido_json
+    ? normalizarDocumento(fila.contenido_json)
+    : fila.markdown
+      ? desdeMarkdown(fila.markdown)
+      : normalizarDocumento({ type: "doc", content: [] });
   const markdown = fila.markdown ?? aMarkdown(documento);
   return {
     caso_id: fila.caso_id,
@@ -313,9 +320,9 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
     /**
      * Autoguardado: **no crea versión** (15 §10). Actualiza `contenido_json`
      * de la versión vigente y la deja `borrador` (006 §4: «el autoguardado
-     * puede dejar `borrador`»). Dos guardas: solo la versión máxima y solo si
-     * todavía NO está `validado` — autoguardar sobre una versión validada
-     * destruiría un entregable, así que eso es conflicto, no escritura.
+     * puede dejar `borrador`»). Solo sobre la versión máxima. Si esa versión ya
+     * está `validado`, sobrescribirla destruiría un entregable: la primera
+     * edición abre la versión siguiente como `borrador` (ver abajo).
      */
     async guardarBorrador(casoId, args) {
       const fila = await cabeza(casoId);
@@ -323,10 +330,45 @@ export function crearRepositorioSupabase(cliente: ClienteForense): RepositorioEx
       if (fila.version !== args.version_base) {
         return { ok: false, motivo: "conflicto_version", version_actual: fila.version };
       }
-      if (fila.estado_revision === "validado") {
-        return { ok: false, motivo: "conflicto_version", version_actual: fila.version };
-      }
       const markdown = aMarkdown(args.documento);
+      if (fila.estado_revision === "validado") {
+        // Autoguardar encima de una versión validada destruiría un entregable.
+        // En vez de rechazar la edición, la primera escritura abre la versión
+        // siguiente como `borrador` (autor humano) y la validada queda intacta
+        // en el historial; los autoguardados siguientes escriben en esa.
+        const nueva = fila.version + 1;
+        const { error: errorInsert } = await cliente.from("expedientes").insert({
+          caso_id: casoId,
+          idempotency_key: `borrador:${casoId}:v${nueva}`,
+          version: nueva,
+          markdown,
+          contenido_json: args.documento,
+          autor: "humano",
+          estado_revision: "borrador",
+          version_base: fila.version,
+        });
+        if (errorInsert) {
+          // Carrera (dos autoguardados a la vez): la otra ya abrió la versión.
+          const cabezaNueva = await cabeza(casoId);
+          return { ok: false, motivo: "conflicto_version", version_actual: cabezaNueva?.version ?? fila.version };
+        }
+        await bitacoraEdicion(casoId, {
+          evento_real: "borrador_desde_validada",
+          accion: "autoguardado",
+          version_base: fila.version,
+          version_resultante: nueva,
+        });
+        return {
+          ok: true,
+          valor: {
+            version_base: nueva,
+            documento: args.documento,
+            markdown,
+            content_hash: hashContenido(args.documento, markdown),
+            guardado: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+          },
+        };
+      }
       const { error } = await cliente
         .from("expedientes")
         .update({

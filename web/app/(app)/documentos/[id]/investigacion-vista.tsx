@@ -141,6 +141,7 @@ export function InvestigacionVista({
                 origen={origen}
                 referenciasValidadas={referenciasValidadas}
                 evidencia={evidenciaCitas}
+                onVersionCambiada={setVersionChat}
               />
             </div>
           </div>
