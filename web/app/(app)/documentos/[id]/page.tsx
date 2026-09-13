@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getDataSource } from "@/lib/data";
-import { obtenerInvestigacionPrivada, obtenerHistorialPrivado } from "@/lib/data/privado";
+import { obtenerEjecucionesPrivadas, obtenerInvestigacionPrivada, obtenerHistorialPrivado } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
 import { ZONA_POR_OMISION } from "@/lib/date/formato";
 import { resolveDateRangePreset } from "@/lib/date/range";
@@ -46,24 +46,42 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   // primero. Se traen todos con su cluster (para el puntaje de riesgo real,
   // `clusters.score`) y su propio recorte de bitácora — nada inventado, todo
   // sale de lo ya persistido.
+  //
+  // Contraste/Trayectoria/runtime por caso, no sólo del primero (pedido del
+  // coordinador 2026-09-12: "fetch Contraste/Trayectoria per case, not only
+  // the first"). `auditorResultado` es UNA consulta por corrida (no por
+  // caso: es el mismo documento para todos), usada por cada fila para
+  // derivar su "Cadena de explicación" si le corresponde un hallazgo.
   const detalles = await Promise.all(inv.caso_ids.map((id) => (id === casoId ? Promise.resolve(detalle) : ds.getCasoDetalle(id))));
-  const [casosCargados, estadisticas] = await Promise.all([
+  const [casosCargados, estadisticas, auditorResultado] = await Promise.all([
     Promise.all(
       detalles
         .filter((d): d is NonNullable<typeof d> => d !== null)
         .map(async (d) => {
-          const [cluster, grafo] = await Promise.all([ds.getCluster(d.caso.cluster_id), ds.getClusterGrafo(d.caso.cluster_id)]);
+          const [cluster, grafo, contrasteCaso, trayectoriaCaso, ejecucionesCaso] = await Promise.all([
+            ds.getCluster(d.caso.cluster_id),
+            ds.getClusterGrafo(d.caso.cluster_id),
+            ds.getContraste(d.caso.id),
+            ds.getTrayectoria(d.caso.rfc_principal, d.caso.corrida_id),
+            obtenerEjecucionesPrivadas(d.caso.id).catch(() => ({ ejecuciones: [], tokensTotales: null, costoTotal: null })),
+          ]);
           return {
             detalle: d,
             cluster,
             grafo,
             bitacora: bitacoraCorrida.filter((e) => e.caso_id === d.caso.id),
+            contraste: contrasteCaso,
+            trayectoria: trayectoriaCaso,
+            ejecuciones: ejecucionesCaso,
+            // Se completa abajo una vez que `auditorResultado` está resuelto (misma corrida para todos los casos).
+            auditorResultado: null as Awaited<ReturnType<typeof ds.getAuditorResultado>>,
           };
         }),
     ),
     ds.getEstadisticas(inv.corrida_id),
+    ds.getAuditorResultado(inv.corrida_id).catch(() => null),
   ]);
-  const casos = casosCargados;
+  const casos = casosCargados.map((c) => ({ ...c, auditorResultado }));
 
   const [contraste, trayectoria, entidad] = detalle
     ? await Promise.all([

@@ -401,6 +401,13 @@ export interface EjecucionAgenteInfo {
   costo: number | null;
   duracion_ms: number | null;
   toolEnCurso: { nombre: string | null; desde: string } | null;
+  /**
+   * `checkpoint_json.errores_contrato` (jsonb libre, sin schema fijo
+   * todavía — ver solicitudes_coordinador): `null` si la clave no existe en
+   * el checkpoint, `[]` si existe y está vacía (0 errores real). La UI
+   * distingue "no reportado" de "cero errores reales".
+   */
+  erroresContrato: string[] | null;
   tools: Array<{
     id: string;
     nombre: string | null;
@@ -441,6 +448,8 @@ export function mapEjecucionAgente(
     ? solicitudes.reduce((s, r) => s + (r.duracion_ms ?? 0), 0)
     : null;
   const enCurso = tools.find((t) => t.estado === "ejecutando");
+  const erroresRaw = fila.checkpoint_json?.errores_contrato;
+  const erroresContrato = Array.isArray(erroresRaw) ? erroresRaw.map((e) => String(e)) : null;
   return {
     id: fila.id,
     caso_id: fila.caso_id,
@@ -458,6 +467,7 @@ export function mapEjecucionAgente(
     costo: null,
     duracion_ms: duracion,
     toolEnCurso: enCurso ? { nombre: enCurso.nombre ?? null, desde: enCurso.creado } : null,
+    erroresContrato,
     tools: tools
       .slice()
       .sort((a, b) => (a.creado < b.creado ? -1 : a.creado > b.creado ? 1 : 0))

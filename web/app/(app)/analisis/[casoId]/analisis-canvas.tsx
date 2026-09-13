@@ -22,6 +22,14 @@ import {
 import { fechaHora } from "@/lib/date/formato";
 import { cn } from "@/lib/utils";
 import type { EjecucionAgenteInfo } from "@/lib/data/privado";
+import { estimarCostoUsd, formatoCostoEstimado } from "@/lib/analisis/costo";
+
+const ESTADOS_RUNTIME_ACTIVOS = new Set(["preparar_contexto", "solicitar_modelo", "ejecutar_herramienta", "validar_salida", "reparar_json", "espera_reintento"]);
+
+/** `true` mientras el runtime sigue en un estado activo (no terminó/erró/hizo timeout). */
+function runtimeActivo(estadoInterno: string): boolean {
+  return ESTADOS_RUNTIME_ACTIVOS.has(estadoInterno);
+}
 
 export interface EstadoAnalisis {
   caso: Caso | null;
@@ -116,11 +124,6 @@ function Flecha({ alto = 22 }: { alto?: number }) {
   );
 }
 
-/** `costo` no existe en `llm_solicitudes` todavía (ver `EjecucionAgenteInfo.costo`): "no disp." en vez de "$0.00". */
-function formatoCosto(n: number | null): string {
-  return n == null ? "costo no disp." : `$${n.toFixed(2)}`;
-}
-
 function TarjetaAgente({ nodo, ahora, onAbrir }: { nodo: NodoAgente; ahora: number; onAbrir: () => void }) {
   const e = ESTADO_NODO[nodo.estado];
   const fin = nodo.detenido ? new Date(nodo.detenido).getTime() : ahora;
@@ -128,6 +131,11 @@ function TarjetaAgente({ nodo, ahora, onAbrir }: { nodo: NodoAgente; ahora: numb
   // Tokens reales de `llm_solicitudes` si el runtime ya instrumentó esta
   // tarea; si no, se cae al conteo de bitácora (`nodo.tokens`) que ya existía.
   const tokensMostrados = rt && (rt.tokens_in != null || rt.tokens_out != null) ? (rt.tokens_in ?? 0) + (rt.tokens_out ?? 0) : nodo.tokens;
+  // Contador en vivo de runtime: `creado` → `actualizado` si ya paró
+  // (terminado/error/timeout/cancelada), o `creado` → `ahora` mientras sigue
+  // activo — independiente del reloj de la tarea (`nodo.iniciado`/`detenido`),
+  // porque el runtime puede seguir corriendo tras el último evento de bitácora.
+  const elapsedRuntime = rt ? duracion(rt.creado, runtimeActivo(rt.estado_interno) && !rt.cancelada ? ahora : new Date(rt.actualizado).getTime()) : null;
   return (
     <button
       type="button"
@@ -148,6 +156,11 @@ function TarjetaAgente({ nodo, ahora, onAbrir }: { nodo: NodoAgente; ahora: numb
       <span className="text-[11px] text-text-subtle">
         {duracion(nodo.iniciado, fin)} · {formatoTokens(tokensMostrados)} tokens
       </span>
+      {elapsedRuntime && (
+        <span className="text-[10.5px] text-text-subtle" title="Tiempo de runtime: creado → actualizado (o ahora, si sigue activo)">
+          runtime: {elapsedRuntime}
+        </span>
+      )}
       {rt?.toolEnCurso && (
         <span className="flex items-center gap-1 text-[10.5px] text-live-fg">
           <span className="h-1 w-1 flex-none animate-pulse rounded-full bg-live-dot" aria-hidden />
@@ -266,7 +279,9 @@ function ModalAgente({
                     {nodo.runtime.tokens_in != null || nodo.runtime.tokens_out != null
                       ? `${formatoTokens(nodo.runtime.tokens_in ?? 0)} in / ${formatoTokens(nodo.runtime.tokens_out ?? 0)} out`
                       : "tokens no disp."}{" "}
-                    · {formatoCosto(nodo.runtime.costo)}
+                    · {formatoCostoEstimado(estimarCostoUsd(nodo.runtime.model_id, nodo.runtime.tokens_in, nodo.runtime.tokens_out))} ·{" "}
+                    {duracion(nodo.runtime.creado, runtimeActivo(nodo.runtime.estado_interno) && !nodo.runtime.cancelada ? ahora : new Date(nodo.runtime.actualizado).getTime())}{" "}
+                    de runtime
                   </p>
                 )}
               </div>
@@ -499,11 +514,14 @@ export function AnalisisCanvas({
               )}
             </h1>
             <p className="m-0 text-[12.5px] text-text-subtle">
-              {duracion(caso?.creado, fin)} de ejecución ·{" "}
+              {arbol.runtimeSpan
+                ? `${duracion(arbol.runtimeSpan.desde, arbol.runtimeSpan.hasta ? new Date(arbol.runtimeSpan.hasta).getTime() : ahora)} de runtime`
+                : `${duracion(caso?.creado, fin)} de ejecución`}{" "}
+              ·{" "}
               {arbol.tokensRuntime
                 ? `${formatoTokens(arbol.tokensRuntime.in + arbol.tokensRuntime.out)} tokens (${formatoTokens(arbol.tokensRuntime.in)} in / ${formatoTokens(arbol.tokensRuntime.out)} out)`
                 : `${formatoTokens(arbol.tokens)} tokens consumidos`}{" "}
-              · {formatoCosto(arbol.costoRuntime)}
+              · {formatoCostoEstimado(arbol.costoEstimadoUsd)}
             </p>
           </header>
 

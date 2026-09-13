@@ -1,5 +1,6 @@
 import type { Caso, EventoForense, Tarea } from "@/lib/data";
 import type { EjecucionAgenteInfo } from "@/lib/data/privado";
+import { estimarCostoUsd } from "./costo";
 
 /**
  * Derivación pura del canvas "Análisis en proceso" (feedback 2026-09-12,
@@ -187,6 +188,10 @@ export interface ArbolAnalisis {
   tokensRuntime: { in: number; out: number } | null;
   /** No hay columna de costo persistida todavía (ver `EjecucionAgenteInfo.costo`); siempre `null` hoy. */
   costoRuntime: number | null;
+  /** Suma de estimados por ejecución (`estimarCostoUsd`, precios públicos): `null` si ninguna ejecución tiene modelo/tokens conocidos. */
+  costoEstimadoUsd: number | null;
+  /** `desde` = primer `creado`, `hasta` = último `actualizado` (o ahora si alguna ejecución sigue activa); `null` sin ejecuciones. */
+  runtimeSpan: { desde: string; hasta: string | null } | null;
 }
 
 export function construirArbol(
@@ -265,6 +270,18 @@ export function construirArbol(
       ? { in: runtime.reduce((s, r) => s + (r.tokens_in ?? 0), 0), out: runtime.reduce((s, r) => s + (r.tokens_out ?? 0), 0) }
       : null;
 
+  const costos = runtime.map((r) => estimarCostoUsd(r.model_id, r.tokens_in, r.tokens_out)).filter((c): c is number => c != null);
+  const costoEstimadoUsd = costos.length > 0 ? costos.reduce((a, b) => a + b, 0) : null;
+
+  const activasRuntime = runtime.filter((r) => r.estado_interno !== "terminado" && r.estado_interno !== "error" && r.estado_interno !== "timeout" && !r.cancelada);
+  const runtimeSpan =
+    runtime.length > 0
+      ? {
+          desde: runtime.reduce((min, r) => (r.creado < min ? r.creado : min), runtime[0].creado),
+          hasta: activasRuntime.length > 0 ? null : runtime.reduce((max, r) => (r.actualizado > max ? r.actualizado : max), runtime[0].actualizado),
+        }
+      : null;
+
   return {
     etapas,
     etapaActual: etapaCaso(caso?.estado),
@@ -272,6 +289,8 @@ export function construirArbol(
     terminado: casoTerminado(caso?.estado),
     tokensRuntime,
     costoRuntime: null,
+    costoEstimadoUsd,
+    runtimeSpan,
   };
 }
 

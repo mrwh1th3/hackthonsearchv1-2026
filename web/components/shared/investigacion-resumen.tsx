@@ -2,20 +2,35 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { NivelBadge } from "./badges";
+import { CasoDetalleCompleto } from "./caso-detalle-completo";
+import { ChartPanel } from "./chart-panel";
 import { ClusterForceGraph } from "./force-graph";
-import type { CasoDetalle, ClusterResumen, Corrida, EventoForense, GrafoArista, GrafoCluster, GrafoNodo } from "@/lib/data";
+import type { AuditorResultado, CasoDetalle, ClusterResumen, ContrasteCaso, Corrida, EventoForense, GrafoArista, GrafoCluster, GrafoNodo, TrayectoriaPunto } from "@/lib/data";
+import type { EjecucionesCaso } from "@/lib/data/privado";
+import { derivarCadenaExplicacion } from "@/lib/analisis/cadena-explicacion";
+import { estimarCostoUsd, formatoCostoEstimado } from "@/lib/analisis/costo";
+import { nombreAgente } from "@/lib/analisis/arbol";
 import { soloFecha, soloHora } from "@/lib/date/formato";
 import { dividirEnSecciones, partirEnCitas } from "@/lib/expediente/citas";
 import { confianzaAnalisis } from "@/lib/expediente/confianza";
 import { narrarInvestigacion, type PasoNarrado } from "@/lib/expediente/narrativa";
 import { cn } from "@/lib/utils";
+import { AgentesChart } from "./agentes-chart";
 
 export interface CasoConContexto {
   detalle: CasoDetalle;
   cluster: ClusterResumen | null;
   grafo: GrafoCluster | null;
   bitacora: EventoForense[];
+  /** Contraste/Trayectoria de ESTE caso (regla 12): antes sólo se traían del primer caso de la investigación. */
+  contraste: ContrasteCaso | null;
+  trayectoria: TrayectoriaPunto[];
+  /** Runtime de agentes de este caso (BFF privado, `obtenerEjecucionesPrivadas`): `ejecuciones: []` cuando la fuente no tiene runtime configurado (fixture) o el caso todavía no registró ninguna. */
+  ejecuciones: EjecucionesCaso;
+  /** Resultado del auditor determinista de la corrida, si aplica — único origen hoy para derivar "Cadena de explicación" (ver `lib/analisis/cadena-explicacion.ts`). */
+  auditorResultado: AuditorResultado | null;
 }
 
 function formatoDuracion(ms: number | null): string {
@@ -81,6 +96,22 @@ export function ResumenInvestigacion({
   const montoAnalizado = [...aristas.values()].reduce((a, x) => a + Number(x.monto || 0), 0);
   const nodos = new Set(casos.flatMap((c) => (c.grafo?.nodos ?? []).map((n) => n.id)));
 
+  // Tokens por agente (rol) agregados de TODAS las ejecuciones de runtime de
+  // la investigación (BFF privado, `obtenerEjecucionesPrivadas` por caso).
+  // `null`/ausente en un caso simplemente no aporta a la suma — nunca se
+  // rellena con 0 para que aparezca en la gráfica.
+  const tokensPorAgenteInvestigacion = Object.values(
+    casos
+      .flatMap((c) => c.ejecuciones.ejecuciones)
+      .reduce<Record<string, { agente: string; tokens_in: number; tokens_out: number }>>((acc, e) => {
+        const k = e.rol;
+        if (!acc[k]) acc[k] = { agente: nombreAgente(k), tokens_in: 0, tokens_out: 0 };
+        acc[k].tokens_in += e.tokens_in ?? 0;
+        acc[k].tokens_out += e.tokens_out ?? 0;
+        return acc;
+      }, {}),
+  );
+
 
   const stats: Array<{ label: string; valor: string; nota?: string }> = [
     { label: "Casos encontrados", valor: `${casos.length}`, nota: corrida ? `${corrida.dataset} · corte ${soloFecha(corrida.fecha_corte)}` : undefined },
@@ -106,6 +137,85 @@ export function ResumenInvestigacion({
           ))}
         </div>
       </div>
+
+      {casos.length > 0 && (
+        <div className="grid gap-2.5 lg:grid-cols-2">
+          <ChartPanel
+            title="Monto en riesgo por caso"
+            unidad="MXN"
+            columns={[
+              { key: "rfc", header: "RFC" },
+              { key: "monto", header: "Monto", align: "right", render: (r) => numero(r.monto) },
+              { key: "nivel", header: "Nivel" },
+            ]}
+            rows={casos.map((c) => ({ rfc: c.detalle.caso.rfc_principal, monto: Number(c.detalle.caso.monto_en_riesgo), nivel: c.detalle.caso.nivel ?? "en curso" }))}
+            getRowKey={(r) => r.rfc}
+            csvFilename="monto-por-caso"
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={casos.map((c) => ({ rfc: c.detalle.caso.rfc_principal, monto: Number(c.detalle.caso.monto_en_riesgo) }))} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="rfc" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => (typeof v === "number" ? v.toLocaleString("es-MX") : String(v ?? ""))} />
+                <Bar dataKey="monto" fill="var(--primary)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartPanel>
+          <ChartPanel
+            title="Casos por nivel"
+            columns={[
+              { key: "nivel", header: "Nivel" },
+              { key: "n", header: "Casos", align: "right" },
+            ]}
+            rows={Object.entries(
+              casos.reduce<Record<string, number>>((acc, c) => {
+                const k = c.detalle.caso.nivel ?? "en curso";
+                acc[k] = (acc[k] ?? 0) + 1;
+                return acc;
+              }, {}),
+            ).map(([nivel, n]) => ({ nivel, n }))}
+            getRowKey={(r) => r.nivel}
+            csvFilename="casos-por-nivel"
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={Object.entries(
+                  casos.reduce<Record<string, number>>((acc, c) => {
+                    const k = c.detalle.caso.nivel ?? "en curso";
+                    acc[k] = (acc[k] ?? 0) + 1;
+                    return acc;
+                  }, {}),
+                ).map(([nivel, n]) => ({ nivel, n }))}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="nivel" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={50} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="n" fill="var(--border-strong)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartPanel>
+        </div>
+      )}
+
+      {tokensPorAgenteInvestigacion.length > 0 && (
+        <ChartPanel
+          title="Tokens por agente (toda la investigación)"
+          unidad="tokens"
+          columns={[
+            { key: "agente", header: "Agente" },
+            { key: "tokens_in", header: "Entrada", align: "right" },
+            { key: "tokens_out", header: "Salida", align: "right" },
+          ]}
+          rows={tokensPorAgenteInvestigacion}
+          getRowKey={(r) => r.agente}
+          csvFilename="tokens-por-agente"
+        >
+          <AgentesChart datos={tokensPorAgenteInvestigacion} />
+        </ChartPanel>
+      )}
 
       {casos.length > 0 && (
         <div className="flex flex-col gap-2 rounded-[var(--radius-card-sm)] border border-border bg-surface p-3.5">
@@ -220,6 +330,22 @@ function CasoFila({ caso, duracionMs }: { caso: CasoConContexto; duracionMs: num
           <Seccion titulo="Cómo se investigó este caso">
             <LineaDecisiones pasos={narrarInvestigacion(caso.bitacora, caso.detalle)} />
           </Seccion>
+
+          <SeccionColapsable titulo="Hallazgos completos, defensa, dictamen, Contraste y Trayectoria" abiertaPorDefecto={false}>
+            <CasoDetalleCompleto detalle={caso.detalle} bitacora={caso.bitacora} contraste={caso.contraste} trayectoria={caso.trayectoria} />
+          </SeccionColapsable>
+
+          <SeccionColapsable titulo="Cadena de explicación" abiertaPorDefecto={false}>
+            <CadenaExplicacionVista auditorResultado={caso.auditorResultado} rfc={c.rfc_principal} />
+          </SeccionColapsable>
+
+          <SeccionColapsable titulo="Agentes (runtime)" abiertaPorDefecto={false}>
+            <SeccionAgentesRuntime ejecuciones={caso.ejecuciones} />
+          </SeccionColapsable>
+
+          <SeccionColapsable titulo={`Pizarrón (${caso.detalle.senales.length})`} abiertaPorDefecto={false}>
+            <SeccionPizarron senales={caso.detalle.senales} />
+          </SeccionColapsable>
         </div>
       )}
     </div>
@@ -479,6 +605,121 @@ function Seccion({ titulo, children }: { titulo: string; children: React.ReactNo
       <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">{titulo}</span>
       {children}
     </div>
+  );
+}
+
+/** Secciones colapsables (pedido del coordinador 2026-09-12): `/documentos` no filtra nada, pero cada bloque grande arranca cerrado. */
+function SeccionColapsable({ titulo, abiertaPorDefecto, children }: { titulo: string; abiertaPorDefecto: boolean; children: React.ReactNode }) {
+  const [abierta, setAbierta] = useState(abiertaPorDefecto);
+  return (
+    <div className="flex min-w-0 flex-col gap-2 rounded-[10px] border border-border bg-surface px-3 py-2.5">
+      <button type="button" onClick={() => setAbierta((v) => !v)} aria-expanded={abierta} className="flex w-full items-center justify-between gap-2 text-left">
+        <span className="text-[11px] uppercase tracking-[0.03em] text-text-subtle">{titulo}</span>
+        <ChevronDown size={14} className={cn("flex-none text-text-subtle transition-transform duration-150", abierta && "rotate-180")} aria-hidden />
+      </button>
+      {abierta && children}
+    </div>
+  );
+}
+
+/**
+ * "Cadena de explicación" (docs/21/CLAUDE.md regla 12): no hay tabla/RPC que
+ * la persista todavía. Si el caso viene del auditor determinista, se deriva
+ * de su propia evidencia (`lib/analisis/cadena-explicacion.ts`) y se rotula
+ * como derivada; si no hay resultado del auditor para este RFC, se dice
+ * explícitamente que no hay fuente — nunca se redacta una cadena nueva.
+ */
+function CadenaExplicacionVista({ auditorResultado, rfc }: { auditorResultado: AuditorResultado | null; rfc: string }) {
+  const cadena = derivarCadenaExplicacion(auditorResultado, rfc);
+  if (!cadena) {
+    return (
+      <p className="m-0 text-[12px] text-text-subtle">
+        No hay una fuente de &ldquo;Cadena de explicación&rdquo; para este caso todavía (no viene del auditor determinista, o el auditor no tiene un
+        hallazgo para {rfc}). No se inventa una cadena sin evidencia que la respalde.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[10.5px] uppercase tracking-[0.03em] text-text-subtle" title="Derivada de forense.auditor_resultados, no de una tabla de cadena de explicación (no existe todavía)">
+        Derivada del auditor · regla: {cadena.hallazgo}
+      </span>
+      <ol className="m-0 flex flex-col gap-1.5 p-0">
+        {cadena.eslabones.map((e, i) => (
+          <li key={e.id} className="flex list-none gap-2 text-[12.5px] text-text">
+            <span className={cn("flex-none rounded-[6px] px-1.5 py-0.5 text-[10px] uppercase", e.tipo === "hipotesis" ? "bg-primary text-white" : "bg-surface-muted text-text-subtle")}>
+              {e.tipo === "hipotesis" ? "hipótesis" : `evidencia ${i}`}
+            </span>
+            <span className="min-w-0 flex-1">
+              {e.texto}
+              {e.referencias.length > 0 && (
+                <span className="ml-1.5 font-mono text-[10.5px] text-text-subtle">[{e.referencias.join(", ")}]</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/**
+ * Runtime de agentes de este caso (BFF privado, `obtenerEjecucionesPrivadas`):
+ * rol, estado interno, tokens, tool calls, duración y errores de contrato
+ * (`checkpoint_json.errores_contrato`, jsonb libre — `null` = no reportado,
+ * `[]` = cero real). `ejecuciones === null` distingue "fuente sin runtime"
+ * (fixture) de "corrida sin ejecuciones registradas" (`[]`).
+ */
+function SeccionAgentesRuntime({ ejecuciones }: { ejecuciones: EjecucionesCaso }) {
+  if (ejecuciones.ejecuciones.length === 0) {
+    return <p className="m-0 text-[12px] text-text-subtle">Sin ejecuciones de runtime registradas para este caso todavía.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {ejecuciones.ejecuciones.map((e) => {
+        const costoEstimado = estimarCostoUsd(e.model_id, e.tokens_in, e.tokens_out);
+        return (
+          <div key={e.id} className="flex flex-col gap-1 rounded-[8px] border border-border bg-surface-raised px-2.5 py-2">
+            <span className="flex flex-wrap items-center gap-2 text-[12px] text-text">
+              <span className="font-medium capitalize">{nombreAgente(e.rol)}</span>
+              <span className="text-text-subtle">{e.estado_interno.replaceAll("_", " ")}</span>
+              <span className="ml-auto font-mono text-[10.5px] text-text-subtle">paso {e.paso}</span>
+            </span>
+            <span className="text-[11px] text-text-subtle">
+              {e.tokens_in != null || e.tokens_out != null ? `${numero(e.tokens_in ?? 0)} in / ${numero(e.tokens_out ?? 0)} out` : "tokens no disp."} ·{" "}
+              {e.duracion_ms != null ? `${numero(e.duracion_ms)} ms` : "duración no disp."} · {e.tools.length} tool call{e.tools.length === 1 ? "" : "s"} ·{" "}
+              {formatoCostoEstimado(costoEstimado)}
+            </span>
+            <span className={cn("text-[11px]", e.erroresContrato && e.erroresContrato.length > 0 ? "text-red-600" : "text-text-subtle")}>
+              {e.erroresContrato == null
+                ? "errores de contrato: no reportado"
+                : e.erroresContrato.length === 0
+                  ? "errores de contrato: 0"
+                  : `errores de contrato: ${e.erroresContrato.join("; ")}`}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SeccionPizarron({ senales }: { senales: CasoDetalle["senales"] }) {
+  const ordenadas = [...senales].sort((a, b) => (a.creado || "").localeCompare(b.creado || ""));
+  if (ordenadas.length === 0) return <p className="m-0 text-[12px] text-text-subtle">Todavía no hay anotaciones de agentes en este caso.</p>;
+  return (
+    <ul className="m-0 flex flex-col gap-1.5 p-0">
+      {ordenadas.map((s) => (
+        <li key={s.id} className="flex flex-col gap-0.5 rounded-[8px] border border-border bg-surface-raised px-2.5 py-1.5">
+          <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-text">
+            <span className="font-medium capitalize">{nombreAgente(s.agente)}</span>
+            <span className="text-text-subtle">ronda {s.ronda} · intento {s.intento + 1}</span>
+            {s.refuta && <span className="rounded-[var(--radius-pill)] border border-border px-1.5 text-[10px] text-text-subtle">descarta</span>}
+          </span>
+          <span className="text-[12px] leading-snug text-text-muted">{s.titular}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
