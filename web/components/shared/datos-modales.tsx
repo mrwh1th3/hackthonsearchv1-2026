@@ -6,6 +6,9 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { Corrida } from "@/lib/data";
 import { soloFecha } from "@/lib/date/formato";
+import type { ResumenEstructura } from "@/lib/estates/estructura";
+import { ACCEPT } from "@/lib/estates/formatos";
+import { EstructuraResumen } from "./estructura-resumen";
 
 /**
  * Los dos pop-ups del diseño Inspector, con sus mismas medidas, sombras y
@@ -51,35 +54,120 @@ function useEscape(onClose: () => void) {
   }, [onClose]);
 }
 
-export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; onCargado?: (corridaId: string) => void }) {
-  useEscape(onClose);
-  const [subiendo, setSubiendo] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type RespuestaCarga = { status: number; body: Record<string, unknown> };
 
-  async function subir(archivo: File) {
-    setSubiendo(true);
+/**
+ * POST multipart con progreso de subida. `fetch` no expone el avance del cuerpo enviado; XHR sí. Cuando
+ * termina de subir, el servidor todavía convierte y valida: esa fase se muestra sin porcentaje, porque no
+ * hay avance medido que mostrar.
+ */
+function enviarDataset(archivos: File[], onProgreso: (fraccion: number) => void): Promise<RespuestaCarga> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    for (const a of archivos) form.append("archivos", a, a.name);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/estates");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgreso(e.loaded / e.total);
+    };
+    xhr.upload.onload = () => onProgreso(1);
+    xhr.onload = () => {
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse(xhr.responseText || "{}");
+      } catch {
+        body = {};
+      }
+      resolve({ status: xhr.status, body });
+    };
+    xhr.onerror = () => reject(new Error("red"));
+    xhr.send(form);
+  });
+}
+
+type Fase = { tipo: "inicio" } | { tipo: "subiendo"; fraccion: number } | { tipo: "procesando" } | { tipo: "listo"; corridaId: string; estructura: ResumenEstructura | null };
+
+export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; onCargado?: (corridaId: string) => void }) {
+  const [fase, setFase] = useState<Fase>({ tipo: "inicio" });
+  const [error, setError] = useState<string | null>(null);
+  const [arrastrando, setArrastrando] = useState(false);
+  const [nombres, setNombres] = useState<string[]>([]);
+  const ocupado = fase.tipo === "subiendo" || fase.tipo === "procesando";
+  // Durante la subida y la conversión no se cierra: el resultado (corrida y estructura) se perdería.
+  // Ya cargado, cerrar equivale a abrir la corrida: existe en la base aunque no se mire el resumen.
+  const cerrar = () => {
+    if (fase.tipo === "listo") onCargado?.(fase.corridaId);
+    onClose();
+  };
+  useEscape(ocupado ? () => {} : cerrar);
+
+  async function subir(archivos: File[]) {
+    if (archivos.length === 0 || ocupado) return;
     setError(null);
+    setNombres(archivos.map((a) => a.name));
+    setFase({ tipo: "subiendo", fraccion: 0 });
     try {
-      const form = new FormData();
-      form.append("estate", archivo);
-      const res = await fetch("/api/estates", { method: "POST", body: form });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || typeof body.corrida_id !== "string") {
-        setError(body.detalle ?? body.error ?? `No se pudo cargar (${res.status})`);
+      const { status, body } = await enviarDataset(archivos, (f) =>
+        setFase(f >= 1 ? { tipo: "procesando" } : { tipo: "subiendo", fraccion: f }),
+      );
+      if (status < 200 || status >= 300 || typeof body.corrida_id !== "string") {
+        setError(String(body.detalle ?? body.error ?? `No se pudo cargar (${status})`));
+        setFase({ tipo: "inicio" });
         return;
       }
-      onCargado?.(body.corrida_id);
-      onClose();
+      setFase({ tipo: "listo", corridaId: body.corrida_id, estructura: (body.estructura as ResumenEstructura) ?? null });
     } catch {
       setError("No se pudo conectar con el servidor.");
-    } finally {
-      setSubiendo(false);
+      setFase({ tipo: "inicio" });
     }
   }
+
+  if (fase.tipo === "listo") {
+    return (
+      <Portal>
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(20,20,19,.22)] p-5"
+          role="dialog"
+          aria-modal
+          aria-label="Dataset cargado"
+        >
+          <div className="flex max-h-full w-[520px] max-w-full flex-col gap-3.5 overflow-hidden rounded-[18px] border border-border bg-surface p-5 shadow-[0_18px_60px_rgba(20,20,19,.16)]">
+            <div className="flex flex-col gap-[3px]">
+              <h3 className="m-0 text-[15px] font-semibold tracking-tight text-text">Dataset cargado</h3>
+              <span className="truncate text-[12px] text-text-subtle">{nombres.join(", ")}</span>
+            </div>
+            <div className="min-h-0 overflow-y-auto">
+              {fase.estructura ? (
+                <EstructuraResumen estructura={fase.estructura} />
+              ) : (
+                <p className="m-0 text-[12px] text-text-subtle">El servidor no devolvió reporte de estructura.</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cerrar}
+                className="h-[32px] rounded-[var(--radius-control)] bg-primary px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover"
+              >
+                Abrir corrida
+              </button>
+            </div>
+          </div>
+        </div>
+      </Portal>
+    );
+  }
+
+  const etiqueta =
+    fase.tipo === "subiendo"
+      ? `Subiendo… ${Math.round(fase.fraccion * 100)}%`
+      : fase.tipo === "procesando"
+        ? "Leyendo estructura y cargando…"
+        : "SQLite, CSV, XLSX o ZIP";
   return (
     <Portal>
     <div
-      onClick={onClose}
+      onClick={ocupado ? undefined : onClose}
       className="fixed inset-0 z-10 flex items-center justify-center bg-[rgba(20,20,19,.22)] p-5"
       role="dialog"
       aria-modal
@@ -107,25 +195,54 @@ export function TipoDatasetModal({ onClose, onCargado }: { onClose: () => void; 
           </span>
         </div>
         <label
-          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[var(--radius-card-sm)] border border-border-strong px-3.5 py-4 text-center transition-colors duration-150 hover:bg-surface-hover ${subiendo ? "pointer-events-none opacity-60" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!ocupado) setArrastrando(true);
+          }}
+          onDragLeave={() => setArrastrando(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setArrastrando(false);
+            void subir(Array.from(e.dataTransfer.files ?? []));
+          }}
+          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-[var(--radius-card-sm)] border px-3.5 py-4 text-center transition-colors duration-150 hover:bg-surface-hover ${
+            arrastrando ? "border-primary bg-surface-hover" : "border-border-strong"
+          } ${ocupado ? "pointer-events-none opacity-60" : ""}`}
         >
-          <span className="text-[13.5px] font-medium text-text">{subiendo ? "Cargando y validando…" : "Estate SQLite (.db)"}</span>
-          <span className="text-[12px] leading-relaxed text-text-subtle">
-            Formato de los jueces: vendors, invoices, ledger, bank_txns, purchase_orders, contracts, employees, efos_list.
+          <span className="text-[13.5px] font-medium text-text" aria-live="polite">
+            {etiqueta}
           </span>
+          <span className="text-[12px] leading-relaxed text-text-subtle">
+            {ocupado
+              ? nombres.join(", ")
+              : "Suelta o elige un .db, un .zip, un .xlsx (hoja por tabla) o varios .csv (una tabla por archivo). Varios CSV cuentan como un solo dataset."}
+          </span>
+          {fase.tipo === "subiendo" && (
+            <span
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(fase.fraccion * 100)}
+              className="block h-1 w-full overflow-hidden rounded-full bg-surface-muted"
+            >
+              <span className="block h-full bg-primary transition-[width] duration-150" style={{ width: `${Math.round(fase.fraccion * 100)}%` }} />
+            </span>
+          )}
           <input
             type="file"
-            accept=".db,.sqlite,.sqlite3"
+            accept={ACCEPT}
+            multiple
             className="sr-only"
-            disabled={subiendo}
-            aria-label="Subir estate SQLite"
+            disabled={ocupado}
+            aria-label="Subir dataset"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void subir(f);
+              const archivos = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              void subir(archivos);
             }}
           />
         </label>
-        {error && <p className="m-0 text-[12px] leading-relaxed text-error">{error}</p>}
+        {error && <p className="m-0 whitespace-pre-line text-[12px] leading-relaxed text-error">{error}</p>}
       </div>
     </div>
     </Portal>
@@ -162,7 +279,28 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
   const [datos, setDatos] = useState<PreviewRespuesta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [estructura, setEstructura] = useState<{ datos?: ResumenEstructura; error?: string } | null>(null);
+  const [verEstructura, setVerEstructura] = useState(false);
   useEscape(onClose);
+
+  useEffect(() => {
+    if (!verEstructura || estructura) return;
+    let vigente = true;
+    fetch(`/api/estates/estructura?${new URLSearchParams({ corrida_id: corrida.id })}`)
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!vigente) return;
+        setEstructura(
+          res.ok && body.estructura
+            ? { datos: body.estructura as ResumenEstructura }
+            : { error: body.detalle ?? body.error ?? `No se pudo leer la estructura (${res.status})` },
+        );
+      })
+      .catch(() => vigente && setEstructura({ error: "No se pudo conectar con el servidor." }));
+    return () => {
+      vigente = false;
+    };
+  }, [verEstructura, estructura, corrida.id]);
 
   useEffect(() => {
     let vigente = true;
@@ -204,16 +342,40 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
               <h2 className="m-0 truncate text-[15px] font-semibold tracking-tight text-text">{corrida.nombre}</h2>
               <span className="text-[12px] text-text-subtle">Preview de solo lectura · {corrida.dataset}</span>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-[32px] rounded-[var(--radius-control)] bg-primary px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover"
-            >
-              Cerrar
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                aria-pressed={verEstructura}
+                onClick={() => setVerEstructura((v) => !v)}
+                className="h-[32px] rounded-[var(--radius-control)] border border-border bg-surface px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:bg-surface-hover"
+              >
+                {verEstructura ? "Ver datos" : "Estructura"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-[32px] rounded-[var(--radius-control)] bg-primary px-3.5 text-[13px] font-medium text-white transition-colors duration-150 hover:bg-primary-hover"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
 
-          {datos && (
+          {verEstructura && (
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {estructura?.datos ? (
+                <div className="mx-auto max-w-[640px]">
+                  <EstructuraResumen estructura={estructura.datos} />
+                </div>
+              ) : estructura?.error ? (
+                <p className="m-0 p-7 text-center text-[13px] text-text-subtle">{estructura.error}</p>
+              ) : (
+                <p className="m-0 p-7 text-center text-[13px] text-text-subtle">Cargando…</p>
+              )}
+            </div>
+          )}
+
+          {!verEstructura && datos && (
             <div role="tablist" aria-label="Tablas del dataset" className="flex gap-1 overflow-x-auto border-b border-[var(--border)] px-2.5 py-2">
               {datos.tablas.map((t) => (
                 <button
@@ -237,7 +399,7 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
             </div>
           )}
 
-          <div className="relative min-h-0 flex-1 overflow-auto">
+          <div className="relative min-h-0 flex-1 overflow-auto" hidden={verEstructura}>
             {error ? (
               <p className="m-0 p-7 text-center text-[13px] text-error">{error}</p>
             ) : datos && datos.tabla === tabla ? (
@@ -283,7 +445,7 @@ export function DatasetPreviewModal({ corrida, onClose }: { corrida: Corrida; on
             )}
           </div>
 
-          {datos && !error && (
+          {!verEstructura && datos && !error && (
             <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] px-2.5 py-2 text-[12px] text-text-subtle">
               <span className="tabular-nums">
                 {total === 0 ? "Sin filas" : `Filas ${(offset + 1).toLocaleString("es-MX")}–${hasta.toLocaleString("es-MX")} de ${total.toLocaleString("es-MX")}`}

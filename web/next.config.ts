@@ -21,7 +21,10 @@ const raizRepo = path.resolve(process.cwd(), "..");
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typedRoutes: false,
-  experimental: { serverActions: { bodySizeLimit: "4mb" } },
+  // `middleware.ts` cubre /api/estates: sin subir este tope (10 MB por omisión) Next trunca el cuerpo
+  // multipart de un dataset antes de que llegue al route. Igual a MAX_BYTES_TOTAL + holgura multipart
+  // (lib/estates/archivos.ts y app/api/estates/route.ts), que siguen validando por su cuenta.
+  experimental: { serverActions: { bodySizeLimit: "4mb" }, middlewareClientMaxBodySize: "254mb" },
   outputFileTracingRoot: raizRepo,
   outputFileTracingIncludes: {
     "/metodo": [
