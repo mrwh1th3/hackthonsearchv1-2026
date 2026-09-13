@@ -1,0 +1,58 @@
+{
+  "classic_heldout": {
+    "seeds": [
+      301,
+      302
+    ],
+    "rows": [
+      {
+        "schemes_planted": 0,
+        "schemes_found": 0,
+        "recall_pct": 100.0,
+        "decoys_planted": 10,
+        "decoys_accused": 0,
+        "false_accusation_rate_pct": 0.0,
+        "unmatched_findings_n": 0,
+        "peso_claimed": 0,
+        "peso_actual": 0,
+        "peso_reconciles": "n/a",
+        "unmatched_findings": [],
+        "missed": [],
+        "decoys_hit": [],
+        "peso_mismatch": [],
+        "seed": 301,
+        "source": "seed_301",
+        "llm_calls": 0,
+        "mxn_cost": 0.0,
+        "wall_clock_s": 0.016,
+        "format_valid": true,
+        "deterministic": true,
+        "case_file": "/private/tmp/claude-502/-Users-victorblanco-Downloads-hackthonsearchv1/56653abe-65eb-4b39-8c1b-0af92a337407/scratchpad/reg3/seed_301/run_a/case_file.html"
+      },
+      {
+        "schemes_planted": 0,
+        "schemes_found": 0,
+        "recall_pct": 100.0,
+        "decoys_planted": 10,
+        "decoys_accused": 0,
+        "false_accusation_rate_pct": 0.0,
+        "unmatched_findings_n": 0,
+        "peso_claimed": 0,
+        "peso_actual": 0,
+        "peso_reconciles": "n/a",
+        "unmatched_findings": [],
+        "missed": [],
+        "decoys_hit": [],
+        "peso_mismatch": [],
+        "seed": 302,
+        "source": "seed_302",
+        "llm_calls": 0,
+        "mxn_cost": 0.0,
+        "wall_clock_s": 0.018,
+        "format_valid": true,
+        "deterministic": true,
+        "case_file": "/private/tmp/claude-502/-Users-victorblanco-Downloads-hackthonsearchv1/56653abe-65eb-4b39-8c1b-0af92a337407/scratchpad/reg3/seed_302/run_a/case_file.html"
+      }
+    ]
+  }
+}

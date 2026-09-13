@@ -89,6 +89,27 @@ Resultado del 2026-09-12:
 | 101–105, límite 75 000 | 25/25 | 0/50 | concilian | PASS | sí | 0 |
 | 101–105, límite 120 000 | 25/25 | 0/50 | concilian | PASS | sí | 0 |
 
+La tabla anterior es la línea base previa al auditor adaptativo; no incluye estates de otro generador.
+
+### Auditor adaptativo (2026-09-12)
+
+Perfilado del estate (base IVA de la orden, aprobador por id o nombre, cuentas propias, antigüedad del
+padrón) y detectores con variantes estructurales. Método y límites: `reports/forensic/ADAPTATIVO.md`.
+
+- **Ajuste:** clásico 1–12 (histórico), variantes `--conventions random` 1–5 y el estate externo seed_103
+  (suministrado por el usuario, fuera del repo).
+- **Reportadas:** clásico 301–306 con la configuración por defecto (distinta de la corrida 301–302 sin
+  fraude de arriba) y variantes 401–410, vistas solo al final.
+
+| Fuente | Conjunto | Recall antes | Recall después | Falsas antes | Falsas después |
+|---|---|---|---|---|---|
+| Clásico | held-out 301–306 | 22/22 | 22/22 | 0/41 | 0/41 |
+| Variantes | held-out 401–410 | 21/40 | 39/40 | 0/77 | 0/77 |
+| Externo | seed_103 (ajuste, no held-out) | 3/10 | 10/10 | 1/10 | 0/10 (0/8 evaluables) |
+| Clásico | regresión 101–105 / 201–205 5×10 / 301–302 sin fraude | — | 21/21 · 25/25 · — | — | 0/38 · 0/50 · 0/20 |
+
+Formato PASS, pesos concilian y huella determinista en todas. Tablas: `reports/forensic/adaptive/`.
+
 Hay dos pruebas de robustez:
 
 - **Límite de aprobación.** Se corre con `FORENSIC_APPROVAL_LIMIT=75000` y `=120000` en el generador. El agente no recibe el límite: lo infiere del tope firmado por cada aprobador.

@@ -83,7 +83,13 @@ CSV por fuente y conjunto: `reports/forensic/adaptive/results_{classic,variants}
 `results_external_tuning.csv`; detalle por semilla en `eval_summary_*.json`. Hallazgos que no
 corresponden a ningún esquema: 0 en todas las corridas.
 
-Reproducir:
+Regresión sobre los conjuntos reportados antes (docs/23), sin cambios: clásico 101–105 21/21 y 0/38;
+201–205 con 5 esquemas × 10 señuelos 25/25 y 0/50; 301–302 sin fraude 0/20
+(`reports/forensic/adaptive/regression_*`). Estate grande `mega_estate.py --seed 5005` (manual, no
+tabulado): antes 4/6, después 5/6 (ahora detecta el round-trip triangular); 0/21 señuelos en ambos; los
+dos hallazgos fantasma extra aparecen igual antes y después.
+
+Reproducir (`data/external/seed_103` lo suministró el usuario; `data/` no está en el repo):
 
 ```bash
 python3 eval/forensic/harness.py --tuning-seeds 1 2 3 4 5 --report-seeds 301 302 303 304 305 306 --out reports/forensic/adaptive
@@ -104,6 +110,10 @@ cierra como lead con esa explicación. No se ajustó: es semilla de reporte. Se 
 * **El generador de variantes también es nuestro.** 39/40 en 401–410 mide que las formas que
   imaginamos se detectan sin memorizar semillas, no que cubrimos las formas de los jueces. La única
   evidencia ajena es seed_103, y se usó para ajustar: su 10/10 no es un resultado held-out.
+* **seed_103: "0/10" son en rigor 0/8 evaluables.** Dos señuelos de traspaso de tesorería están
+  registrados con el RFC de la propia empresa, que también figura en esquemas reales; el harness excluye
+  del conteo cualquier señuelo cuya entidad aparece en un esquema, así que nunca podrían contarse. El
+  comportamiento sí está probado (`test_transfers_between_own_accounts_open_nothing`).
 * Los señuelos nuevos casi no castigaron al auditor anterior (0 acusaciones falsas en variantes antes y
   después): la dificultad de señuelos de nuestro generador sigue siendo baja. La única acusación falsa
   real que observamos vino del estate externo.
