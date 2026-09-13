@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .config import LIMIT_CANDIDATES, NEAR_LIMIT_RATIO, QUARTER_END_DAYS, RECENT_REGISTRATION_DAYS
-from .estate import Estate, d, days_between
+from .config import (NEAR_LIMIT_RATIO, PARTIAL_COLLECTION_MIN, PPD_GRACE_DAYS, QUARTER_END_DAYS,
+                     UNCOLLECTED_MIN_AGE_DAYS)
+from .estate import Estate, Tools, d, days_between
 
 
 def _lead(kind: str, subject: tuple, entity: str, signal: str, detail: str) -> dict:
@@ -44,7 +45,7 @@ def run_detectors(e: Estate) -> list[dict]:
                                f"RFC on the Art. 69-B list as '{efos[rfc]['status']}'"))
         if v and v.get("registered_date"):
             gap = days_between(v["registered_date"], invs[0]["issue_date"])
-            if 0 <= gap <= RECENT_REGISTRATION_DAYS:
+            if 0 <= gap <= e.recent_days:
                 leads.append(_lead("phantom_vendor", (rfc,), ent, "recently_registered_vendor",
                                    f"registered {gap} days before its first invoice"))
             elif gap < 0:
@@ -52,8 +53,8 @@ def run_detectors(e: Estate) -> list[dict]:
                 leads.append(_lead("phantom_vendor", (rfc,), ent, "invoiced_before_registration",
                                    f"first invoice {-gap} days before its registration date"))
         if rfc not in contracts:
-            po_amounts = [p["amount"] for p in pos.get(rfc, [])]
-            undoc = [i for i in invs if not any(abs(a - i["total"]) <= 0.01 * i["total"] for a in po_amounts)]
+            vpos = pos.get(rfc, [])
+            undoc = [i for i in invs if not any(e.po_invoice_gap(p, i, 0.01) is not None for p in vpos)]
             if len(undoc) >= 2:
                 leads.append(_lead("phantom_vendor", (rfc,), ent, "undocumented_purchases",
                                    f"{len(undoc)} invoices with no matching purchase order and no contract"))
@@ -72,10 +73,10 @@ def run_detectors(e: Estate) -> list[dict]:
                 leads.append(_lead("kickback", (rfc, emp["emp_id"]), f"RFC:{rfc}",
                                    "vendor_to_employee_transfer",
                                    f"{t['txn_id']}: vendor account paid {Estate.emp_ref(emp)}'s account"))
-        approvers = {p["approver"] for p in pos.get(rfc, [])}
+        approvers = {e.person_key(p["approver"]) for p in pos.get(rfc, [])}
         for emp in e.employees:
             ec = emp.get("bank_clabe") or ""
-            if ec[:3] == vc[:3] and emp["name"] in approvers:
+            if ec[:3] == vc[:3] and emp["emp_id"] in approvers:
                 leads.append(_lead("kickback", (rfc, emp["emp_id"]), f"RFC:{rfc}",
                                    "employee_vendor_shared_bank",
                                    f"approver {Estate.emp_ref(emp)} and vendor bank at institution {vc[:3]}"))
@@ -105,7 +106,30 @@ def run_detectors(e: Estate) -> list[dict]:
                                        f"{len(ps)} orders between {NEAR_LIMIT_RATIO:.0%} and 100% of MXN {lim:,.0f}"))
                     break
 
+    first_hop = defaultdict(list)
+    for c in e.cycles():
+        first_hop[c[0]["to_clabe"]].append(c)
+    for rfc, v in sorted(e.vendors.items()):
+        cs = first_hop.get(v.get("bank_clabe"))
+        if cs:
+            leads.append(_lead("round_tripping", (rfc,), f"RFC:{rfc}", "funds_cycle_through_third_party",
+                               f"{len(cs)} payment(s) to the vendor return to a company account through "
+                               f"{len(cs[0]) - 1} further hop(s) ({', '.join(x['txn_id'] for x in cs[0])})"))
+
+    tools = Tools(e)
     for rfc in sorted(sales):
+        used: set[str] = set()
+        uncollected = []
+        for s in sales[rfc]:
+            rs = tools.receipts_for_invoice(s, used)
+            used |= {r["txn_id"] for r in rs}
+            age = days_between(s["issue_date"], e.bank_horizon.isoformat())
+            due = age >= (PPD_GRACE_DAYS if s["metodo_pago"] == "PPD" else UNCOLLECTED_MIN_AGE_DAYS)
+            if s["status"] != "cancelado" and due and sum(r["amount"] for r in rs) < PARTIAL_COLLECTION_MIN * s["total"]:
+                uncollected.append(s)
+        if len(uncollected) >= 2:
+            leads.append(_lead("revenue_inflation", (rfc,), f"RFC:{rfc}", "uncollected_sales",
+                               f"{len(uncollected)} valid sales invoices past terms with no receipt from a third party"))
         qe = [i for i in sales[rfc] if is_quarter_end(i["issue_date"])]
         if qe:
             leads.append(_lead("revenue_inflation", (rfc,), f"RFC:{rfc}", "quarter_end_revenue",

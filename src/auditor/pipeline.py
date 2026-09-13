@@ -63,6 +63,7 @@ def run(estate_path: str, seed: int, llm: LLM) -> dict:
     wall = round(time.monotonic() - t0, 3)
     return {"seed": seed, "estate_path": estate_path, "estate_sha256": file_sha256(estate_path),
             "company_rfc": e.company_rfc, "period": e.period, "bank_horizon": e.bank_horizon.isoformat(),
+            "estate_profile": e.profile,
             "detector_hits": len(raw), "leads_investigated": len(groups),
             "findings": findings, "leads": leads,
             "run_metadata": {"llm_calls": llm.calls, "mxn_cost": round(llm.cost_mxn, 4),

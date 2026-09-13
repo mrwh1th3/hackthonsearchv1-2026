@@ -5,9 +5,10 @@ devuelve un hallazgo candidato o un cierre con razón. Los montos salen de las f
 del estate; ningún texto libre (concepto, referencia, razón social) decide nada."""
 from __future__ import annotations
 
-from .config import (AMOUNT_MATCH, KICKBACK_TIMING_DAYS, PPD_GRACE_DAYS, RECENT_REGISTRATION_DAYS,
-                     ROUND_TRIP_MAX_DAYS, ROUND_TRIP_MIN_RATIO, SPLIT_PROVEN_WINDOW_DAYS,
-                     SPLIT_WINDOW_DAYS, LIMIT_CANDIDATES, UNCOLLECTED_MIN_AGE_DAYS, NEAR_LIMIT_RATIO)
+from .config import (AMOUNT_MATCH, FIXED_FEE_MIN_GAP_DAYS, KICKBACK_TIMING_DAYS, LIMIT_CANDIDATES, NEAR_LIMIT_RATIO,
+                     PARTIAL_COLLECTION_MIN, PHANTOM_THRESHOLD, PHANTOM_WEIGHTS, PO_MATCH_DAYS, PO_MATCH_TOLERANCE,
+                     PPD_GRACE_DAYS, ROUND_TRIP_CHAIN_MAX_DAYS, ROUND_TRIP_HOP_MIN_RATIO, ROUND_TRIP_MAX_DAYS,
+                     ROUND_TRIP_MIN_RATIO, SPLIT_PROVEN_WINDOW_DAYS, SPLIT_WINDOW_DAYS, UNCOLLECTED_MIN_AGE_DAYS)
 from .detectors import is_quarter_end
 from .estate import Estate, Tools, days_between, within
 
@@ -69,6 +70,9 @@ class Investigator:
 
     # ------------------------------------------------------------------ phantom
     def phantom_vendor(self, rfc: str) -> dict:
+        """Orden: (1) exculpación documental — facturas respaldadas por orden de compra en la base de
+        monto del estate o por contrato vigente; (2) puntaje de corroboración independiente
+        (PHANTOM_WEIGHTS) sobre lo no documentado; se acusa con puntaje ≥ PHANTOM_THRESHOLD."""
         t = self.t
         v = t.vendor_profile(rfc) or {}
         invs = [i for i in t.invoices_from_vendor(rfc) if i["status"] != "cancelado"]
@@ -77,13 +81,14 @@ class Investigator:
         pos = t.purchase_orders(rfc)
         ctrs = t.contracts(rfc)
         efos = t.efos_status(rfc)
+        base = "/".join(self.e.po_bases)
 
         # emparejamiento uno a uno orden↔factura, del par más parecido al menos parecido,
         # para que una orden de otro esquema no "documente" dos facturas
-        pairs = sorted((abs(p["amount"] - i["total"]) / i["total"], abs(days_between(p["date"], i["issue_date"])),
-                        p["po_id"], i["uuid"])
+        pairs = sorted((g, abs(days_between(p["date"], i["issue_date"])), p["po_id"], i["uuid"])
                        for p in pos for i in invs
-                       if abs(p["amount"] - i["total"]) <= 0.005 * i["total"] and within(p["date"], i["issue_date"], 0, 45))
+                       if (g := self.e.po_invoice_gap(p, i, PO_MATCH_TOLERANCE)) is not None
+                       and within(p["date"], i["issue_date"], 0, PO_MATCH_DAYS))
         po_of: dict[str, dict] = {}
         taken: set[str] = set()
         by_id = {p["po_id"]: p for p in pos}
@@ -101,12 +106,10 @@ class Investigator:
         undoc = [i for i in invs if not po_for(i) and not contract_for(i)]
         first = invs[0]["issue_date"]
         gap = days_between(v["registered_date"], first) if v.get("registered_date") else None
+        recent_days = self.e.recent_days
         # Facturar antes del alta es una anomalía de datos maestros (alta re-capturada, RFC migrado o fecha
         # mal cargada), no un indicio de simulación: por sí sola nunca suma corroboración, solo se explica.
-        # Si el desfase es corto (dentro de la ventana), alta y primera factura siguen siendo simultáneas y
-        # el proveedor cuenta como recién registrado; si hay historial largo previo, es un proveedor
-        # establecido con el registro mal capturado.
-        recent = gap is not None and -RECENT_REGISTRATION_DAYS <= gap <= RECENT_REGISTRATION_DAYS
+        recent = gap is not None and -recent_days <= gap <= recent_days
         anomalia = ""
         if gap is not None and gap < 0:
             anomalia = (f" Anomaly, not fraud: the first invoice ({first}) predates the vendor's registration date "
@@ -114,50 +117,71 @@ class Investigator:
                         f"(record re-captured or date mis-keyed), not evidence of simulated operations, so it is "
                         f"not counted as a fraud signal"
                         + (" by itself; registration and first billing still fall within "
-                           f"{RECENT_REGISTRATION_DAYS} days of each other, so the vendor is treated as new."
-                           if recent else f"; the vendor was already billing more than {RECENT_REGISTRATION_DAYS} "
+                           f"{recent_days} days of each other, so the vendor is treated as new."
+                           if recent else f"; the vendor was already billing more than {recent_days} "
                            "days before the record existed, so it is an established vendor, not a new one."))
         cuando_alta = (f"registered {gap} days before its first invoice" if gap is not None and gap >= 0
                        else f"registered {-gap if gap is not None else 0} days after its first invoice")
-        efos_def = bool(efos and efos["status"] == "definitivo"
-                        and any(i["issue_date"] >= efos["publication_date"] for i in invs))
+        efos_status = efos["status"] if efos else None
+        before_pub = [i for i in invs if efos and i["issue_date"] < efos["publication_date"]]
+        efos_def = bool(efos_status == "definitivo" and len(before_pub) < len(invs))
+        efos_other = bool(efos and not efos_def)   # presunto, o definitivo publicado tras todas las facturas
+        if efos:
+            efos_phrase = (f"RFC is on the SAT Art. 69-B list as '{efos_status}' (published {efos['publication_date']}; "
+                           f"{len(before_pub)} of {len(invs)} invoices predate the publication)")
+        else:
+            efos_phrase = "RFC does not appear on the SAT Art. 69-B list in this estate"
         defense = []
-        if efos and not efos_def:
-            defense.append({"argument": f"RFC is on the 69-B list as '{efos['status']}' "
-                                        f"(published {efos['publication_date']}).",
-                            "held": False,
-                            "why": "Presumed status is not a final determination and every invoice predates or "
-                                   "is documented independently of it."})
-        if len(undoc) < 2 and not efos_def:
+        if len(undoc) < 2:
             docs = sorted({p["po_id"] for i in invs if (p := po_for(i))} |
                           {c["contract_id"] for i in invs if (c := contract_for(i))})
+            if efos:
+                defense.append({"argument": f"RFC is on the 69-B list as '{efos_status}' "
+                                            f"(published {efos['publication_date']}).",
+                                "held": False,
+                                "why": "Every invoice but at most one is backed by an approved purchase order or a "
+                                       "contract, so deliveries are documented independently of the listing."})
             by = "challenger" if efos or v.get("registered_date") else "investigator"
-            return closed(f"{len(invs) - len(undoc)} of {len(invs)} invoices are backed by purchase orders or a "
-                          f"contract ({', '.join(docs[:4])}{'…' if len(docs) > 4 else ''}); "
-                          f"deliveries are documented, so the vendor is real." + anomalia, by, defense)
-        cited = undoc if undoc else invs
+            return closed(f"{len(invs) - len(undoc)} of {len(invs)} invoices are backed by purchase orders (matched on "
+                          f"the order {base} amount) or a contract ({', '.join(docs[:4])}{'…' if len(docs) > 4 else ''}); "
+                          f"deliveries are documented, so the vendor is real. {efos_phrase}." + anomalia, by, defense)
+        cited = undoc
         no_approval = []
         for i in cited:
             rows = t.ledger_for_invoice(i["uuid"])
             if rows and all(not str(r.get("approver") or "").strip() for r in rows if r["credit"] or r["debit"]):
                 no_approval.append((i, rows[0]))
         free_mail = any(m in str(v.get("contact_email") or "").lower() for m in FREE_MAIL)
+        majority = 2 * len(undoc) >= len(invs)
 
-        evidence = []
-        if undoc:
-            evidence.append(f"{len(undoc)} of {len(invs)} invoices have no purchase order and no contract")
+        signals = {"efos_definitivo": efos_def, "efos_presunto": efos_other, "recent_registration": recent,
+                   "no_ledger_approver": bool(no_approval), "majority_undocumented": majority}
+        score = sum(PHANTOM_WEIGHTS[k] for k, on in signals.items() if on)
+        scoring = {"signals": {k: {"on": on, "weight": PHANTOM_WEIGHTS[k]} for k, on in signals.items()},
+                   "score": score, "threshold": PHANTOM_THRESHOLD}
+
+        evidence = [f"{len(undoc)} of {len(invs)} invoices have no purchase order (order {base} amount) and no contract"]
         if efos_def:
             evidence.append(f"RFC is on the SAT Art. 69-B list as 'definitivo' since {efos['publication_date']}")
+        elif efos_other:
+            evidence.append(f"RFC is on the SAT Art. 69-B list as '{efos_status}' since {efos['publication_date']}"
+                            + (f"; {len(before_pub)} of the invoices predate that publication, which the 69-B "
+                               f"presumption also reaches" if before_pub else ""))
         if recent:
-            evidence.append(f"{cuando_alta} ({v['registered_date']} → {first})")
+            evidence.append(f"{cuando_alta} ({v['registered_date']} → {first}); "
+                            f"'recent' here means within {recent_days} days, the lower quartile of this vendor master")
         if no_approval:
             evidence.append(f"{len(no_approval)} ledger postings carry no approver")
-        corroboration = sum([efos_def, recent, bool(no_approval)])
-        if corroboration == 0:
-            return closed(f"{len(undoc)} invoices lack a PO, but the vendor has operated since "
-                          f"{v.get('registered_date', 'unknown')}, is not on the 69-B list and every posting "
-                          f"was approved; missing paperwork alone is not an accusation." + anomalia, "challenger")
-        confidence = "proven" if (undoc and efos_def) or (undoc and recent and no_approval) else "probable"
+        if score < PHANTOM_THRESHOLD:
+            missing = ", ".join(k for k, on in signals.items() if not on)
+            return closed(f"{len(undoc)} of {len(invs)} invoices lack a purchase order or contract, but corroboration "
+                          f"scores {score} of the {PHANTOM_THRESHOLD} required (absent: {missing}). {efos_phrase}; the "
+                          f"vendor has been registered since {v.get('registered_date', 'unknown')} and "
+                          f"{'some' if no_approval else 'every'} posting was approved. Missing paperwork alone is not "
+                          f"an accusation." + anomalia, "challenger", [{"argument": "Invoices without purchase orders.",
+                                                                        "held": True, "why": "No independent signal "
+                                                                        "corroborates simulation.", "scoring": scoring}])
+        confidence = "proven" if score >= 3 and (efos_def or no_approval) else "probable"
 
         ex = Exhibits()
         ex.add("vendors", rfc, f"Vendor master record: registered {v.get('registered_date')}"
@@ -179,10 +203,12 @@ class Investigator:
         for i, row in no_approval[:2]:
             ex.add("ledger", row["entry_id"], f"Posting of {i['uuid']} with an empty approver field.")
         amount = round(sum(i["total"] for i in cited), 2)
-        narrative = (f"{self.name(rfc)} billed the company {len(cited)} times for {mxn(amount)} of generic services. "
+        narrative = (f"{self.name(rfc)} billed the company {len(cited)} times for {mxn(amount)} of services. "
                      f"No purchase order or contract authorizes any of these purchases"
                      + (f", the vendor was {cuando_alta}" if recent else "")
                      + (", SAT lists it as a definitive simulated-operations issuer (EFOS)" if efos_def else "")
+                     + (f", SAT lists it as a presumed simulated-operations issuer ({efos_status}, "
+                        f"{efos['publication_date']})" if efos_other else "")
                      + (", and the accounting entries were posted without an approver" if no_approval else "")
                      + ". The company nevertheless paid, so the money left with nothing verifiable received.")
         return {"closed": False, "scheme_type": "phantom_vendor", "entities": [f"RFC:{rfc}"],
@@ -190,7 +216,7 @@ class Investigator:
                 "rule_broken": ("CFF Art. 69-B (CFDI issued by a taxpayer that simulates operations have no tax effect) "
                                 "and LISR Art. 27 frac. I (deductions must be strictly indispensable and backed by a "
                                 "real operation); internal control: purchases require an approved purchase order."),
-                "peso_amount": amount, "confidence": confidence, "narrative": narrative,
+                "peso_amount": amount, "confidence": confidence, "narrative": narrative, "scoring": scoring,
                 "evidence": evidence, "exhibits": ex.items, "money_trail": trail,
                 "reconciliation": {"table": "invoices", "items": [(i["uuid"], i["total"]) for i in cited]},
                 "defense": defense + ([{"argument": "The vendor may simply be new.",
@@ -200,7 +226,10 @@ class Investigator:
                            + ([{"argument": "The vendor invoiced before its registration date.",
                                 "held": False,
                                 "why": anomalia.strip() + " The date gap itself is not what the finding rests on."}]
-                              if anomalia else [])}
+                              if anomalia else [])
+                           + ([{"argument": f"'{efos_status}' is not a final 69-B determination.", "held": False,
+                                "why": "The listing is only one corroborating signal; the finding rests on purchases "
+                                       "with no order or contract that the company paid anyway."}] if efos_other else [])}
 
     # ------------------------------------------------------------------ kickback
     def kickback(self, rfc: str, emp_id: str) -> dict:
@@ -219,7 +248,7 @@ class Investigator:
                           "challenger",
                           [{"argument": "Employee approves this vendor's orders and banks at the same institution.",
                             "held": True, "why": "No money moved between them."}])
-        pos = [p for p in t.purchase_orders(rfc) if p["approver"] == emp["name"]]
+        pos = [p for p in t.purchase_orders(rfc) if self.e.person_key(p["approver"]) == emp["emp_id"]]
         invs = t.invoices_from_vendor(rfc)
         pays = t.txns_between(self.e.company_clabes, v["bank_clabe"])
         timed = [k for k in transfers if any(within(p["date"], k["date"], 0, KICKBACK_TIMING_DAYS) for p in pays)]
@@ -239,7 +268,7 @@ class Investigator:
         trail = []
         for p in pos[:4]:
             pid = ex.add("purchase_orders", p["po_id"], f"Order for {mxn(p['amount'])} approved by {eref}.")
-            inv = next((i for i in invs if abs(i["total"] - p["amount"]) <= AMOUNT_MATCH * p["amount"]), None)
+            inv = next((i for i in invs if self.e.po_invoice_gap(p, i, AMOUNT_MATCH) is not None), None)
             if inv:
                 iid = ex.add("invoices", inv["uuid"], f"Vendor invoice for that order, {mxn(inv['total'])}.")
                 trail.append({"from": "COMPANY", "to": f"RFC:{rfc}", "amount": inv["total"],
@@ -276,12 +305,77 @@ class Investigator:
                 "defense": defense}
 
     # ------------------------------------------------------------------ round trip
+    def _chain_finding(self, rfc: str, chains: list[list[dict]], direct_note: str) -> dict:
+        """Ciclo de 3–4 saltos: empresa → proveedor → tercero(s) → empresa."""
+        t = self.t
+        t._log("money_cycles")
+        invs = t.invoices_from_vendor(rfc)
+        ex = Exhibits()
+        ex.add("vendors", rfc, "First recipient of the money: a registered supplier paid for an invoice.")
+        trail, inv_items, out_items, others = [], [], [], []
+        for chain in chains:
+            o = chain[0]
+            inv = next((i for i in invs if i["uuid"] in str(o.get("reference") or "")), None) or \
+                next((i for i in invs if abs(i["total"] - o["amount"]) <= 0.005 * o["amount"]
+                      and within(i["issue_date"], o["date"], 0, 120)), None)
+            if inv:
+                ex.add("invoices", inv["uuid"], f"Purchase CFDI for {mxn(inv['total'])} that justified the first payment.")
+                inv_items.append((inv["uuid"], inv["total"]))
+            out_items.append((o["txn_id"], o["amount"]))
+            prev = None
+            for n, x in enumerate(chain):
+                src = self.e.clabe_owner.get(x["from_clabe"], f"CLABE …{x['from_clabe'][-4:]}")
+                dst = self.e.clabe_owner.get(x["to_clabe"], f"CLABE …{x['to_clabe'][-4:]}")
+                if dst not in ("COMPANY", f"RFC:{rfc}") and dst not in others:
+                    others.append(dst)
+                kept = f", {x['amount'] / prev:.1%} of the previous hop" if prev else ""
+                xid = ex.add("bank_txns", x["txn_id"], f"Hop {n + 1}: {src} sent {mxn(x['amount'])} to {dst} on {x['date']}{kept}.")
+                trail.append({"from": src, "to": dst, "amount": x["amount"], "date": x["date"], "exhibit_id": xid})
+                prev = x["amount"]
+        use_inv = len(inv_items) == len(chains)
+        amount = round(sum(a for _, a in (inv_items if use_inv else out_items)), 2)
+        back = round(sum(c[-1]["amount"] for c in chains), 2)
+        days = [days_between(c[0]["date"], c[-1]["date"]) for c in chains]
+        hops = sorted({len(c) for c in chains})
+        ents = [f"RFC:{rfc}"] + [o for o in others if o.startswith("RFC:") or o.startswith("EMP:")]
+        named = [o for o in others if o.startswith(("RFC:", "EMP:"))]
+        evidence = [f"{len(chains)} payment(s) to {rfc} travelled through {', '.join(others) or 'a third party'} and "
+                    f"came back to a company account within {max(days)} days ({mxn(back)} of {mxn(amount)})",
+                    f"every hop kept at least {ROUND_TRIP_HOP_MIN_RATIO:.0%} of the previous amount; "
+                    f"cycle length {'/'.join(map(str, hops))} transfers"]
+        if direct_note:
+            evidence.append(direct_note)
+        confidence = "proven" if len(chains) >= 2 else "probable"
+        narrative = (f"The company paid {self.name(rfc)} {mxn(amount)}. Within {max(days)} days the same money moved on to "
+                     f"{', '.join(named) or 'another account'} and then back into a company account, "
+                     f"arriving as {mxn(back)} after a small cut at each hop. The purchase and the incoming money "
+                     f"are the same pesos going around, not trade.")
+        return {"closed": False, "scheme_type": "round_tripping", "entities": ents, "subject_name": self.name(rfc),
+                "rule_broken": ("NIF D-1 (income requires a real transfer of goods or services; money that returns "
+                                "through the supplier just paid is not revenue) and CFF Art. 69-B (simulated operations)."),
+                "peso_amount": amount, "confidence": confidence, "narrative": narrative, "evidence": evidence,
+                "exhibits": ex.items, "money_trail": trail,
+                "reconciliation": {"table": "invoices" if use_inv else "bank_txns",
+                                   "items": inv_items if use_inv else out_items},
+                "scoring": {"cycles": [[x["txn_id"] for x in c] for c in chains], "hop_min_ratio": ROUND_TRIP_HOP_MIN_RATIO,
+                            "max_days": ROUND_TRIP_CHAIN_MAX_DAYS},
+                "defense": [{"argument": "The third party could be an ordinary customer paying the company.",
+                             "held": False,
+                             "why": f"Its payment arrived days after it received {mxn(chains[0][1]['amount'])} from the "
+                                    f"supplier the company had just paid, at {chains[0][-1]['amount'] / chains[0][0]['amount']:.1%} "
+                                    f"of the original amount."},
+                            {"argument": "Transfers between the company's own accounts are not round-tripping.",
+                             "held": False,
+                             "why": "Correct, and those are excluded: this cycle leaves through a registered supplier's "
+                                    "account and passes through a third party."}]}
+
     def round_tripping(self, rfc: str) -> dict:
         t = self.t
         v = t.vendor_profile(rfc) or {}
         vc = v.get("bank_clabe")
         if not vc:
             return closed("Vendor has no bank account on file.")
+        chains = [c for c in self.e.cycles() if c[0]["to_clabe"] == vc]
         outs = t.txns_between(self.e.company_clabes, vc)
         backs = t.txns_between(vc, self.e.company_clabes)
         invs = t.invoices_from_vendor(rfc)
@@ -303,7 +397,11 @@ class Investigator:
             else:
                 cycles.append((o, b, inv, booking))
         booked = [c for c in cycles if c[3]]
-        if not cycles or (len(booked) == 0 and len(cycles) < 2):
+        direct_ok = bool(cycles) and not (len(booked) == 0 and len(cycles) < 2)
+        if chains and not direct_ok:
+            note = (f"{len(cycles)} direct return(s) from the vendor itself also exist" if cycles else "")
+            return self._chain_finding(rfc, chains, note)
+        if not direct_ok:
             if refunds:
                 o, b, inv = refunds[0]
                 return closed(f"{b['txn_id']} returned {mxn(b['amount'])} {days_between(o['date'], b['date'])} days "
@@ -313,8 +411,11 @@ class Investigator:
                                 "why": "The paid invoice was cancelled and the return was not recorded as a sale."}])
             return closed(f"The company paid {rfc} {len(outs)} times and received {len(backs)} transfers from it, "
                           f"but no receipt matches a payment within {ROUND_TRIP_MAX_DAYS} days at "
-                          f"≥{ROUND_TRIP_MIN_RATIO:.0%} of its amount; the two flows are independent "
-                          f"trade (sales {len(sales)}, purchases {len(invs)}).", "investigator")
+                          f"≥{ROUND_TRIP_MIN_RATIO:.0%} of its amount, and no payment to it travels through a third "
+                          f"account back to the company within {ROUND_TRIP_CHAIN_MAX_DAYS} days keeping "
+                          f"≥{ROUND_TRIP_HOP_MIN_RATIO:.0%} per hop; the two flows are independent trade "
+                          f"(sales {len(sales)}, purchases {len(invs)}). Transfers between the company's own "
+                          f"accounts ({len(self.e.own_accounts)} detected) are never counted as a cycle.", "investigator")
         confidence = "proven" if len(booked) >= 2 else "probable"
         ex = Exhibits()
         ex.add("vendors", rfc, "Counterparty is both a supplier and, on paper, a customer.")
@@ -361,126 +462,195 @@ class Investigator:
                      "why": "The paid invoices are valid, not cancelled, and the returns were booked as sales."}] if booked else [])}
 
     # ------------------------------------------------------------------ splitting
+    def _split_candidates(self, pos: list[dict]) -> list[dict]:
+        """Ventanas de ≥3 órdenes justo bajo un límite, ≤SPLIT_WINDOW_DAYS, que juntas lo superan,
+        agrupadas por la misma persona: el aprobador (una persona se queda dentro de su propia
+        autoridad) o el solicitante (una compra repartida entre varios aprobadores)."""
+        cands = []
+        for lim in self.approval_limits():
+            near = [p for p in pos if NEAR_LIMIT_RATIO * lim <= p["amount"] < lim]
+            for mode in ("requester", "approver"):
+                groups: dict[str, list] = {}
+                for p in near:
+                    groups.setdefault(self.e.person_key(p[mode]), []).append(p)
+                for person, ps in sorted(groups.items()):
+                    if not person:
+                        continue
+                    ps.sort(key=lambda p: (p["date"], p["po_id"]))
+                    for i in range(len(ps)):
+                        win = [p for p in ps[i:] if days_between(ps[i]["date"], p["date"]) <= SPLIT_WINDOW_DAYS]
+                        if len(win) >= 3 and sum(p["amount"] for p in win) > lim:
+                            approvers = sorted({self.e.person_key(p["approver"]) for p in win})
+                            if mode == "requester" and len(approvers) < 2:
+                                continue   # un solo aprobador: lo evalúa el modo aprobador
+                            cands.append({"lim": lim, "mode": mode, "person": person, "win": win,
+                                          "span": days_between(win[0]["date"], win[-1]["date"]),
+                                          "approvers": approvers})
+        cands.sort(key=lambda c: (-len(c["win"]), c["span"], c["mode"] != "requester", c["lim"], c["person"],
+                                  [p["po_id"] for p in c["win"]]))
+        return cands
+
     def threshold_splitting(self, rfc: str) -> dict:
         t = self.t
         pos = t.purchase_orders(rfc)
         ctrs = t.contracts(rfc)
-        best = None
-        for lim in self.approval_limits():
-            near = [p for p in pos if NEAR_LIMIT_RATIO * lim <= p["amount"] < lim]
-            for i in range(len(near)):
-                win = [p for p in near[i:] if days_between(near[i]["date"], p["date"]) <= SPLIT_WINDOW_DAYS]
-                if len(win) >= 3 and sum(p["amount"] for p in win) > lim and (best is None or len(win) > len(best[1])):
-                    best = (lim, win)
-        if not best:
-            near = [p for p in pos if any(NEAR_LIMIT_RATIO * l <= p["amount"] < l for l in LIMIT_CANDIDATES)]
+        cands = self._split_candidates(pos)
+        if not cands:
+            near = [p for p in pos if any(NEAR_LIMIT_RATIO * l <= p["amount"] < l for l in self.approval_limits())]
             gaps = [days_between(a["date"], b["date"]) for a, b in zip(near, near[1:])]
-            regular = gaps and min(gaps) >= 25
+            amounts = [p["amount"] for p in near]
+            fixed = bool(amounts) and max(amounts) - min(amounts) <= 0.01 * max(amounts)
+            regular = bool(gaps) and min(gaps) >= FIXED_FEE_MIN_GAP_DAYS
+            ctr = next((c for c in ctrs if near and c["start_date"] <= near[0]["date"]), None)
             reason = (f"{len(near)} orders sit just under an approval limit, but they are spaced "
                       f"{min(gaps) if gaps else 0}–{max(gaps) if gaps else 0} days apart"
-                      + (f" under contract {ctrs[0]['contract_id']} (MXN {ctrs[0]['value']:,.0f})" if ctrs else "")
-                      + f"; no three fall within {SPLIT_WINDOW_DAYS} days, so this is a recurring charge, "
-                        f"not one purchase split up.")
+                      + (f" for an identical {mxn(amounts[0])}" if fixed and len(near) > 1 else "")
+                      + (f" under contract {ctr['contract_id']} (MXN {ctr['value']:,.0f}, since {ctr['start_date']})"
+                         if ctr else (f" under contract {ctrs[0]['contract_id']} (MXN {ctrs[0]['value']:,.0f})" if ctrs else ""))
+                      + f"; no three fall within {SPLIT_WINDOW_DAYS} days for the same requester or approver, so this "
+                        f"is a recurring charge, not one purchase split up.")
             return closed(reason, "challenger" if regular else "investigator",
                           [{"argument": "Orders just under the limit suggest splitting.", "held": True,
-                            "why": "Regular monthly cadence matches a recurring service."}] if regular else [])
-        lim, win = best
-        span = days_between(win[0]["date"], win[-1]["date"])
-        approvers = sorted({p["approver"] for p in win})
-        above = [p for a in approvers for p in t.approvals_by(a) if p["amount"] >= lim]
-        total = round(sum(p["amount"] for p in win), 2)
-        if above:
-            return closed(f"{len(win)} orders of {NEAR_LIMIT_RATIO:.0%}–100% of MXN {lim:,.0f} within {span} days, but "
-                          f"approver(s) {', '.join(approvers)} also signed {len(above)} orders of MXN {lim:,.0f} or more "
-                          f"(e.g. {above[0]['po_id']} for {mxn(above[0]['amount'])}); MXN {lim:,.0f} is not a limit "
-                          f"they needed to evade.", "challenger",
+                            "why": "Regular cadence" + (" of a fixed fee under a signed contract" if fixed and ctr else "")
+                                   + " matches a recurring service."}] if regular else [])
+        exculpated = []
+        chosen = None
+        for c in cands:
+            lim, win = c["lim"], c["win"]
+            if c["mode"] == "approver":
+                above = [p for p in t.approvals_by(c["person"]) if p["amount"] >= lim]
+                if above:
+                    exculpated.append((c, f"approver {c['person']} also signed {len(above)} orders of MXN {lim:,.0f} "
+                                          f"or more (e.g. {above[0]['po_id']} for {mxn(above[0]['amount'])}); "
+                                          f"MXN {lim:,.0f} is not a limit they needed to evade"))
+                    continue
+            chosen = c
+            break
+        if chosen is None:
+            c, why = exculpated[0]
+            return closed(f"{len(c['win'])} orders of {NEAR_LIMIT_RATIO:.0%}–100% of MXN {c['lim']:,.0f} within "
+                          f"{c['span']} days, but {why}. No requester spread a purchase across approvers "
+                          f"({len(cands)} window(s) examined).", "challenger",
                           [{"argument": "Orders cluster just under a round amount.", "held": True,
                             "why": "The approver is authorised above that amount."}])
-        if len(approvers) > 1:
-            return closed(f"{len(win)} orders just under MXN {lim:,.0f} within {span} days, but signed by "
-                          f"{len(approvers)} different approvers ({', '.join(approvers)}); no single person split a "
-                          f"purchase to stay inside their own authority.", "challenger",
-                          [{"argument": "Orders cluster under the approval limit.", "held": True,
-                            "why": "Independent approvers signed them."}])
-        proven = span <= SPLIT_PROVEN_WINDOW_DAYS
+        lim, win, span, mode = chosen["lim"], chosen["win"], chosen["span"], chosen["mode"]
+        approvers = chosen["approvers"]
+        person = self.e.person(chosen["person"])
+        pref = Estate.emp_ref(person) if person else chosen["person"]
+        total_po = round(sum(p["amount"] for p in win), 2)
         evidence = [f"{len(win)} orders of {NEAR_LIMIT_RATIO:.0%}–100% of MXN {lim:,.0f} within {span} days, "
-                    f"together {mxn(total)}"]
-        if not above:
-            evidence.append(f"approver(s) {', '.join(approvers)} never signed an order of MXN {lim:,.0f} or more — "
+                    f"together {mxn(total_po)} on the purchase orders"]
+        if mode == "approver":
+            evidence.append(f"approver {pref} signed every order and never signed one of MXN {lim:,.0f} or more — "
                             f"that is the limit of their authority")
-        if len(approvers) == 1:
-            evidence.append("the same person approved every order")
+        else:
+            evidence.append(f"requester {pref} raised every order and each went to a different approver "
+                            f"({', '.join(approvers)}), so no approver saw the full MXN {total_po:,.0f}")
         ex = Exhibits()
         trail, invs, used = [], t.invoices_from_vendor(rfc), set()
         v = self.e.vendors.get(rfc, {})
         for p in win:
             ex.add("purchase_orders", p["po_id"], f"Order {p['date']} for {mxn(p['amount'])}, "
-                                                   f"{(p['amount'] / lim):.1%} of the limit, approved by {p['approver']}.")
+                                                   f"{(p['amount'] / lim):.1%} of the limit, requested by "
+                                                   f"{self.e.person_key(p['requester'])}, approved by "
+                                                   f"{self.e.person_key(p['approver'])}.")
+        matched = []
         for p in win:
-            inv = next((i for i in invs if i["uuid"] not in used and abs(i["total"] - p["amount"]) <= AMOUNT_MATCH * p["amount"]
+            inv = next((i for i in invs if i["uuid"] not in used and self.e.po_invoice_gap(p, i, AMOUNT_MATCH) is not None
                         and within(p["date"], i["issue_date"], -5, 30)), None)
             if not inv:
                 continue
             used.add(inv["uuid"])
-            iid = ex.add("invoices", inv["uuid"], f"Invoice for the order, {mxn(inv['total'])}.")
+            matched.append(inv)
+            iid = ex.add("invoices", inv["uuid"], f"Invoice for the order, {mxn(inv['total'])} including VAT.")
             pay = t.payment_for_invoice(inv, v.get("bank_clabe", ""), set())
             step = {"from": "COMPANY", "to": f"RFC:{rfc}", "amount": inv["total"], "date": inv["issue_date"], "exhibit_id": iid}
             if pay:
                 step = {"from": "COMPANY", "to": f"RFC:{rfc}", "amount": pay["amount"], "date": pay["date"],
                         "exhibit_id": ex.add("bank_txns", pay["txn_id"], f"Payment of {inv['uuid']}.")}
             trail.append(step)
-        for a in approvers:
+        for a in (approvers if mode == "approver" else [chosen["person"]]):
             emp = t.employee_by_name(a)
             if emp:
-                ex.add("employees", emp["emp_id"], f"Approver {Estate.emp_ref(emp)} ({emp['role']}).")
+                ex.add("employees", emp["emp_id"], f"{'Approver' if mode == 'approver' else 'Requester'} "
+                                                     f"{Estate.emp_ref(emp)} ({emp['role']}).")
+        # pesos: lo que se pagó (facturas con IVA) si cada orden tiene su factura; si no, las órdenes
+        if len(matched) == len(win):
+            total = round(sum(i["total"] for i in matched), 2)
+            recon = {"table": "invoices", "items": [(i["uuid"], i["total"]) for i in matched]}
+        else:
+            total = total_po
+            recon = {"table": "purchase_orders", "items": [(p["po_id"], p["amount"]) for p in win]}
+        if not trail:
+            trail = [{"from": "COMPANY", "to": f"RFC:{rfc}", "amount": p["amount"], "date": p["date"],
+                      "exhibit_id": ex._key[("purchase_orders", p["po_id"])]} for p in win]
+        proven = span <= SPLIT_PROVEN_WINDOW_DAYS
         narrative = (f"Within {span} days, {len(win)} purchase orders to {self.name(rfc)} were each set just below "
-                     f"the MXN {lim:,.0f} approval limit. Together they total {mxn(total)}, a purchase that should "
-                     f"have gone to a higher approver. Splitting it kept every order inside "
-                     f"{'one approver' if len(approvers) == 1 else 'lower approvers'}' authority.")
-        ents = [f"RFC:{rfc}"]
-        return {"closed": False, "scheme_type": "threshold_splitting", "entities": ents,
+                     f"the MXN {lim:,.0f} approval limit. Together they total {mxn(total_po)}, a purchase that should "
+                     f"have gone to a higher approver. "
+                     + ("Splitting it kept every order inside one approver's authority."
+                        if mode == "approver" else
+                        f"The same requester ({pref}) raised all of them and routed each to a different approver, "
+                        f"so nobody reviewed the whole purchase."))
+        return {"closed": False, "scheme_type": "threshold_splitting", "entities": [f"RFC:{rfc}"],
                 "subject_name": self.name(rfc),
                 "rule_broken": (f"Purchase approval-limit policy: purchases above MXN {lim:,.0f} require higher "
                                 f"authorization; splitting one purchase into {len(win)} orders below the limit evades it."),
                 "peso_amount": total, "confidence": "proven" if proven else "probable", "narrative": narrative,
-                "evidence": evidence, "exhibits": ex.items, "money_trail": trail,
-                "reconciliation": {"table": "purchase_orders", "items": [(p["po_id"], p["amount"]) for p in win]},
+                "evidence": evidence, "exhibits": ex.items, "money_trail": trail, "reconciliation": recon,
+                "scoring": {"grouped_by": mode, "person": chosen["person"], "limit": lim, "window_days": span,
+                            "candidates_examined": len(cands), "exculpated_candidates": len(exculpated)},
                 "defense": [{"argument": "These could be separate recurring purchases.", "held": False,
-                             "why": f"All {len(win)} fall within {span} days, not a monthly cadence."}]}
+                             "why": f"All {len(win)} fall within {span} days, not a monthly cadence."}]
+                + ([{"argument": "Different approvers signed them independently.", "held": False,
+                     "why": f"One requester raised all {len(win)} orders for the same vendor in {span} days."}]
+                   if mode == "requester" else [])}
 
     # ------------------------------------------------------------------ revenue
     def revenue_inflation(self, rfc: str) -> dict:
         t = self.t
         sales = t.invoices_to_customer(rfc)
-        used, flagged, collected, not_due = set(), [], [], []
+        used, flagged, collected, partial, not_due = set(), [], [], [], []
         for s in sales:
-            r = t.receipt_for_invoice(s, used)
+            rs = t.receipts_for_invoice(s, used)
+            got = round(sum(r["amount"] for r in rs), 2)
             age = days_between(s["issue_date"], self.e.bank_horizon.isoformat())
-            if r:
-                used.add(r["txn_id"])
-                collected.append((s, r))
+            if rs and got >= PARTIAL_COLLECTION_MIN * s["total"]:
+                used |= {r["txn_id"] for r in rs}
+                (collected if got >= 0.995 * s["total"] else partial).append((s, rs, got))
             elif s["status"] == "cancelado":
                 flagged.append(s)
             elif (s["metodo_pago"] == "PPD" and age < PPD_GRACE_DAYS) or age < UNCOLLECTED_MIN_AGE_DAYS:
                 not_due.append(s)
             else:
                 flagged.append(s)
+        paid = collected + partial
         if not flagged:
-            ex = collected[0] if collected else None
-            return closed(f"All {len(collected)} sales invoices to {rfc} were collected"
-                          + (f" (e.g. {ex[0]['uuid']} paid by {ex[1]['txn_id']} on {ex[1]['date']})" if ex else "")
+            ex = paid[0] if paid else None
+            return closed(f"All {len(paid)} sales invoices to {rfc} were collected by bank transfer from a third-party "
+                          f"account"
+                          + (f" (e.g. {ex[0]['uuid']}: {len(ex[1])} receipt(s) {', '.join(r['txn_id'] for r in ex[1][:3])} "
+                             f"totalling {mxn(ex[2])} of {mxn(ex[0]['total'])})" if ex else "")
+                          + (f"; {len(partial)} were paid in instalments ({s_ppd(partial)}), which is how PPD credit "
+                             f"sales are settled" if partial else "")
                           + (f"; {len(not_due)} are still within credit terms" if not_due else "")
-                          + ". Quarter-end timing alone is not inflation.",
-                          "challenger" if collected else "investigator")
+                          + ". Quarter-end timing or credit terms alone are not inflation.",
+                          "challenger" if paid else "investigator",
+                          [{"argument": "Sales on credit (PPD) without full payment look like inflated revenue.",
+                            "held": True, "why": "Real instalment payments reached the company."}] if partial else [])
         qend = [s for s in flagged if is_quarter_end(s["issue_date"])]
         canc = [s for s in flagged if s["status"] == "cancelado"]
-        new_customer = not collected
+        new_customer = not paid
         n = len(flagged)
         if not (n >= 2 or canc or qend):
             return closed(f"One uncollected invoice ({flagged[0]['uuid']}) outside quarter-end and not cancelled; "
-                          f"consistent with an ordinary late payer ({len(collected)} other invoices were paid).")
-        proven = n >= 2 and qend and (len(canc) == n or new_customer)
+                          f"consistent with an ordinary late payer ({len(paid)} other invoices were paid).")
+        proven = n >= 2 and ((qend and (len(canc) == n or new_customer)) or (new_customer and len(sales) == n))
         evidence = [f"{n} sales invoices never collected in bank records through {self.e.bank_horizon.isoformat()}"]
+        ppd = [s for s in flagged if s["metodo_pago"] == "PPD"]
+        if ppd:
+            evidence.append(f"{len(ppd)} issued on credit (PPD, forma_pago {ppd[0]['forma_pago']}) with no instalment "
+                            f"ever received, beyond {PPD_GRACE_DAYS} days of terms")
         if qend:
             evidence.append(f"{len(qend)} issued in the last days of a quarter")
         if canc:
@@ -491,7 +661,7 @@ class Investigator:
         trail = []
         for s in flagged:
             iid = ex.add("invoices", s["uuid"], f"Sales CFDI {s['issue_date']} for {mxn(s['total'])}, "
-                                                 f"{'cancelled' if s['status'] == 'cancelado' else 'never paid'}.")
+                                                 f"{s['metodo_pago']}, {'cancelled' if s['status'] == 'cancelado' else 'never paid'}.")
             rows = t.ledger_for_invoice(s["uuid"])
             rev = next((r for r in rows if r["credit"] and str(r["account_code"]).startswith("4")), None)
             if rev:
@@ -504,7 +674,8 @@ class Investigator:
         total = round(sum(s["total"] for s in flagged), 2)
         narrative = (f"The company recorded {mxn(total)} of sales to {rfc} in {n} invoices"
                      + (f", {len(qend)} dated in the final days of a quarter" if qend else "")
-                     + ". No payment for any of them appears in the bank records"
+                     + (f", {len(ppd)} on credit terms" if ppd else "")
+                     + ". No payment for any of them appears in the bank records, not even a partial one"
                      + (f", and {len(canc)} were cancelled after the period closed" if canc else "")
                      + (". The customer never paid the company for anything" if new_customer else "")
                      + ". Revenue was reported for sales that did not produce cash.")
@@ -515,6 +686,14 @@ class Investigator:
                 "peso_amount": total, "confidence": "proven" if proven else "probable", "narrative": narrative,
                 "evidence": evidence, "exhibits": ex.items, "money_trail": trail,
                 "reconciliation": {"table": "invoices", "items": [(s["uuid"], s["total"]) for s in flagged]},
+                "scoring": {"uncollected": n, "partially_collected": len(partial), "collected": len(collected),
+                            "not_due": len(not_due), "quarter_end": len(qend), "cancelled": len(canc)},
                 "defense": [{"argument": "Credit terms could explain the missing receipts.", "held": False,
-                             "why": f"Bank records run to {self.e.bank_horizon.isoformat()}, beyond normal terms"
+                             "why": f"Bank records run to {self.e.bank_horizon.isoformat()}, beyond {PPD_GRACE_DAYS} days "
+                                    f"of terms, and not one instalment arrived"
                                     + ("; cancelled CFDI will never be paid." if canc else ".")}]}
+
+
+def s_ppd(partial: list) -> str:
+    s, rs, got = partial[0]
+    return f"{s['uuid']}: {mxn(got)} of {mxn(s['total'])} in {len(rs)} payments"
