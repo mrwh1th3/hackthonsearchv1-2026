@@ -91,7 +91,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpQueryAuth",
         "sendBody": true,
@@ -136,7 +136,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Mini-agente aislado del editor: sin lease ni fencing porque nada más compite por esta fila.\nUPDATE forense.ejecuciones_agente\n   SET estado_interno = 'terminado', model_id = 'gemini-2.5-flash',\n       checkpoint_json = nullif(nullif($2::text, 'null'), '')::jsonb, actualizado = now()\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id",
+        "query": "-- Mini-agente aislado del editor: sin lease ni fencing porque nada más compite por esta fila.\nUPDATE forense.ejecuciones_agente\n   SET estado_interno = 'terminado', model_id = 'gemini-3.6-flash',\n       checkpoint_json = nullif(nullif($2::text, 'null'), '')::jsonb, actualizado = now()\n WHERE id = nullif(nullif($1::text, 'null'), '')::uuid\nRETURNING id",
         "options": {
           "queryReplacement": "={{ ($json.execution_id) ?? 'null' }}, ={{ (JSON.stringify({ usage: $json.usage })) ?? 'null' }}"
         }
@@ -277,7 +277,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ modo: $('Validar propuesta').first().json.modo_salida, mensaje: $('Validar propuesta').first().json.mensaje, propuesta_id: $json.propuesta_id ?? null, conflicto: $('Validar propuesta').first().json.conflicto }) }}",
+        "responseBody": "={{ JSON.stringify(\n  $('Validar propuesta').first().json.modo_salida === 'respuesta'\n    ? { modo: $('Validar propuesta').first().json.modo_salida, mensaje: $('Validar propuesta').first().json.mensaje }\n    : { modo: $('Validar propuesta').first().json.modo_salida, mensaje: $('Validar propuesta').first().json.mensaje, contenido: $('Validar propuesta').first().json.patch ?? '' }\n) }}",
         "options": {
           "responseCode": 200
         }

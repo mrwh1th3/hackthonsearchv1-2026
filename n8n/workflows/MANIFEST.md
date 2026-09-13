@@ -292,17 +292,28 @@ incrementa otra vez. Retorna al padre; no invoca recursivamente investigación.
 Webhook servidor `POST /webhook/forense/editar`. El BFF normaliza propietario, IDs y selección
 (15). Presupuesto propio por operación: máximo 3 requests, deadline 90 s (17 §6).
 
+**El LLM del editor es un mini-agente AISLADO (2026-09-12: "quiero que sea un agente 100%
+aislado... quiero ponerle yo mi api de gemini... un mini agente aparte").** No pasa por
+`FORENSE_ejecutar_agente` ni por el proveedor `messages_api` de investigación (21 §5) — eso sigue
+siendo Claude/Anthropic solo para investigar/redactar. El editor llama directo a Gemini
+(`generateContent`) con su propia credencial (`Gemini API key`, HTTP Query Auth, param `key`), sin
+tools ni loop de checkpoint: un solo turno, `responseMimeType: application/json`. Cambiar de
+proveedor aquí no toca el runtime de investigación.
+
 | # | Nodo | Tipo | typeV | Parámetros clave | Credencial |
 |---|---|---|---|---|---|
 | 1 | `Webhook editar` | `webhook` | 2.1 | `POST`, `path: forense/editar`, `authentication: headerAuth`, `responseMode: responseNode` | `Forense Webhook` |
 | 2 | `Validar solicitud` | `code` | 2 | Contrato `editor.solicitud`: `{caso_id, instruccion, seleccion?, version_base, directriz_id?, modo: pregunta\|propuesta, idempotency_key}`. El texto del documento es **dato**, no system prompt. | — |
 | 3 | `Cargar versión base` | `postgres` | 2.7 | Versión base, evidencia/argumentos verificados, dictamen; persiste el mensaje de usuario. | `Forense Postgres` |
 | 4 | `Abrir operación editor` | `postgres` | 2.7 | `INSERT INTO forense.ejecuciones_agente (editor_operacion_id, rol='editor', deadline_at=now()+90s)`; XOR con `tarea_id`; unicidad por operación (varias ediciones del mismo caso). | `Forense Postgres` |
-| 5 | `Ejecutar editor` | `executeWorkflow` | 1.3 (SDK MCP) | `FORENSE_ejecutar_agente` con `rol='editor'`, sin tools, `waitForSubWorkflow: true`. | — |
-| 6 | `Validar propuesta` | `code` | 2 | No introduce IDs ajenos, montos distintos ni cambio de nivel; verifica `seleccion.hash` contra `version_base`. Documento cambiado → conflicto conservando el borrador. | — |
-| 7 | `Ruta por modo` | `switch` | 3.4 | `respuesta` (pregunta: solo chat) \| `fragmento` \| `documento`. | — |
-| 8 | `Guardar propuesta` | `postgres` | 2.7 | `INSERT INTO forense.propuestas_edicion (patch, diff, citas)` → `propuesta_id`. **Todavía no cambia el expediente**: Aplicar es operación determinista del BFF. | `Forense Postgres` |
-| 9 | `Responder` | `respondToWebhook` | 1.5 | `{modo, mensaje, propuesta_id?}`. Ninguna edición reactiva una notificación de fin ya emitida. | — |
+| 5 | `Construir prompt Gemini` | `code` | 2 | Arma `contents`/`systemInstruction` de Gemini desde `Cargar versión base` + `Validar solicitud`; documento e instrucción del usuario viajan marcados `<<DOCUMENTO>>`/`<<INSTRUCCION_USUARIO>>` como dato, nunca como orden (regla 6). | — |
+| 6 | `Llamar Gemini` | `httpRequest` | 4.2 | `POST generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent`, `responseMimeType: application/json`. Aislado del proveedor de investigación. | `Gemini API key` (HTTP Query Auth) |
+| 7 | `Interpretar salida Gemini` | `code` | 2 | Extrae `candidates[0].content.parts[0].text`, parsea JSON, exige `mensaje`; produce el mismo `{salida}` interno que antes emitía `FORENSE_ejecutar_agente`, para no tocar el nodo 9. | — |
+| 8 | `Cerrar operación editor` | `postgres` | 2.6 | `UPDATE forense.ejecuciones_agente SET estado_interno='terminado', ...`. Sin lease/fencing: nada más compite por esta fila (regla 2, deja rastro). Corre en paralelo, no bloquea la respuesta. | `Forense Postgres` |
+| 9 | `Validar propuesta` | `code` | 2 | No introduce IDs ajenos, montos distintos ni cambio de nivel; verifica `seleccion.hash` contra `version_base`. Documento cambiado → conflicto conservando el borrador. | — |
+| 10 | `Ruta por modo` | `switch` | 3.4 | `respuesta` (pregunta: solo chat) \| `fragmento` \| `documento`. | — |
+| 11 | `Guardar propuesta` | `postgres` | 2.7 | `INSERT INTO forense.propuestas_edicion (patch, diff, citas)` → `propuesta_id`. **Todavía no cambia el expediente**: Aplicar es operación determinista del BFF. | `Forense Postgres` |
+| 12 | `Responder edición` | `respondToWebhook` | 1.5 | `{modo, mensaje, propuesta_id?}`. Ninguna edición reactiva una notificación de fin ya emitida. | — |
 
 ---
 

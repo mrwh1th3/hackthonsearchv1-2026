@@ -41,7 +41,7 @@ quedan en modo test hasta que el smoke pase.
 |---|---|---|---|
 | 1 | `FORENSE_ejecutar_agente.json` | 32 | Todos los demás lo referencian. |
 | 2 | `FORENSE_reintento.json` | 16 | Lo llama la investigación. |
-| 3 | `FORENSE_editar_expediente.json` | 10 | Solo depende del worker. |
+| 3 | `FORENSE_editar_expediente.json` | 12 | Independiente de 1: el LLM del editor es un mini-agente aislado (Gemini, credencial propia), no `FORENSE_ejecutar_agente`. |
 | 4 | `FORENSE_investigar_cluster.json` | 38 | Necesita 1 y 2. |
 | 5 | `FORENSE_corrida.json` | 22 | Necesita 4. El bucle de despacho añadió seis nodos en H11 (ver §3.4). |
 | 6 | `FORENSE_inyectar.json` | 14 | 21 §3; necesita 4 y 5. Va **entre 5 y 6** del orden de 17, que es anterior a 21. |
@@ -96,7 +96,6 @@ reales tras importar»).
 |---|---|---|---|
 | `FORENSE_ejecutar_agente` | `Redespachar paso` | `PENDIENTE_FORENSE_EJECUTAR_AGENTE` | FORENSE_ejecutar_agente |
 | `FORENSE_reintento` | `Despachar revisión` | `PENDIENTE_FORENSE_EJECUTAR_AGENTE` | FORENSE_ejecutar_agente |
-| `FORENSE_editar_expediente` | `Ejecutar editor` | `PENDIENTE_FORENSE_EJECUTAR_AGENTE` | FORENSE_ejecutar_agente |
 | `FORENSE_investigar_cluster` | `Despachar especialistas` | `PENDIENTE_FORENSE_EJECUTAR_AGENTE` | FORENSE_ejecutar_agente |
 | `FORENSE_investigar_cluster` | `Despachar R2` | `PENDIENTE_FORENSE_EJECUTAR_AGENTE` | FORENSE_ejecutar_agente |
 | `FORENSE_investigar_cluster` | `Ejecutar auditor` | `PENDIENTE_FORENSE_EJECUTAR_AGENTE` | FORENSE_ejecutar_agente |
