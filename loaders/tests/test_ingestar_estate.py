@@ -73,6 +73,9 @@ class PuenteIngesta(unittest.TestCase):
             out = cls.dir / "in" / name
             mutate.mutate(SRC, out, "none", 0, "tuning", fmt)
             cls.inputs[fmt] = out
+        # nombres de columna distintos al esquema: el mapeo real, no solo el cambio de formato
+        cls.inputs["renamed"] = cls.dir / "in" / "renamed"
+        cls.renamed_manifest = mutate.mutate(SRC, cls.inputs["renamed"], "rename_columns", 3, "tuning", "csv_dir")
         src = sqlite3.connect(f"file:{SRC}?mode=ro", uri=True)
         cls.counts = {t: src.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in TABLES}
         cls.ids = {t: sorted(str(r[0]) for r in src.execute(f"SELECT {ID_COL[t]} FROM {t}")) for t in TABLES}
@@ -134,18 +137,27 @@ class PuenteIngesta(unittest.TestCase):
         self.assertEqual(out["structure_report"]["input"]["input_format"], "xlsx")
         self.assert_canonical(Path(out["estate_db"]))
 
-    def test_zip_de_csv_da_los_mismos_hallazgos_que_el_sqlite(self):
+    def hallazgos(self, path):
         from auditor.llm import LLM
         from auditor.pipeline import run
+        r = run(str(path), 103, LLM("off"), str(self.dir / f"run_{sha256(Path(path))[:8]}"))
+        return [{k: f[k] for k in ("scheme_type", "entities", "peso_amount", "confidence", "exhibits")} for f in r["findings"]]
+
+    def test_zip_de_csv_da_los_mismos_hallazgos_que_el_sqlite(self):
         out = self.run_ok(self.inputs["csv_zip"], self.dir / "e_hallazgos")
-
-        def hallazgos(path):
-            r = run(str(path), 103, LLM("off"), str(self.dir / f"run_{sha256(Path(path))[:8]}"))
-            return [{k: f[k] for k in ("scheme_type", "entities", "peso_amount", "confidence", "exhibits")} for f in r["findings"]]
-
-        orig = hallazgos(SRC)
+        orig = self.hallazgos(SRC)
         self.assertEqual(len(orig), 10)
-        self.assertEqual(hallazgos(out["estate_db"]), orig)
+        self.assertEqual(self.hallazgos(out["estate_db"]), orig)
+
+    def test_csv_con_columnas_renombradas_se_mapea_y_el_loader_lo_acepta(self):
+        self.assertTrue(self.renamed_manifest["applied"])
+        out = self.run_ok(self.inputs["renamed"], self.dir / "e_renamed")
+        tablas = out["structure_report"]["tables"]
+        renombradas = [(t, c, v["source"]) for t, m in tablas.items() for c, v in m.get("columns", {}).items()
+                       if v["source"] != c]
+        self.assertTrue(renombradas, "la mutación debió renombrar columnas")
+        self.assert_canonical(Path(out["estate_db"]))
+        self.assertEqual(self.hallazgos(out["estate_db"]), self.hallazgos(SRC))
 
     def test_csv_sin_facturas_es_error_de_estructura(self):
         d = self.dir / "sin_facturas"

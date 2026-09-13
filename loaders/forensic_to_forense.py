@@ -130,6 +130,8 @@ def estate_sql(db: Path, seed: int, nombre: str | None) -> tuple[str, str, dict]
     conn.close()
     if not invoices:
         raise EstateInvalido("invoices está vacía: no se puede inferir la empresa auditada")
+    if any(r["entry_id"] is None for r in ledger):
+        raise EstateInvalido("ledger.entry_id vacío en alguna fila; forense.polizas.entry_id es obligatorio")
     no_enteros = [r["entry_id"] for r in ledger if not re.fullmatch(r"-?\d+", str(r["entry_id"]).strip())]
     if no_enteros:
         raise EstateInvalido(f"ledger.entry_id no numérico en {len(no_enteros)} fila(s) (p. ej. {no_enteros[0]!r}); "
