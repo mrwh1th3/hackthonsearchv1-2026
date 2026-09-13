@@ -9,6 +9,19 @@ Escribe dos archivos separados:
         --key data/forensic/keys/seed_101.json
 
 Stdlib, determinista: la misma semilla produce bytes idénticos.
+
+`--conventions random` (prueba de robustez) sortea por semilla, con un RNG aparte, las
+convenciones y la forma de cada esquema que otro generador podría usar:
+  * monto de la orden de compra = total con IVA o subtotal;
+  * aprobador/solicitante escrito como nombre o como emp_id;
+  * límite de aprobación (50 000 – 120 000);
+  * EFOS 'definitivo' o 'presunto'; fantasma no reciente con solo 'presunto';
+  * round-trip directo o por 3–4 saltos entre terceros;
+  * fraccionamiento por un aprobador o por un solicitante repartido entre aprobadores;
+  * inflación de ingresos a fin de trimestre o ventas PPD sin un solo cobro;
+  * señuelos correspondientes: abonos parciales PPD, traspaso entre cuentas propias,
+    cuota fija con mismo solicitante y contrato marco.
+Sin la bandera el estate es idéntico byte a byte al generador clásico.
 """
 from __future__ import annotations
 
@@ -66,10 +79,30 @@ def rdate(rng: random.Random, a: date, b: date) -> date:
     return a + timedelta(days=rng.randint(0, max(0, (b - a).days)))
 
 
+def draw_conventions(seed: int) -> dict:
+    c = random.Random(f"conventions-{seed}")
+    return {
+        "po_base": c.choice(["total", "subtotal"]),
+        "person": c.choice(["name", "emp_id"]),
+        "limit": float(c.choice([50_000, 75_000, 100_000, 120_000])),
+        "efos_status": c.choice(["definitivo", "presunto"]),
+        "second_account": c.random() < 0.7,
+        "forms": {
+            "phantom_vendor": c.choice(["classic", "presunto_established"]),
+            "round_tripping": c.choice(["direct", "chain3", "chain4"]),
+            "threshold_splitting": c.choice(["approver", "requester"]),
+            "revenue_inflation": c.choice(["quarter_end", "ppd_uncollected"]),
+            "kickback": "classic",
+        },
+    }
+
+
 class Estate:
-    def __init__(self, seed: int):
+    def __init__(self, seed: int, conventions: str = "classic"):
         self.rng = random.Random(seed)
         self.seed = seed
+        self.conv = draw_conventions(seed) if conventions == "random" else None
+        self.limit = self.conv["limit"] if self.conv else APPROVAL_LIMIT
         self.vendors: dict[str, dict] = {}
         self.customers: dict[str, dict] = {}
         self.employees: list[dict] = []
@@ -83,6 +116,8 @@ class Estate:
         self._rfcs: set[str] = {COMPANY_RFC}
         self._clabes: set[str] = set()
         self.company_clabe = self.clabe("012")
+        self.company_clabe2 = self.clabe("012", self.company_clabe[3:6]) \
+            if self.conv and self.conv["second_account"] else None
         self.schemes: list[dict] = []
         self.decoys: list[dict] = []
 
@@ -141,8 +176,23 @@ class Estate:
         return self.rng.choice([e for e in self.employees if "Director" not in e["role"]
                                 and "Gerente de Compras" not in e["role"]])
 
+    def pref(self, emp: dict) -> str:
+        """Cómo escribe este estate a una persona en órdenes y pólizas."""
+        return emp["emp_id"] if self.conv and self.conv["person"] == "emp_id" else emp["name"]
+
+    def po_amount(self, total: float) -> float:
+        if self.conv and self.conv["po_base"] == "subtotal":
+            return round(total / 1.16, 2)
+        return total
+
+    def total_for_po(self, po_amount: float) -> float:
+        """Total de factura cuya orden registra `po_amount` en la base del estate."""
+        if self.conv and self.conv["po_base"] == "subtotal":
+            return round(po_amount * 1.16, 2)
+        return po_amount
+
     def approver_for(self, amount: float) -> dict:
-        if amount > APPROVAL_LIMIT:
+        if self.po_amount(amount) > self.limit:
             return self.by_role("Director de Finanzas")[0]
         return self.rng.choice(self.by_role("Gerente de Compras"))
 
@@ -202,7 +252,7 @@ class Estate:
         if po:
             p = {"po_id": self.nid("PO"), "vendor_rfc": v["rfc"],
                  "date": iso(po_date or d - timedelta(days=self.rng.randint(2, 9))),
-                 "amount": total, "requester": requester["name"], "approver": approver["name"],
+                 "amount": self.po_amount(total), "requester": self.pref(requester), "approver": self.pref(approver),
                  "description": concepto}
             self.pos.append(p)
             out["po"] = p
@@ -213,7 +263,7 @@ class Estate:
                "forma_pago": "03", "metodo_pago": "PUE", "status": status}
         self.invoices.append(inv)
         out["invoice"] = inv
-        appr = approver["name"] if ledger_approver is None else ledger_approver
+        appr = self.pref(approver) if ledger_approver is None else ledger_approver
         cc = self.rng.choice(["CC-100 Producción", "CC-200 Mantenimiento", "CC-300 Administración"])
         self.ledger_row(d, code, acct, total, 0, f"Registro factura {v['legal_name']}",
                         inv["uuid"], cc, appr)
@@ -225,9 +275,9 @@ class Estate:
             out["payment"] = self.txn(pd, self.company_clabe, v["bank_clabe"], total,
                                       f"Pago factura {inv['uuid']}")
             self.ledger_row(pd, "2100", "Cuentas por pagar", total, 0, "Pago a proveedor",
-                            inv["uuid"], cc, self.by_role("Contador General")[0]["name"])
+                            inv["uuid"], cc, self.pref(self.by_role("Contador General")[0]))
             self.ledger_row(pd, "1020", "Bancos", 0, total, "Pago a proveedor", inv["uuid"], cc,
-                            self.by_role("Contador General")[0]["name"])
+                            self.pref(self.by_role("Contador General")[0]))
         return out
 
     def sale(self, rfc: str, clabe: str | None, total: float, d: date, *, collect: bool = True,
@@ -241,7 +291,7 @@ class Estate:
                "forma_pago": "99" if metodo == "PPD" else "03", "metodo_pago": metodo,
                "status": status}
         self.invoices.append(inv)
-        mgr = self.by_role("Gerente de Ventas")[0]["name"]
+        mgr = self.pref(self.by_role("Gerente de Ventas")[0])
         led = [self.ledger_row(d, "1100", "Clientes", total, 0, "Venta", inv["uuid"], "CC-400 Ventas", mgr),
                self.ledger_row(d, "4000", "Ingresos por ventas", 0, total, "Venta", inv["uuid"],
                                "CC-400 Ventas", mgr)]
@@ -284,7 +334,9 @@ class Estate:
 
     # ---- esquemas --------------------------------------------------------
     def scheme(self, stype: str, idx: int, difficulty: str, shared: dict | None = None) -> dict:
-        return getattr(self, f"s_{stype}")(f"S{idx}_{stype}_{idx}", difficulty, shared if shared is not None else {})
+        form = self.conv["forms"].get(stype, "classic") if self.conv else "classic"
+        fn = getattr(self, f"s_{stype}_{form}", None) or getattr(self, f"s_{stype}")
+        return fn(f"S{idx}_{stype}_{idx}", difficulty, shared if shared is not None else {})
 
     def s_phantom_vendor(self, sid: str, diff: str, shared: dict) -> dict:
         rng = self.rng
@@ -303,7 +355,8 @@ class Estate:
             total += r["invoice"]["total"]
             d += timedelta(days=rng.randint(12, 30))
         if diff == "easy":
-            self.efos.append({"rfc": v["rfc"], "legal_name": v["legal_name"], "status": "definitivo",
+            self.efos.append({"rfc": v["rfc"], "legal_name": v["legal_name"],
+                              "status": self.conv["efos_status"] if self.conv else "definitivo",
                               "publication_date": iso(rdate(rng, date(2025, 6, 1), date(2026, 5, 30)))})
         shared["vendor"] = v
         return {"scheme_id": sid, "type": "phantom_vendor", "entities": [f"RFC:{v['rfc']}"],
@@ -318,7 +371,7 @@ class Estate:
         emp = rng.choice(self.by_role("Gerente de Compras"))
         invs, txns, total = [], [], 0.0
         for _ in range(rng.randint(3, 5)):
-            amt = round(rng.uniform(0.45, 0.96) * APPROVAL_LIMIT, 2)
+            amt = round(rng.uniform(0.45, 0.96) * self.limit, 2)
             r = self.purchase(v, amt, rdate(rng, date(2026, 1, 10), date(2026, 5, 20)),
                               approver=emp)
             invs.append(r["invoice"]["uuid"])
@@ -367,12 +420,12 @@ class Estate:
         n = rng.randint(3, 5)
         for i in range(n):
             pd = start + timedelta(days=round(span * i / (n - 1)))
-            amt = round(rng.uniform(0.88, 0.995) * APPROVAL_LIMIT, 2)
-            r = self.purchase(v, amt, pd + timedelta(days=rng.randint(1, 3)), approver=approver,
+            amt = round(rng.uniform(0.88, 0.995) * self.limit, 2)
+            r = self.purchase(v, self.total_for_po(amt), pd + timedelta(days=rng.randint(1, 3)), approver=approver,
                               requester=req if diff != "hard" else self.requester(), po_date=pd,
                               concepto="Refacciones línea de troquelado")
             invs.append(r["invoice"]["uuid"]); txns.append(r["payment"]["txn_id"])
-            total += amt
+            total += r["invoice"]["total"]
         return {"scheme_id": sid, "type": "threshold_splitting", "entities": [f"RFC:{v['rfc']}"],
                 "supporting_invoices": invs, "supporting_txns": txns,
                 "peso_amount": round(total, 2), "difficulty": diff}
@@ -428,22 +481,25 @@ class Estate:
         emp = rng.choice(self.by_role("Gerente de Compras"))
         v = self.add_vendor("Refacciones", rdate(rng, date(2014, 1, 1), date(2022, 1, 1)),
                             bank=emp["bank_clabe"][:3], branch=emp["bank_clabe"][3:6])
-        invs = [self.purchase(v, round(rng.uniform(0.2, 0.8) * APPROVAL_LIMIT, 2),
+        invs = [self.purchase(v, round(rng.uniform(0.2, 0.8) * self.limit, 2),
                               rdate(rng, PERIOD_START, PERIOD_END), approver=emp)["invoice"]["uuid"]
                 for _ in range(3)]
-        return {"entity": f"RFC:{v['rfc']}", "signal": "employee_vendor_shared_bank",
+        return {"entity": emp["emp_id"] if self.conv else f"RFC:{v['rfc']}", "signal": "employee_vendor_shared_bank",
                 "why_innocent": f"{emp['emp_id']} banks at the same institution and branch, but no transfer ever moves between the two accounts.",
                 "invoices": invs}
 
     def d_monthly_fixed_fee(self) -> dict:
         rng = self.rng
         v = self.add_vendor("Mantenimiento", rdate(rng, date(2012, 1, 1), date(2020, 1, 1)))
-        fee = round(rng.uniform(0.9, 0.98) * APPROVAL_LIMIT, 2)
+        fee = round(rng.uniform(0.9, 0.98) * self.limit, 2)
         ctr = self.add_contract(v, date(2025, 1, 1), fee * 12, "Contrato marco, cuota mensual fija de mantenimiento")
         invs = []
+        same = self.conv is not None and rng.random() < 0.5   # mismo solicitante y aprobador cada mes
+        req, appr = (self.requester(), rng.choice(self.by_role("Gerente de Compras"))) if same else (None, None)
         for m in range(1, 7):
             d = date(2026, m, rng.randint(3, 6))
-            invs.append(self.purchase(v, fee, d, po_date=d - timedelta(days=2))["invoice"]["uuid"])
+            invs.append(self.purchase(v, self.total_for_po(fee), d, po_date=d - timedelta(days=2),
+                                      requester=req, approver=appr)["invoice"]["uuid"])
         return {"entity": f"RFC:{v['rfc']}", "signal": "po_below_approval_limit",
                 "why_innocent": f"Fixed monthly fee under contract {ctr['contract_id']}; one order per month, not a split purchase.",
                 "invoices": invs}
@@ -488,6 +544,145 @@ class Estate:
                 "why_innocent": "Full refund of a cancelled CFDI; no revenue was booked for the returned funds.",
                 "invoices": [r["invoice"]["uuid"]] + others}
 
+
+    # ---- formas alternativas (solo --conventions random) -------------------
+    def s_phantom_vendor_presunto_established(self, sid: str, diff: str, shared: dict) -> dict:
+        """Proveedor sin orden ni contrato, alta 150–400 días antes de facturar, pólizas aprobadas,
+        correo corporativo; solo 'presunto' en la lista 69-B, publicado antes o después de facturar."""
+        rng = self.rng
+        first = rdate(rng, date(2026, 1, 10), date(2026, 3, 20))
+        v = self.add_vendor(rng.choice(["Consultoría", "Mantenimiento", "Tecnología"]),
+                            first - timedelta(days=rng.randint(150, 400)))
+        invs, txns, total, d = [], [], 0.0, first
+        for _ in range(3 if diff == "hard" else rng.randint(3, 5)):
+            amt = round(rng.uniform(60_000, 200_000) * 1.16, 2)
+            r = self.purchase(v, amt, d, concepto="Servicios profesionales varios", po=False)
+            invs.append(r["invoice"]["uuid"]); txns.append(r["payment"]["txn_id"])
+            total += r["invoice"]["total"]
+            d += timedelta(days=rng.randint(20, 40))
+        pub = first + timedelta(days=rng.randint(-60, 160))
+        self.efos.append({"rfc": v["rfc"], "legal_name": v["legal_name"], "status": "presunto",
+                          "publication_date": iso(pub)})
+        shared["vendor"] = v
+        return {"scheme_id": sid, "type": "phantom_vendor", "entities": [f"RFC:{v['rfc']}"],
+                "supporting_invoices": invs, "supporting_txns": txns,
+                "peso_amount": round(total, 2), "difficulty": "hard"}
+
+    def _round_trip_chain(self, sid: str, hops: int) -> dict:
+        rng = self.rng
+        a = self.add_vendor(rng.choice(["Logística", "Materias primas", "Seguridad"]),
+                            rdate(rng, date(2018, 1, 1), date(2024, 1, 1)))
+        middles = []
+        for _ in range(hops - 2):
+            if rng.random() < 0.6:
+                b = self.add_vendor(rng.choice(["Limpieza", "Refacciones", "Tecnología"]),
+                                    rdate(rng, date(2015, 1, 1), date(2023, 1, 1)))
+                for _ in range(rng.randint(1, 3)):   # proveedor normal con compras documentadas
+                    self.purchase(b, round(rng.uniform(20_000, 80_000), 2), rdate(rng, PERIOD_START, PERIOD_END))
+                middles.append(("RFC", b))
+            else:
+                middles.append(("CLABE", {"bank_clabe": self.clabe()}))
+        invs, txns, total, ents = [], [], 0.0, [f"RFC:{a['rfc']}"] + [f"RFC:{m['rfc']}" for k, m in middles if k == "RFC"]
+        d = rdate(rng, date(2026, 1, 10), date(2026, 3, 1))
+        for _ in range(rng.randint(1, 2)):
+            amt = round(rng.uniform(250_000, 700_000), 2)
+            r = self.purchase(a, amt, d, pay_delay=(3, 10))
+            pay = r["payment"]
+            invs.append(r["invoice"]["uuid"]); txns.append(pay["txn_id"])
+            total += r["invoice"]["total"]
+            cur_d, cur_amt, cur_clabe = date.fromisoformat(pay["date"]), pay["amount"], a["bank_clabe"]
+            for _, m in middles:
+                cur_d += timedelta(days=rng.randint(2, 12))
+                cur_amt = round(cur_amt * rng.uniform(0.96, 0.99), 2)
+                t = self.txn(cur_d, cur_clabe, m["bank_clabe"], cur_amt, "Pago subcontratacion")
+                txns.append(t["txn_id"]); cur_clabe = m["bank_clabe"]
+            cur_d += timedelta(days=rng.randint(3, 15))
+            cur_amt = round(cur_amt * rng.uniform(0.96, 0.99), 2)
+            dest = self.company_clabe2 if self.company_clabe2 and rng.random() < 0.3 else self.company_clabe
+            t = self.txn(cur_d, cur_clabe, dest, cur_amt, "Ingreso por servicios")
+            txns.append(t["txn_id"])
+            d += timedelta(days=rng.randint(30, 50))
+        return {"scheme_id": sid, "type": "round_tripping", "entities": ents,
+                "supporting_invoices": invs, "supporting_txns": txns,
+                "peso_amount": round(total, 2), "difficulty": "hard"}
+
+    def s_round_tripping_chain3(self, sid: str, diff: str, shared: dict) -> dict:
+        return self._round_trip_chain(sid, 3)
+
+    def s_round_tripping_chain4(self, sid: str, diff: str, shared: dict) -> dict:
+        return self._round_trip_chain(sid, 4)
+
+    def s_threshold_splitting_requester(self, sid: str, diff: str, shared: dict) -> dict:
+        """Un solicitante reparte una compra entre aprobadores distintos, órdenes justo bajo el límite
+        en ≤7 días. Los aprobadores sí firman otras órdenes por encima del límite."""
+        rng = self.rng
+        v = shared.get("vendor") or self.add_vendor(
+            rng.choice(["Refacciones", "Mantenimiento"]), rdate(rng, date(2015, 1, 1), date(2023, 1, 1)))
+        req = self.requester()
+        pool = [e for e in self.employees if e["role"] in ("Gerente de Compras", "Director de Finanzas",
+                                                           "Jefe de Mantenimiento", "Contador General")
+                and e["emp_id"] != req["emp_id"]]
+        start = rdate(rng, date(2026, 1, 15), date(2026, 5, 10))
+        n = rng.randint(3, min(4, len(pool)))
+        approvers = rng.sample(pool, n)
+        invs, txns, total = [], [], 0.0
+        for i, ap in enumerate(approvers):
+            pd = start + timedelta(days=rng.randint(0, 7))
+            amt = round(rng.uniform(0.9, 0.99) * self.limit, 2)
+            r = self.purchase(v, self.total_for_po(amt), pd + timedelta(days=rng.randint(0, 2)), approver=ap,
+                              requester=req, po_date=pd, concepto=f"Suministro parcialidad {i + 1}")
+            invs.append(r["invoice"]["uuid"]); txns.append(r["payment"]["txn_id"])
+            total += r["invoice"]["total"]
+        return {"scheme_id": sid, "type": "threshold_splitting", "entities": [f"RFC:{v['rfc']}", req["emp_id"]],
+                "supporting_invoices": invs, "supporting_txns": [],
+                "peso_amount": round(total, 2), "difficulty": "hard"}
+
+    def s_revenue_inflation_ppd_uncollected(self, sid: str, diff: str, shared: dict) -> dict:
+        """Ventas PPD (forma_pago 99), vigentes, fuera de fin de trimestre, sin un solo cobro."""
+        rng = self.rng
+        c = rng.choice(list(self.customers.values())) if diff == "hard" else self.add_customer()
+        invs, total = [], 0.0
+        for _ in range(rng.randint(2, 3)):
+            m = rng.choice([1, 2, 4])
+            s = self.sale(c["rfc"], c["clabe"], round(rng.uniform(200_000, 600_000), 2),
+                          date(2026, m, rng.randint(2, 20)), collect=False, metodo="PPD",
+                          concepto="Venta de servicios")
+            invs.append(s["invoice"]["uuid"])
+            total += s["invoice"]["total"]
+        return {"scheme_id": sid, "type": "revenue_inflation", "entities": [f"RFC:{c['rfc']}"],
+                "supporting_invoices": invs, "supporting_txns": [],
+                "peso_amount": round(total, 2), "difficulty": "hard"}
+
+    def d_ppd_partial(self) -> dict:
+        rng = self.rng
+        c = self.add_customer()
+        s = self.sale(c["rfc"], c["clabe"], round(rng.uniform(300_000, 600_000), 2),
+                      date(2026, rng.choice([1, 2, 4]), rng.randint(2, 20)), collect=False, metodo="PPD",
+                      concepto="Venta de servicios")
+        inv = s["invoice"]
+        d = date.fromisoformat(inv["issue_date"])
+        left = inv["total"] * rng.uniform(0.7, 0.95)
+        for k in range(3):
+            d += timedelta(days=rng.randint(20, 35))
+            part = round(left * (0.5 if k < 2 else 1.0), 2)
+            left -= part
+            self.txn(d, c["clabe"], self.company_clabe, part, f"Pago parcial PPD {inv['uuid']}")
+        return {"entity": f"RFC:{c['rfc']}", "signal": "uncollected_sales",
+                "why_innocent": "PPD credit sale settled in real partial payments from the customer's account.",
+                "invoices": [inv["uuid"]]}
+
+    def d_treasury_transfer(self) -> dict:
+        rng = self.rng
+        if not self.company_clabe2:
+            return self.d_refund_cancelled()
+        for _ in range(2):
+            d = rdate(rng, date(2026, 1, 5), date(2026, 5, 1))
+            amt = round(rng.uniform(300_000, 700_000), 2)
+            self.txn(d, self.company_clabe, self.company_clabe2, amt, "Traspaso")
+            self.txn(d + timedelta(days=rng.randint(20, 40)), self.company_clabe2, self.company_clabe, amt, "Retorno")
+        return {"entity": f"RFC:{COMPANY_RFC}", "signal": "funds_returned_to_company",
+                "why_innocent": "Transfers between two of the company's own accounts, no third party.", "invoices": []}
+
     # ---- escritura -------------------------------------------------------
     def write(self, out: Path):
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -522,9 +717,20 @@ DECOY_KINDS = ["new_vendor_documented", "efos_presunto_backed", "same_bank", "mo
                "quarter_end_ppd", "reciprocal_customer", "refund_cancelled"]
 
 
-def build(seed: int, n_schemes: int | None = None, n_decoys: int | None = None, scale: int = 1) -> Estate:
-    est = Estate(seed)
+RANDOM_DECOY_KINDS = DECOY_KINDS + ["ppd_partial", "treasury_transfer"]
+
+
+def build(seed: int, n_schemes: int | None = None, n_decoys: int | None = None, scale: int = 1,
+          conventions: str = "classic") -> Estate:
+    est = Estate(seed, conventions)
     est.baseline(scale)
+    if est.company_clabe2:   # la segunda cuenta opera: barridos de tesorería de ida y vuelta
+        for _ in range(2):
+            d0 = rdate(est.rng, PERIOD_START, date(2026, 5, 15))
+            amt = round(est.rng.uniform(100_000, 400_000), 2)
+            est.txn(d0, est.company_clabe, est.company_clabe2, amt, "Traspaso")
+            est.txn(d0 + timedelta(days=est.rng.randint(5, 30)), est.company_clabe2, est.company_clabe,
+                    round(amt * est.rng.uniform(0.3, 1.0), 2), "Traspaso")
     rng = est.rng
     n_schemes = n_schemes if n_schemes is not None else rng.randint(3, 5)
     n_decoys = n_decoys if n_decoys is not None else rng.randint(4, 10)
@@ -540,7 +746,8 @@ def build(seed: int, n_schemes: int | None = None, n_decoys: int | None = None, 
         diff = rng.choice(["easy", "medium", "medium", "hard"])
         use = shared if t == "phantom_vendor" or (entangle and t == partner) else {}
         est.schemes.append(est.scheme(t, i, diff, use))
-    kinds = [DECOY_KINDS[i % len(DECOY_KINDS)] for i in range(n_decoys)]
+    pool = RANDOM_DECOY_KINDS if est.conv else DECOY_KINDS
+    kinds = [pool[i % len(pool)] for i in range(n_decoys)]
     rng.shuffle(kinds)
     for k in kinds:
         est.decoys.append(est.decoy(k))
@@ -555,10 +762,14 @@ def main() -> int:
     ap.add_argument("--schemes", type=int)
     ap.add_argument("--decoys", type=int)
     ap.add_argument("--normal-scale", type=int, default=1, help="multiplica proveedores y clientes legítimos")
+    ap.add_argument("--conventions", default="classic", choices=["classic", "random"],
+                    help="random: convenciones y formas de esquema sorteadas por semilla (prueba de robustez)")
     a = ap.parse_args()
-    est = build(a.seed, a.schemes, a.decoys, a.normal_scale)
+    est = build(a.seed, a.schemes, a.decoys, a.normal_scale, a.conventions)
     est.write(Path(a.out))
     key = {"seed": a.seed, "company_rfc": COMPANY_RFC, "schemes": est.schemes, "decoys": est.decoys}
+    if est.conv:
+        key["conventions"] = est.conv
     Path(a.key).parent.mkdir(parents=True, exist_ok=True)
     Path(a.key).write_text(json.dumps({"ground_truth": key}, indent=2, ensure_ascii=False))
     print(f"seed={a.seed} schemes={len(est.schemes)} decoys={len(est.decoys)} "

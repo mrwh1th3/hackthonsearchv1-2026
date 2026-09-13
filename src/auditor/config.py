@@ -16,7 +16,7 @@ PO_BASE_DOMINANCE = 0.8                 # una base (total/subtotal) gana si expl
 
 # puntaje de evidencia (investigate.py): se acusa con puntaje ≥ umbral y sin exculpación
 PHANTOM_WEIGHTS = {"efos_definitivo": 2, "efos_presunto": 1, "recent_registration": 1,
-                   "no_ledger_approver": 1, "majority_undocumented": 1}
+                   "no_ledger_approver": 1, "majority_undocumented": 1, "vendor_pays_employee": 1}
 PHANTOM_THRESHOLD = 2
 ROUND_TRIP_HOP_MIN_RATIO = 0.85         # cada salto del ciclo conserva ≥85% del anterior
 ROUND_TRIP_CHAIN_MAX_DAYS = 60          # ciclo de 3–4 saltos completo dentro de esta ventana

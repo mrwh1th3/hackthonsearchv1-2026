@@ -149,13 +149,21 @@ class Investigator:
         no_approval = []
         for i in cited:
             rows = t.ledger_for_invoice(i["uuid"])
-            if rows and all(not str(r.get("approver") or "").strip() for r in rows if r["credit"] or r["debit"]):
-                no_approval.append((i, rows[0]))
+            # la póliza de registro (fecha de la factura); el pago posterior lo firma tesorería
+            booking = [r for r in rows if r["date"] == i["issue_date"] and (r["credit"] or r["debit"])] or \
+                [r for r in rows if r["credit"] or r["debit"]]
+            if booking and all(not str(r.get("approver") or "").strip() for r in booking):
+                no_approval.append((i, booking[0]))
         free_mail = any(m in str(v.get("contact_email") or "").lower() for m in FREE_MAIL)
-        majority = 2 * len(undoc) >= len(invs)
+        undoc_value = sum(i["total"] for i in undoc)
+        billed = sum(i["total"] for i in invs)
+        majority = 2 * undoc_value >= billed
+        emp_clabes = {x["bank_clabe"]: x for x in self.e.employees if x.get("bank_clabe")}
+        to_emp = t.txns_between(v["bank_clabe"], set(emp_clabes)) if v.get("bank_clabe") and emp_clabes else []
 
         signals = {"efos_definitivo": efos_def, "efos_presunto": efos_other, "recent_registration": recent,
-                   "no_ledger_approver": bool(no_approval), "majority_undocumented": majority}
+                   "no_ledger_approver": bool(no_approval), "majority_undocumented": majority,
+                   "vendor_pays_employee": bool(to_emp)}
         score = sum(PHANTOM_WEIGHTS[k] for k, on in signals.items() if on)
         scoring = {"signals": {k: {"on": on, "weight": PHANTOM_WEIGHTS[k]} for k, on in signals.items()},
                    "score": score, "threshold": PHANTOM_THRESHOLD}
@@ -172,6 +180,11 @@ class Investigator:
                             f"'recent' here means within {recent_days} days, the lower quartile of this vendor master")
         if no_approval:
             evidence.append(f"{len(no_approval)} ledger postings carry no approver")
+        if majority:
+            evidence.append(f"undocumented invoices are {undoc_value / billed:.0%} of everything the vendor billed")
+        if to_emp:
+            evidence.append(f"the vendor's account sent {len(to_emp)} transfers to employee accounts "
+                            f"({', '.join(sorted({Estate.emp_ref(emp_clabes[k['to_clabe']]) for k in to_emp}))})")
         if score < PHANTOM_THRESHOLD:
             missing = ", ".join(k for k, on in signals.items() if not on)
             return closed(f"{len(undoc)} of {len(invs)} invoices lack a purchase order or contract, but corroboration "
