@@ -175,6 +175,9 @@ NAME_KINDS = ["rename_tables", "rename_columns", "reorder_columns", "extra_colum
 VALUE_KINDS = ["date_formats", "amount_text", "status_alternates", "rfc_prefix", "emp_id_format", "emp_ref_format",
                "clabe_numeric", "null_tokens", "id_formats"]
 KINDS = NAME_KINDS + VALUE_KINDS + ["combo", "drop_optional", "drop_required"]
+FORMATS = ["sqlite", "csv_dir", "csv_messy", "csv_bom_tab", "csv_zip", "xlsx", "xlsx_messy", "xlsx_zip",
+           "xlsx_numeric_clabe", "single_csv"]
+FORMAT_EXPECT = {"xlsx_numeric_clabe": "degraded", "single_csv": "degraded"}
 
 
 def strip_accents(s: str) -> str:
@@ -530,9 +533,10 @@ def _drop_col(m: Model, t: str, c: str):
 
 
 FUNCS = {k: globals()[f"m_{k}"] for k in KINDS if k != "combo"}
+FUNCS["none"] = lambda m, rng, V: None
 
 
-def mutate(src: Path, out: Path, kind: str, seed: int, vocab: str = "tuning") -> dict:
+def mutate(src: Path, out: Path, kind: str, seed: int, vocab: str = "tuning", fmt: str = "sqlite") -> dict:
     rng = random.Random(f"mutate-{vocab}-{kind}-{seed}")
     V = VOCAB[vocab]
     m = Model(src)
@@ -545,9 +549,20 @@ def mutate(src: Path, out: Path, kind: str, seed: int, vocab: str = "tuning") ->
         kinds = [kind]
     for k in kinds:
         FUNCS[k](m, random.Random(f"mutate-{vocab}-{kind}-{k}-{seed}"), V)
-        m.applied.append(k)
-    write(m, out)
-    return manifest(m, src, out, kind, seed, vocab)
+        if k != "none":
+            m.applied.append(k)
+    if fmt == "sqlite":
+        write(m, out)
+    else:
+        export(m, out, fmt)
+        if fmt in FORMAT_EXPECT and m.expect == "identical":
+            m.expect = FORMAT_EXPECT[fmt]
+    man = manifest(m, src, out, kind, seed, vocab)
+    man["format"] = fmt
+    if fmt != "sqlite":
+        man["official_validator_compatible"] = False
+        man["validator_incompatible_because"] = [f"input is {fmt}, not SQLite"] + man["validator_incompatible_because"]
+    return man
 
 
 def write(m: Model, out: Path):
@@ -571,6 +586,213 @@ def write(m: Model, out: Path):
             c.executemany(f'INSERT INTO "{spec["name"]}" VALUES ({",".join("?" * len(rows[0]))})', rows)
     c.commit()
     c.close()
+
+
+# ---------------------------------------------------------------- exportación CSV / XLSX / ZIP
+def _table_grid(m: Model, t: str) -> tuple:
+    spec = m.tables[t]
+    cols = spec["cols"]
+    header = [spec["names"][x] for x in cols] + spec["extra"]
+    rows = []
+    for i, r in enumerate(spec["rows"]):
+        rows.append([r[TABLE_COLS[t].index(x)] for x in cols] + [extra_value(x, i, r, t) for x in spec["extra"]])
+    return spec["name"], header, rows
+
+
+def _csv_text(v, decimal_comma: bool = False) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return (f"{v:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")) if decimal_comma else repr(v)
+    return str(v)
+
+
+def export(m: Model, out: Path, fmt: str):
+    import csv
+    import io
+    import shutil
+    import zipfile
+    tables = [t for t in TABLE_COLS if t not in m.dropped_tables]
+    if out.exists():
+        if out.is_dir():
+            shutil.rmtree(out)
+        else:
+            out.unlink()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if fmt in ("csv_dir", "csv_messy", "csv_bom_tab", "csv_zip", "single_csv"):
+        files = {}
+        for t in (["invoices"] if fmt == "single_csv" else tables):
+            name, header, rows = _table_grid(m, t)
+            buf = io.StringIO(newline="")
+            if fmt == "csv_messy":
+                w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+                w.writerow([f"Exportación del sistema contable — {name}"] + [""] * (len(header) - 1))
+                w.writerow([])
+                w.writerow(header + [""])
+                for r in rows:
+                    w.writerow([_csv_text(v, decimal_comma=True) for v in r] + [""])
+                w.writerow([])
+                data = buf.getvalue().encode("cp1252", errors="replace")
+            elif fmt == "csv_bom_tab":
+                w = csv.writer(buf, delimiter="\t", lineterminator="\n")
+                w.writerow(header)
+                for r in rows:
+                    w.writerow([_csv_text(v) for v in r])
+                data = b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8")
+            else:
+                w = csv.writer(buf, lineterminator="\n")
+                w.writerow(header)
+                for r in rows:
+                    w.writerow([_csv_text(v) for v in r])
+                data = buf.getvalue().encode("utf-8")
+            files[f"{name}.csv"] = data
+        if fmt == "single_csv":
+            out.write_bytes(next(iter(files.values())))
+        elif fmt == "csv_zip":
+            with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+                for n in sorted(files):
+                    z.writestr(zipfile.ZipInfo(f"export/{n}", date_time=(2026, 7, 1, 0, 0, 0)), files[n])
+        else:
+            out.mkdir(parents=True)
+            for n, data in files.items():
+                (out / n).write_bytes(data)
+        return
+    if fmt in ("xlsx", "xlsx_messy", "xlsx_numeric_clabe", "xlsx_zip"):
+        data = xlsx_bytes(m, tables, messy=fmt == "xlsx_messy", numeric_clabe=fmt == "xlsx_numeric_clabe")
+        if fmt == "xlsx_zip":
+            with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr(zipfile.ZipInfo("estate.xlsx", date_time=(2026, 7, 1, 0, 0, 0)), data)
+        else:
+            out.write_bytes(data)
+        return
+    raise ValueError(fmt)
+
+
+def _xml(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _col_letter(i: int) -> str:
+    s = ""
+    i += 1
+    while i:
+        i, r = divmod(i - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+def xlsx_bytes(m: Model, tables: list, messy: bool, numeric_clabe: bool) -> bytes:
+    """XLSX mínimo con stdlib: sharedStrings, fechas como número de serie con estilo de fecha, montos numéricos,
+    CLABE/RFC/ids como texto (o CLABE numérica si numeric_clabe, que en Excel pierde dígitos). `messy` agrega
+    fila de título combinada, fila de grupo combinada, hoja oculta, hoja vacía y sistema de fechas 1904."""
+    import io
+    import zipfile
+    date1904 = messy
+    shared, sidx = [], {}
+
+    def si(text: str) -> int:
+        if text not in sidx:
+            sidx[text] = len(shared)
+            shared.append(text)
+        return sidx[text]
+
+    def serial(v):
+        x = _d(v)
+        if x is None:
+            return None
+        base = date(1904, 1, 1) if date1904 else date(1899, 12, 30)
+        return (x - base).days
+
+    sheets = []
+    if messy:
+        sheets.append(("Config", "hidden", f'<sheetData><row r="1"><c r="A1" t="s"><v>{si("no usar")}</v></c></row></sheetData>'))
+    for t in tables:
+        name, header, rows = _table_grid(m, t)
+        cols = m.tables[t]["cols"]
+        force_text = {ID_COL[t]} | set(RFC_COLS.get(t, [])) | ({"emp_id"} if t == "employees" else set())
+        clabes = set(CLABE_COLS.get(t, []))
+        dates = set(DATE_COLS.get(t, []))
+        xml_rows, r0, merges = [], 1, []
+        last = _col_letter(len(header) - 1)
+        if messy:
+            xml_rows.append(f'<row r="1"><c r="A1" t="s"><v>{si("Reporte " + name)}</v></c></row>')
+            merges.append(f"A1:{last}1")
+            xml_rows.append(f'<row r="3"><c r="A3" t="s"><v>{si("Datos del registro")}</v></c></row>')
+            merges.append(f"A3:{last}3")
+            r0 = 4
+        cells = "".join(f'<c r="{_col_letter(j)}{r0}" t="s"><v>{si(h)}</v></c>' for j, h in enumerate(header))
+        xml_rows.append(f'<row r="{r0}">{cells}</row>')
+        for i, r in enumerate(rows):
+            rn = r0 + 1 + i
+            cs = []
+            for j, v in enumerate(r):
+                ref = f"{_col_letter(j)}{rn}"
+                c = cols[j] if j < len(cols) else None
+                if v is None or v == "":
+                    continue
+                if c in dates and serial(v) is not None:
+                    cs.append(f'<c r="{ref}" s="1"><v>{serial(v)}</v></c>')
+                elif c in clabes and numeric_clabe and str(v).strip().isdigit():
+                    cs.append(f'<c r="{ref}"><v>{repr(float(int(str(v))))}</v></c>')
+                elif isinstance(v, (int, float)) and not isinstance(v, bool) and c not in force_text and c not in clabes:
+                    cs.append(f'<c r="{ref}"><v>{repr(v)}</v></c>')
+                else:
+                    cs.append(f'<c r="{ref}" t="s"><v>{si(str(v))}</v></c>')
+            xml_rows.append(f'<row r="{rn}">{"".join(cs)}</row>')
+        body = "<sheetData>" + "".join(xml_rows) + "</sheetData>"
+        if merges:
+            body += f'<mergeCells count="{len(merges)}">' + "".join(f'<mergeCell ref="{x}"/>' for x in merges) + "</mergeCells>"
+        sheets.append((name[:31], "visible", body))
+    if messy:
+        sheets.append(("Notas", "visible", "<sheetData/>"))
+
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    rns = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    ct_main = "application/vnd.openxmlformats-officedocument.spreadsheetml"
+    rel_t = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    buf = io.BytesIO()
+
+    def zi(n):
+        return zipfile.ZipInfo(n, date_time=(2026, 7, 1, 0, 0, 0))
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(zi("[Content_Types].xml"),
+                   '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                   '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                   '<Default Extension="xml" ContentType="application/xml"/>'
+                   f'<Override PartName="/xl/workbook.xml" ContentType="{ct_main}.sheet.main+xml"/>'
+                   f'<Override PartName="/xl/styles.xml" ContentType="{ct_main}.styles+xml"/>'
+                   f'<Override PartName="/xl/sharedStrings.xml" ContentType="{ct_main}.sharedStrings+xml"/>'
+                   + "".join(f'<Override PartName="/xl/worksheets/sheet{i + 1}.xml" ContentType="{ct_main}.worksheet+xml"/>'
+                             for i in range(len(sheets))) + "</Types>")
+        z.writestr(zi("_rels/.rels"),
+                   '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   f'<Relationship Id="rId1" Type="{rel_t}/officeDocument" Target="xl/workbook.xml"/></Relationships>')
+        pr = '<workbookPr date1904="1"/>' if date1904 else "<workbookPr/>"
+        z.writestr(zi("xl/workbook.xml"),
+                   f'<?xml version="1.0" encoding="UTF-8"?><workbook {ns} {rns}>{pr}<sheets>'
+                   + "".join(f'<sheet name="{_xml(n)}" sheetId="{i + 1}" r:id="rId{i + 1}"'
+                             + (' state="hidden"' if st == "hidden" else "") + "/>" for i, (n, st, _) in enumerate(sheets))
+                   + "</sheets></workbook>")
+        z.writestr(zi("xl/_rels/workbook.xml.rels"),
+                   '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   + "".join(f'<Relationship Id="rId{i + 1}" Type="{rel_t}/worksheet" Target="worksheets/sheet{i + 1}.xml"/>'
+                             for i in range(len(sheets)))
+                   + f'<Relationship Id="rId{len(sheets) + 1}" Type="{rel_t}/styles" Target="styles.xml"/>'
+                   + f'<Relationship Id="rId{len(sheets) + 2}" Type="{rel_t}/sharedStrings" Target="sharedStrings.xml"/>'
+                   + "</Relationships>")
+        z.writestr(zi("xl/styles.xml"),
+                   f'<?xml version="1.0" encoding="UTF-8"?><styleSheet {ns}><numFmts count="1"><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/></numFmts>'
+                   '<fonts count="1"><font/></fonts><fills count="1"><fill/></fills><borders count="1"><border/></borders>'
+                   '<cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0"/>'
+                   f'<xf numFmtId="{164 if messy else 14}" applyNumberFormat="1"/></cellXfs></styleSheet>')
+        for i, (_, _, body) in enumerate(sheets):
+            z.writestr(zi(f"xl/worksheets/sheet{i + 1}.xml"),
+                       f'<?xml version="1.0" encoding="UTF-8"?><worksheet {ns} {rns}>{body}</worksheet>')
+        z.writestr(zi("xl/sharedStrings.xml"),
+                   f'<?xml version="1.0" encoding="UTF-8"?><sst {ns} count="{len(shared)}" uniqueCount="{len(shared)}">'
+                   + "".join(f'<si><t xml:space="preserve">{_xml(x)}</t></si>' for x in shared) + "</sst>")
+    return buf.getvalue()
 
 
 def manifest(m: Model, src: Path, out: Path, kind: str, seed: int, vocab: str) -> dict:
@@ -609,16 +831,19 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--estate", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--kind", required=True, choices=KINDS)
+    ap.add_argument("--kind", required=True, choices=KINDS + ["none"])
+    ap.add_argument("--format", default="sqlite", choices=FORMATS,
+                    help="formato de salida: SQLite o exportación CSV/XLSX/ZIP (tras las mutaciones)")
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--vocab", default="tuning", choices=list(VOCAB))
     ap.add_argument("--manifest")
     a = ap.parse_args()
-    man = mutate(Path(a.estate), Path(a.out), a.kind, a.seed, a.vocab)
+    man = mutate(Path(a.estate), Path(a.out), a.kind, a.seed, a.vocab, a.format)
     if a.manifest:
         Path(a.manifest).parent.mkdir(parents=True, exist_ok=True)
         Path(a.manifest).write_text(json.dumps(man, indent=2, ensure_ascii=False, sort_keys=True))
-    print(f"{a.kind} seed={a.seed} vocab={a.vocab} applied={','.join(man['applied'])} expect={man['expect']} -> {a.out}")
+    print(f"{a.kind} format={a.format} seed={a.seed} vocab={a.vocab} applied={','.join(man['applied'])} "
+          f"expect={man['expect']} -> {a.out}")
     return 0
 
 

@@ -20,11 +20,16 @@ FREE_KINDS = {"freetext", "email"}
 
 
 def _original_rows(conn: sqlite3.Connection, table: str, cols: list[str]) -> list[tuple]:
+    """Filas (rowid, *columnas) en orden de inserción; las vistas sin rowid se numeran 1..n."""
     sel = ", ".join(q_ident(c) for c in cols)
     try:
-        return conn.execute(f"SELECT {sel} FROM {q_ident(table)} ORDER BY rowid").fetchall()
+        return conn.execute(f"SELECT rowid, {sel} FROM {q_ident(table)} ORDER BY rowid").fetchall()
     except sqlite3.OperationalError:
-        return conn.execute(f"SELECT {sel} FROM {q_ident(table)}").fetchall()
+        return [(i + 1,) + tuple(r) for i, r in enumerate(conn.execute(f"SELECT {sel} FROM {q_ident(table)}"))]
+
+
+PRECISION_KINDS = {"clabe", "rfc", "id", "int_id", "emp_id"}
+EXPONENT = re.compile(r"^\s*\d(?:\.\d+)?[eE][+]?\d+\s*$")
 
 
 def _same(a, b) -> bool:
@@ -85,7 +90,7 @@ def _rule_for(kind: str, orig, new) -> str:
     return "trimmed"
 
 
-def build_canonical(conn: sqlite3.Connection, tmap: dict, info: dict) -> dict:
+def build_canonical(conn: sqlite3.Connection, tmap: dict, info: dict, suspects: dict | None = None) -> dict:
     """Devuelve {"conn", "id_maps", "column_stats", "collisions", "identity_values", "non_null"}."""
     out = sqlite3.connect(":memory:")
     out.executescript(canonical_ddl())
@@ -95,6 +100,8 @@ def build_canonical(conn: sqlite3.Connection, tmap: dict, info: dict) -> dict:
     collisions: dict[str, int] = {}
     non_null: dict[tuple, int] = {}
     identity_values = True
+    suspects = suspects or {}
+    precision_lost: dict[str, int] = {}
 
     # empleados primero: las referencias a personas se resuelven contra sus ids
     order = ["employees"] + [t for t in CANONICAL if t != "employees"]
@@ -114,16 +121,27 @@ def build_canonical(conn: sqlite3.Connection, tmap: dict, info: dict) -> dict:
         fmts = {}
         for j, (cc, _) in enumerate(mapped):
             if spec[cc]["kind"] == "date":
-                fmts[cc] = detect_date_format([r[j] for r in rows])
+                fmts[cc] = detect_date_format([r[j + 1] for r in rows])
         col_stats = {cc: ColumnStats() for cc, _ in mapped}
         id_col = CANONICAL[ct]["id"]
         seen_ids: dict = {}
         new_rows = []
-        for r in rows:
+        sus_cols = {cc: suspects.get((m["table"], oc), {}) for cc, oc in mapped}
+        for full in rows:
+            rowid, r = full[0], full[1:]
             vals = {}
             for j, (cc, _) in enumerate(mapped):
                 kind = spec[cc]["kind"]
                 v = r[j]
+                if kind in PRECISION_KINDS and v is not None and (rowid in sus_cols[cc] or
+                                                                  (isinstance(v, str) and EXPONENT.match(v))):
+                    # número de Excel/CSV con más dígitos de los que conserva un double: los dígitos no son
+                    # confiables; se anula y se reporta en vez de aceptar una CLABE o id equivocados
+                    vals[cc] = None
+                    identity_values = False
+                    col_stats[cc].note(v, "∅", "precision_lost", False)
+                    precision_lost[f"{ct}.{cc}"] = precision_lost.get(f"{ct}.{cc}", 0) + 1
+                    continue
                 nv = _normalize(kind, v, fmts.get(cc, {}).get("format"), emp_ids, emp_names, emp_by_digits)
                 vals[cc] = nv
                 if not _same(v, nv):
@@ -132,7 +150,7 @@ def build_canonical(conn: sqlite3.Connection, tmap: dict, info: dict) -> dict:
                 if nv is not None:
                     non_null[(ct, cc)] = non_null.get((ct, cc), 0) + 1
             if id_col in vals and vals[id_col] is not None:
-                orig = r[[cc for cc, _ in mapped].index(id_col)]
+                orig = r[[cc for cc, _ in mapped].index(id_col)]   # r ya sin rowid
                 key = str(vals[id_col])
                 if key in seen_ids and seen_ids[key] != orig:
                     collisions[ct] = collisions.get(ct, 0) + 1
@@ -161,7 +179,7 @@ def build_canonical(conn: sqlite3.Connection, tmap: dict, info: dict) -> dict:
             out.execute(f"CREATE INDEX ix_{ct}_{c} ON {ct}({c})")
     out.commit()
     return {"conn": out, "present": present, "id_maps": id_maps, "column_stats": stats, "collisions": collisions,
-            "identity_values": identity_values, "non_null": non_null}
+            "identity_values": identity_values, "non_null": non_null, "precision_lost": precision_lost}
 
 
 def _person_key(name) -> str:

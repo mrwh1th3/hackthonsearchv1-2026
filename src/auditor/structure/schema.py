@@ -153,20 +153,20 @@ CANONICAL = OrderedDict([
 
 TABLES = list(CANONICAL)
 
-GLOBAL_REQUIRED = [("invoices", c) for c in CANONICAL["invoices"]["core"]] + [("vendors", "rfc")]
+GLOBAL_REQUIRED = [("invoices", c) for c in CANONICAL["invoices"]["core"]]
 
 # lo que cada tipología lee para decidir; sin ello no investiga (se declara, no se adivina)
 SCHEME_REQUIRES = OrderedDict([
-    ("phantom_vendor", [("invoices", "status"), ("purchase_orders", "po_id"), ("purchase_orders", "vendor_rfc"),
+    ("phantom_vendor", [("vendors", "rfc"), ("invoices", "status"), ("purchase_orders", "po_id"), ("purchase_orders", "vendor_rfc"),
                         ("purchase_orders", "date"), ("purchase_orders", "amount"), ("contracts", "contract_id"),
                         ("contracts", "vendor_rfc"), ("contracts", "start_date")]),
     ("kickback", [("bank_txns", "txn_id"), ("bank_txns", "from_clabe"), ("bank_txns", "to_clabe"),
                   ("bank_txns", "amount"), ("bank_txns", "date"), ("employees", "emp_id"),
-                  ("employees", "bank_clabe"), ("vendors", "bank_clabe")]),
+                  ("employees", "bank_clabe"), ("vendors", "rfc"), ("vendors", "bank_clabe")]),
     ("round_tripping", [("bank_txns", "txn_id"), ("bank_txns", "from_clabe"), ("bank_txns", "to_clabe"),
-                        ("bank_txns", "amount"), ("bank_txns", "date"), ("vendors", "bank_clabe"),
+                        ("bank_txns", "amount"), ("bank_txns", "date"), ("vendors", "rfc"), ("vendors", "bank_clabe"),
                         ("invoices", "status")]),
-    ("threshold_splitting", [("purchase_orders", "po_id"), ("purchase_orders", "vendor_rfc"),
+    ("threshold_splitting", [("vendors", "rfc"), ("purchase_orders", "po_id"), ("purchase_orders", "vendor_rfc"),
                              ("purchase_orders", "date"), ("purchase_orders", "amount"),
                              ("purchase_orders", "approver"), ("purchase_orders", "requester"),
                              ("contracts", "value")]),

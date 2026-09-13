@@ -64,10 +64,9 @@ def run_detectors(e: Estate) -> list[dict]:
     limits = approval_limits(e, OBSERVED_LIMIT_MIN_ORDERS, OBSERVED_LIMIT_ROUND)
     emp_by_clabe = {x["bank_clabe"]: x for x in e.employees if x.get("bank_clabe")}
     for rfc, v in sorted(e.vendors.items()):
-        vc = v.get("bank_clabe")
-        if not vc:
-            continue
-        for t in e.q("SELECT * FROM bank_txns WHERE from_clabe = ? ORDER BY date, txn_id", (vc,)):
+        vc = v.get("bank_clabe") or ""
+        # sin CLABE no hay rastro bancario, pero el fraccionamiento de órdenes (abajo) no depende del banco
+        for t in (e.q("SELECT * FROM bank_txns WHERE from_clabe = ? ORDER BY date, txn_id", (vc,)) if vc else []):
             emp = emp_by_clabe.get(t["to_clabe"])
             if emp:
                 leads.append(_lead("kickback", (rfc, emp["emp_id"]), f"RFC:{rfc}",
@@ -76,11 +75,11 @@ def run_detectors(e: Estate) -> list[dict]:
         approvers = {e.person_key(p["approver"]) for p in pos.get(rfc, [])}
         for emp in e.employees:
             ec = emp.get("bank_clabe") or ""
-            if ec[:3] == vc[:3] and emp["emp_id"] in approvers:
+            if vc and ec[:3] == vc[:3] and emp["emp_id"] in approvers:
                 leads.append(_lead("kickback", (rfc, emp["emp_id"]), f"RFC:{rfc}",
                                    "employee_vendor_shared_bank",
                                    f"approver {Estate.emp_ref(emp)} and vendor bank at institution {vc[:3]}"))
-        if e.company_clabes:
+        if vc and e.company_clabes:
             back = e.q(f"SELECT count(*) FROM bank_txns WHERE from_clabe = ? AND to_clabe IN "
                        f"({','.join('?' * len(e.company_clabes))})", (vc, *sorted(e.company_clabes)))[0][0]
             if back and rfc in purchase_invs:

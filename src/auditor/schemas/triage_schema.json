@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "auditor/triage_schema.json",
+  "title": "Forensic auditor triage (fraud_flag split)",
+  "description": "triage.json, branch_fraud.json and branch_no_fraud.json. One record per (subject, scheme evaluated); subjects no detector raised appear once with status no_signal. fraud_flag is set by deterministic code from the validated verdict.",
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": ["subject_id", "subject_type", "scheme_type", "signal", "fraud_flag", "status", "confidence", "score",
+                   "signals", "reason", "peso_amount", "record_ids", "related_subjects", "tool_calls", "closed_by"],
+      "additionalProperties": false,
+      "properties": {
+        "subject_id": {"type": "string", "pattern": "^(RFC|EMP|CLABE):.+"},
+        "subject_type": {"enum": ["vendor", "employee", "customer", "company_account"]},
+        "scheme_type": {"enum": ["phantom_vendor", "kickback", "round_tripping", "threshold_splitting", "revenue_inflation", null]},
+        "signal": {"type": ["string", "null"]},
+        "fraud_flag": {"type": "boolean"},
+        "status": {"enum": ["finding", "closed_lead", "no_signal"]},
+        "confidence": {"enum": ["proven", "probable", null]},
+        "score": {"type": ["object", "null"]},
+        "signals": {"type": "array", "items": {"type": "string"}},
+        "reason": {"type": "string", "minLength": 1},
+        "peso_amount": {"type": ["number", "null"]},
+        "record_ids": {
+          "type": "array",
+          "items": {"type": "object", "required": ["source_table", "record_id"], "additionalProperties": false,
+                    "properties": {"source_table": {"enum": ["ledger", "invoices", "bank_txns", "vendors", "efos_list",
+                                                            "purchase_orders", "contracts", "employees"]},
+                                   "record_id": {"type": "string"}}}
+        },
+        "related_subjects": {"type": "array", "items": {"type": "string"}},
+        "tool_calls": {"type": "array", "items": {"type": "string"}},
+        "closed_by": {"enum": ["investigator", "challenger", "validator", null]}
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": ["subject_id", "subject_type", "fraud_flag", "schemes_flagged", "schemes_closed", "records"],
+      "additionalProperties": false,
+      "properties": {
+        "subject_id": {"type": "string"},
+        "subject_type": {"enum": ["vendor", "employee", "customer", "company_account"]},
+        "fraud_flag": {"type": "boolean"},
+        "schemes_flagged": {"type": "array", "items": {"type": "string"}},
+        "schemes_closed": {"type": "array", "items": {"type": "string"}},
+        "records": {"type": "integer", "minimum": 1}
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "title": "triage.json",
+      "type": "object",
+      "required": ["triage_version", "seed", "counts", "disabled_schemes", "records", "subjects"],
+      "additionalProperties": false,
+      "properties": {
+        "triage_version": {"const": 1},
+        "seed": {"type": "integer"},
+        "counts": {"type": "object", "required": ["records", "fraud_flag_true", "fraud_flag_false", "subjects",
+                                                  "subjects_flagged", "by_status"]},
+        "disabled_schemes": {"type": "object"},
+        "records": {"type": "array", "items": {"$ref": "#/$defs/record"}},
+        "subjects": {"type": "array", "items": {"$ref": "#/$defs/subject"}}
+      }
+    },
+    {
+      "title": "branch_fraud.json / branch_no_fraud.json",
+      "type": "object",
+      "required": ["triage_version", "seed", "branch", "fraud_flag", "counts", "records", "subjects"],
+      "additionalProperties": false,
+      "properties": {
+        "triage_version": {"const": 1},
+        "seed": {"type": "integer"},
+        "branch": {"enum": ["fraud", "no_fraud"]},
+        "fraud_flag": {"type": "boolean"},
+        "counts": {"type": "object", "required": ["records", "subjects"]},
+        "records": {"type": "array", "items": {"$ref": "#/$defs/record"}},
+        "subjects": {"type": "array", "items": {"$ref": "#/$defs/subject"}}
+      }
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 """Capa opcional de LLM con casete de grabación/reproducción.
 
-El LLM solo redacta el argumento del abogado del diablo que aparece en el expediente;
-no cambia montos, evidencia ni confianza (esas salen de SQL y reglas).
+El LLM redacta el argumento del abogado del diablo del expediente y, solo ante ambigüedades de mapeo de
+columnas (structure/mapper.py), propone una columna que se valida con firmas antes de aceptarse. No cambia
+montos, evidencia ni confianza (esas salen de SQL y reglas).
 
   off     sin llamadas (por defecto): 0 llamadas, MXN 0
   record  llama a la API y guarda cada respuesta con su uso de tokens en el casete
@@ -39,10 +40,15 @@ class LLM:
             + usage.get("cache_read_input_tokens", 0) * 0.1
         return (tokens_in * pin + usage.get("output_tokens", 0) * pout) / 1e6 * USD_TO_MXN
 
+    @staticmethod
+    def key_for(model: str, system: str, prompt: str, max_tokens: int) -> str:
+        """Clave del casete: la misma petición siempre cae en la misma entrada."""
+        return hashlib.sha256(json.dumps([model, system, prompt, max_tokens]).encode()).hexdigest()
+
     def ask(self, role: str, system: str, prompt: str, max_tokens: int = 400) -> str | None:
         if self.mode == "off":
             return None
-        key = hashlib.sha256(json.dumps([self.model, system, prompt, max_tokens]).encode()).hexdigest()
+        key = self.key_for(self.model, system, prompt, max_tokens)
         if self.mode == "replay":
             if key not in self.tape:
                 raise KeyError(f"cassette has no entry for {role} call {key[:12]}")

@@ -277,7 +277,9 @@ def kind_ratio(kind: str, values: list) -> float:
         if kind == "rfc":
             ok += bool(RFC_RE.match(norm_rfc(v) or ""))
         elif kind == "clabe":
-            ok += clabe_ok(norm_clabe(v))
+            # una CLABE que Excel guardó como número en notación exponencial sigue siendo "la columna CLABE":
+            # se mapea y la normalización la descarta por pérdida de precisión (no se adivinan dígitos)
+            ok += clabe_ok(norm_clabe(v)) or bool(re.fullmatch(r"\s*1?\d(?:\.\d+)?[eE][+]?1[5-7]\s*", str(v)))
         elif kind == "amount":
             ok += norm_amount(v) is not None
         elif kind == "date":

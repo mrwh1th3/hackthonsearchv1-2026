@@ -1,0 +1,10 @@
+{
+ "8bafd6a778080633605ef1284e9eaf314b03ff4a544ff5c3e74c2cb03b4f9d3c": {
+  "role": "structure_assist",
+  "text": "{\"name\": \"full_name\"}",
+  "usage": {
+   "input_tokens": 420,
+   "output_tokens": 12
+  }
+ }
+}

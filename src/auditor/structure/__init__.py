@@ -10,9 +10,13 @@ auditor abre el archivo original y el resultado es idéntico al de antes de exis
 from __future__ import annotations
 
 import sqlite3
+import tempfile
+import zipfile
+from xml.etree import ElementTree as ET
 from collections import OrderedDict
 from pathlib import Path
 
+from .ingest import IngestError, detect_format, input_sha256, stage, suspect_cells
 from .mapper import CONFIDENT, LLMAssist, inspect_db, map_estate, q_ident
 from .normalize import build_canonical
 from .schema import CANONICAL, GLOBAL_REQUIRED, SCHEME_REQUIRES
@@ -24,9 +28,32 @@ class StructureError(Exception):
 
 
 class Prepared:
-    def __init__(self, conn, src, identity: bool, report: dict, id_maps: dict, disabled: dict, tmap: dict):
+    def __init__(self, conn, src, identity: bool, report: dict, id_maps: dict, disabled: dict, tmap: dict,
+                 input_format: str = "sqlite", staging: str | None = None):
         self.conn, self.src, self.identity = conn, src, identity
         self.report, self.id_maps, self.disabled, self.tmap = report, id_maps, disabled, tmap
+        self.input_format, self.staging = input_format, staging
+
+    def export_validator_estate(self, dest: str) -> str:
+        """SQLite con los nombres canónicos que exige spec/forensic-auditor/validate_format.py, montos numéricos
+        y, en cada columna id, el id tal como viene en la entrada original (el mismo que cita submission.json).
+        Sirve para correr el validador oficial cuando la entrada es CSV/XLSX o usa otros nombres."""
+        out = Path(dest)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if out.exists():
+            out.unlink()
+        target = sqlite3.connect(out)
+        if self.conn is None:
+            sqlite3.connect(f"file:{self.src_path}?mode=ro", uri=True).backup(target)
+        else:
+            self.conn.backup(target)
+        for t, m in sorted(self.id_maps.items()):
+            col = CANONICAL[t]["id"]
+            target.executemany(f"UPDATE {t} SET {col} = ? WHERE {col} = ?",
+                               [(orig, key) for key, orig in sorted(m.items())])
+        target.commit()
+        target.close()
+        return str(out)
 
     def original_id(self, table: str, record_id) -> str:
         return self.id_maps.get(table, {}).get(str(record_id), str(record_id))
@@ -62,16 +89,29 @@ def _identity_map(info: dict) -> dict:
                        for ct, spec in CANONICAL.items())
 
 
-def prepare(estate_path: str, llm=None) -> Prepared:
+def prepare(estate_path: str, llm=None, work_dir: str | None = None) -> Prepared:
+    """work_dir: dónde escribir staging.db si la entrada no es SQLite (por defecto, un directorio temporal)."""
     p = Path(estate_path)
-    if not p.is_file():
+    if not p.exists():
         raise FileNotFoundError(f"estate not found: {estate_path}")
     try:
-        src = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+        fmt = detect_format(p)
+    except IngestError as exc:
+        raise StructureError(f"estate structure: {exc}") from exc
+    ingest_report, staging = None, None
+    src_path = p
+    if fmt != "sqlite":
+        try:
+            staging, ingest_report = stage(p, Path(work_dir) if work_dir else Path(tempfile.mkdtemp(prefix="auditor_")))
+        except (IngestError, zipfile.BadZipFile, ET.ParseError, UnicodeError, ValueError) as exc:
+            raise StructureError(f"estate structure: could not read {fmt} input {estate_path}: {exc}") from exc
+        src_path = staging
+    try:
+        src = sqlite3.connect(f"file:{src_path}?mode=ro", uri=True)
         info = inspect_db(src)
     except sqlite3.DatabaseError as exc:
-        raise StructureError(f"{estate_path} is not a readable SQLite database: {exc}") from exc
-    exact = _exact(info)
+        raise StructureError(f"estate structure: {estate_path} is not a readable SQLite database: {exc}") from exc
+    exact = fmt == "sqlite" and _exact(info)
     assist = LLMAssist(llm)
     tmap = _identity_map(info) if exact else map_estate(src, info, assist)
     for ct, m in tmap.items():
@@ -81,7 +121,7 @@ def prepare(estate_path: str, llm=None) -> Prepared:
     if fatal:
         raise StructureError(_fatal_message(fatal, info, tmap))
 
-    built = build_canonical(src, tmap, info)
+    built = build_canonical(src, tmap, info, suspect_cells(src))
     rows = {ct: info[m["table"]]["rows"] for ct, m in tmap.items()}
 
     def have(t: str, c: str) -> bool:
@@ -97,14 +137,20 @@ def prepare(estate_path: str, llm=None) -> Prepared:
     disabled = OrderedDict((s, miss) for s, miss in disabled.items() if miss)
     identity = exact and built["identity_values"] and not built["collisions"]
     report = _report(info, tmap, built, disabled, identity, assist)
+    report["input"] = ingest_report or {"input_format": "sqlite"}
     if identity:
         built["conn"].close()
-    return Prepared(None if identity else built["conn"], src, identity, report, built["id_maps"], disabled, tmap)
+    prep = Prepared(None if identity else built["conn"], src, identity, report, built["id_maps"], disabled, tmap,
+                    fmt, str(staging) if staging else None)
+    prep.src_path = str(src_path)
+    return prep
 
 
 def _fatal_message(missing: list, info: dict, tmap: dict, empty: bool = False) -> str:
     have = {t: [c for c, _ in v["columns"]] for t, v in info.items()}
     what = "are empty in every row" if empty else "could not be located"
+    if not info:
+        return "estate structure: no tables found in the input."
     return (f"estate structure: required fields {', '.join(missing)} {what}. Without them no finding can cite or "
             f"reconcile an invoice, so the run stops instead of guessing. Tables seen: "
             + "; ".join(f"{t}({', '.join(cols[:14])}{'…' if len(cols) > 14 else ''})" for t, cols in have.items())
@@ -161,6 +207,7 @@ def _report(info, tmap, built, disabled, identity, assist) -> dict:
             "ids_remapped": {t: len(v) for t, v in sorted(built["id_maps"].items())},
             "id_collisions": dict(sorted(built["collisions"].items())),
             "low_confidence": low,
+            "precision_lost": dict(sorted(built["precision_lost"].items())),
             "disabled_schemes": dict(disabled),
             "llm_assist": assist.log}
 
@@ -173,9 +220,11 @@ def _summary(tables, disabled, transforms, low) -> str:
         parts.append("values normalized: " + ", ".join(f"{k} ×{v}" for k, v in sorted(transforms.items())))
     if low:
         parts.append(f"low-confidence mappings: {', '.join(low)}")
+    if "precision_lost" in transforms:
+        parts.append(f"{transforms['precision_lost']} identifier/CLABE value(s) discarded for numeric precision loss")
     if disabled:
         parts.append("disabled for missing data: " + "; ".join(f"{s} ({', '.join(m)})" for s, m in disabled.items()))
     return ". ".join(parts) + "."
 
 
-__all__ = ["prepare", "Prepared", "StructureError"]
+__all__ = ["prepare", "Prepared", "StructureError", "input_sha256", "detect_format"]

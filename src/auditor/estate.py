@@ -18,7 +18,7 @@ class Estate:
     def __init__(self, path: str, conn: sqlite3.Connection | None = None, structure=None):
         """`conn`: estate canónico ya normalizado por structure.prepare; None abre el archivo tal cual."""
         p = Path(path)
-        if not p.is_file():
+        if not (p.is_file() or (conn is not None and p.exists())):
             raise FileNotFoundError(f"estate not found: {path}")
         self.path = str(p)
         self.structure = structure
@@ -178,8 +178,11 @@ class Tools:
 
     def txns_between(self, frm: set[str] | str, to: set[str] | str) -> list[dict]:
         self._log("bank_txns_between")
-        frm = {frm} if isinstance(frm, str) else set(frm)
-        to = {to} if isinstance(to, str) else set(to)
+        # una CLABE ausente (NULL, o descartada por pérdida de precisión) no tiene transferencias
+        frm = {frm} if isinstance(frm, str) else set(frm or ())
+        to = {to} if isinstance(to, str) else set(to or ())
+        frm.discard("")
+        to.discard("")
         if not frm or not to:
             return []
         sql = (f"SELECT * FROM bank_txns WHERE from_clabe IN ({','.join('?' * len(frm))}) "

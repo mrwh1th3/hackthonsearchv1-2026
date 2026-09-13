@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .detectors import group_leads, run_detectors
 from .estate import Estate
-from .structure import prepare
+from .structure import input_sha256, prepare
 from .triage import branch, build_triage
 from .investigate import Investigator
 from .llm import CHALLENGER_SYSTEM, LLM
@@ -26,9 +26,9 @@ def file_sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def run(estate_path: str, seed: int, llm: LLM) -> dict:
+def run(estate_path: str, seed: int, llm: LLM, work_dir: str | None = None) -> dict:
     t0 = time.monotonic()
-    prep = prepare(estate_path, llm)          # estructura: mapeo + normalización antes de leer nada
+    prep = prepare(estate_path, llm, work_dir)   # estructura: formato, mapeo y normalización antes de leer nada
     e = Estate(estate_path, conn=prep.conn, structure=prep)
     inv = Investigator(e)
     raw = run_detectors(e)
@@ -71,7 +71,9 @@ def run(estate_path: str, seed: int, llm: LLM) -> dict:
     triage = build_triage(e, seed, findings, [(l, lead_refs[id(l)]) for l in leads], prep.disabled, prep.original_id)
 
     wall = round(time.monotonic() - t0, 3)
-    return {"seed": seed, "estate_path": estate_path, "estate_sha256": file_sha256(estate_path),
+    if not prep.identity and work_dir:
+        prep.report["validator_estate"] = Path(prep.export_validator_estate(str(Path(work_dir) / "validator_estate.db"))).name
+    return {"seed": seed, "estate_path": estate_path, "estate_sha256": input_sha256(estate_path),
             "structure_report": prep.report, "triage": triage,
             "company_rfc": e.company_rfc, "period": e.period, "bank_horizon": e.bank_horizon.isoformat(),
             "estate_profile": e.profile,

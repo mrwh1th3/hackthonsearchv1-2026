@@ -53,7 +53,7 @@ def q_ident(name: str) -> str:
 def inspect_db(conn: sqlite3.Connection) -> "OrderedDict[str, dict]":
     out: "OrderedDict[str, dict]" = OrderedDict()
     rows = conn.execute("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') "
-                        "AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
+                        "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_ingest%' ESCAPE '\\' ORDER BY name").fetchall()
     for name, typ in rows:
         cols = [(r[1], r[2] or "") for r in conn.execute(f"PRAGMA table_info({q_ident(name)})")]
         if not cols:
@@ -165,8 +165,11 @@ def relation_ratio(child_sample: list, child_kind: str, parent_values: set) -> f
     return sum(1 for v in vals if v in parent_values) / len(vals)
 
 
-def assign_columns(ct: str, tinfo: dict, parents: dict | None = None) -> dict:
-    """Asignación 1:1 dentro de un par (tabla canónica, tabla original)."""
+def assign_columns(ct: str, tinfo: dict, parents: dict | None = None, children: dict | None = None,
+                   conn: sqlite3.Connection | None = None, table: str | None = None) -> dict:
+    """Asignación 1:1 dentro de un par (tabla canónica, tabla original). `parents`: valores de columnas padre ya
+    mapeadas (bonus a la columna hija que los referencia). `children`: muestra de valores hijos ya mapeados
+    (bonus a la columna id padre que los contiene: ledger.invoice_uuid decide cuál columna es invoices.uuid)."""
     cols = [c for c, _ in tinfo["columns"]]
     spec = CANONICAL[ct]["columns"]
     cand: list[tuple] = []
@@ -176,6 +179,8 @@ def assign_columns(ct: str, tinfo: dict, parents: dict | None = None) -> dict:
             bonus = 0.0
             if parents is not None:
                 bonus = _relation_bonus(ct, cc, meta["kind"], tinfo["sample"][col], parents)
+            if children and (ct, cc) in children and conn is not None and table is not None:
+                bonus = max(bonus, _reverse_bonus(conn, table, col, meta["kind"], children[(ct, cc)]))
             s, det = column_score(ct, cc, col, tinfo["kinds"][col], bonus)
             if s >= MIN_SCORE:
                 scores[cc][col] = (s, det)
@@ -207,6 +212,28 @@ def _relation_bonus(ct: str, cc: str, kind: str, sample: list, parents: dict) ->
         if (cht, chc) == (ct, cc) and (pt, pc) in parents:
             return relation_ratio(sample, kind, parents[(pt, pc)])
     return 0.0
+
+
+def _reverse_bonus(conn, table: str, col: str, kind: str, child_vals: set, limit: int = 5000) -> float:
+    if not child_vals:
+        return 0.0
+    vals = conn.execute(f"SELECT {q_ident(col)} FROM {q_ident(table)} LIMIT {limit}").fetchall()
+    have = {_norm_for(kind, v[0]) for v in vals if not is_null(v[0])}
+    return sum(1 for v in child_vals if v in have) / len(child_vals)
+
+
+def _child_values(info: dict, tmap: dict) -> dict:
+    """Muestra acotada (SAMPLE_ROWS) de cada columna hija ya mapeada, por columna padre canónica."""
+    out: dict = {}
+    for (cht, chc), (pt, pc) in RELATIONS:
+        m = tmap.get(cht)
+        if not m or chc not in m["columns"]:
+            continue
+        kind = CANONICAL[pt]["columns"][pc]["kind"]
+        sample = info[m["table"]]["sample"][m["columns"][chc]["column"]]
+        vals = {_norm_for(kind, v) for v in sample if not is_null(v)}
+        out.setdefault((pt, pc), set()).update(vals)
+    return out
 
 
 def _parent_values(conn: sqlite3.Connection, tmap: dict, limit: int = 5000) -> dict:
@@ -253,8 +280,9 @@ def map_estate(conn: sqlite3.Connection, info: "OrderedDict[str, dict]", assist=
         tmap[ct] = {"table": ot, "score": -neg, "name_score": tn, "columns": a["columns"], "ambiguous": a["ambiguous"]}
     # segunda pasada: relaciones con las tablas padre ya mapeadas
     parents = _parent_values(conn, tmap)
+    children = _child_values(info, tmap)
     for ct, m in tmap.items():
-        a = assign_columns(ct, info[m["table"]], parents)
+        a = assign_columns(ct, info[m["table"]], parents, children, conn, m["table"])
         m["columns"], m["ambiguous"] = a["columns"], a["ambiguous"]
         m["_scores"] = a["scores"]
     _resolve_amount_triplet(tmap, info)
