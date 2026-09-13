@@ -2,8 +2,11 @@ import { notFound } from "next/navigation";
 import { getDataSource } from "@/lib/data";
 import { obtenerAnotacionesAgenteIAPrivadas, obtenerEjecucionesPrivadas, obtenerInvestigacionPrivada } from "@/lib/data/privado";
 import { requerirSesionServidor } from "@/lib/auth/session";
-import { desdeMarkdown } from "@/lib/document/markdown";
 import { cargarCasoEditor } from "@/lib/document/servidor";
+import { aMarkdown } from "@/lib/document/markdown";
+import { emparejarHallazgos, emparejarLeads } from "@/lib/analisis/emparejar-auditor";
+import { derivarCadenaExplicacion } from "@/lib/analisis/cadena-explicacion";
+import { generarDocumentoBase, type EntradaDocumentoBase } from "@/lib/expediente/documento-base";
 import { InvestigacionVista } from "./investigacion-vista";
 
 export const metadata = { title: "Forense · Investigación" };
@@ -103,11 +106,36 @@ export default async function InvestigacionDetallePage({ params }: { params: Pro
   // ninguno finge un dato que sí existe.
   const anotacionesIA = await obtenerAnotacionesAgenteIAPrivadas(inv.id).catch(() => []);
 
-  const documento = casoEditor
-    ? casoEditor.versionActual.contenido_json
-    : detalle?.redactor
-      ? desdeMarkdown(detalle.redactor.markdown)
-      : null;
+  // Base mínima del reporte (feedback 2026-09-12): un caso `origen='auditor'`
+  // SIEMPRE trae `redactor.markdown` (lo escribe `markdown_hallazgo` del
+  // loader) y, con repositorio configurado, `casoEditor` no es null — la
+  // versión vigente ahí es la v1 del Redactor (`Reporte.autor === 'agente'`),
+  // no una edición humana. Sólo cuando un humano ya editó y Aplicó
+  // (`autor === 'humano'`, regla 11) el documento se respeta INTACTO. En
+  // cualquier otro caso (sin editor persistido, o versión vigente todavía del
+  // agente) se completa/genera la base mínima desde lo persistido
+  // (`lib/expediente/documento-base.ts`) — sólo lectura, nunca versiona ni
+  // sobreescribe nada en `forense.expedientes`.
+  const entradaBase: EntradaDocumentoBase | null = detalle
+    ? {
+        detalle,
+        hallazgo: emparejarHallazgos([detalle.caso], auditorResultado?.findings ?? []).asignados.get(detalle.caso.id) ?? null,
+        leads: emparejarLeads([detalle.caso], auditorResultado?.leads ?? []).porCaso.get(detalle.caso.id) ?? [],
+        contraste,
+        trayectoria,
+        cadena: derivarCadenaExplicacion(auditorResultado, detalle.caso.rfc_principal),
+        agentesBitacora: [...new Set(detalle.tareas.map((t) => t.agente))],
+      }
+    : null;
+  const documento =
+    casoEditor && casoEditor.versionActual.autor === "humano"
+      ? casoEditor.versionActual.contenido_json
+      : entradaBase
+        ? generarDocumentoBase({
+            ...entradaBase,
+            markdownExistente: casoEditor ? aMarkdown(casoEditor.versionActual.contenido_json) : (detalle?.redactor?.markdown ?? null),
+          })
+        : (casoEditor?.versionActual.contenido_json ?? null);
   const versionDocumento = casoEditor?.versionActual.version ?? 1;
 
   // Lo que el editor necesita para decorar y auditar citas: exactamente lo
