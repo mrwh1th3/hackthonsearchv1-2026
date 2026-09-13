@@ -175,6 +175,21 @@ SCHEME_REQUIRES = OrderedDict([
                            ("invoices", "metodo_pago")]),
 ])
 
+# evidencia que una tipología usa sin depender de ella: si falta, la tipología corre con menos señales y eso
+# se declara ("weakened"), para que un hallazgo ausente nunca parezca un resultado limpio
+LEDGER = [("ledger", "entry_id"), ("ledger", "invoice_uuid"), ("ledger", "date"), ("ledger", "debit"), ("ledger", "credit")]
+EFOS = [("efos_list", "rfc"), ("efos_list", "status"), ("efos_list", "publication_date")]
+SCHEME_EVIDENCE = OrderedDict([
+    ("phantom_vendor", LEDGER + [("ledger", "approver")] + EFOS + [("vendors", "registered_date"),
+                                                                   ("vendors", "bank_clabe"), ("bank_txns", "txn_id"),
+                                                                   ("employees", "bank_clabe")]),
+    ("kickback", [("purchase_orders", "approver"), ("purchase_orders", "po_id"), ("invoices", "status")]),
+    ("round_tripping", LEDGER + [("ledger", "account_code"), ("bank_txns", "reference")]),
+    ("threshold_splitting", [("employees", "emp_id"), ("employees", "name"), ("bank_txns", "txn_id"),
+                             ("vendors", "bank_clabe")]),
+    ("revenue_inflation", LEDGER + [("ledger", "account_code"), ("bank_txns", "reference"), ("invoices", "forma_pago")]),
+])
+
 # relaciones usadas para desempatar y para puntuar (hijo -> padre)
 RELATIONS = [
     (("invoices", "issuer_rfc"), ("vendors", "rfc")),

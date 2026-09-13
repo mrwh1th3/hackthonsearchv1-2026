@@ -19,7 +19,7 @@ from pathlib import Path
 from .ingest import IngestError, detect_format, input_sha256, stage, suspect_cells
 from .mapper import CONFIDENT, LLMAssist, inspect_db, map_estate, q_ident
 from .normalize import build_canonical
-from .schema import CANONICAL, GLOBAL_REQUIRED, SCHEME_REQUIRES
+from .schema import CANONICAL, GLOBAL_REQUIRED, SCHEME_EVIDENCE, SCHEME_REQUIRES
 from .signatures import SAMPLE_ROWS
 
 
@@ -135,8 +135,15 @@ def prepare(estate_path: str, llm=None, work_dir: str | None = None) -> Prepared
         raise StructureError(_fatal_message(empty_required, info, tmap, empty=True))
     disabled = OrderedDict((s, [f"{t}.{c}" for t, c in reqs if not have(t, c)]) for s, reqs in SCHEME_REQUIRES.items())
     disabled = OrderedDict((s, miss) for s, miss in disabled.items() if miss)
+    weakened = OrderedDict((s, sorted({f"{t}.{c}" for t, c in ev if not have(t, c)}))
+                           for s, ev in SCHEME_EVIDENCE.items() if s not in disabled)
+    weakened = OrderedDict((s, m) for s, m in weakened.items() if m)
     identity = exact and built["identity_values"] and not built["collisions"]
     report = _report(info, tmap, built, disabled, identity, assist)
+    report["weakened_schemes"] = dict(weakened)
+    if weakened and report["status"] != "identity":
+        report["summary"] = report["summary"].rstrip(".") + ". Evaluated with reduced evidence: " + "; ".join(
+            f"{s} (no {', '.join(m)})" for s, m in weakened.items()) + "."
     report["input"] = ingest_report or {"input_format": "sqlite"}
     if identity:
         built["conn"].close()

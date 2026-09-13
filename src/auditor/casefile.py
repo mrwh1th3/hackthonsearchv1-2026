@@ -95,6 +95,11 @@ def structure_html(r: dict) -> str:
             f"<li>{escape(SCHEME_LABEL.get(s, s))}: needs {escape(', '.join(m))}, which the estate does not provide. "
             f"No lead of this type was opened, so its absence from the findings is not a clean result.</li>"
             for s, m in dis.items()) + "</ul>")
+    weak = sr.get("weakened_schemes") or {}
+    if weak:
+        parts.append("<p><b>Evaluated with reduced evidence:</b></p><ul>" + "".join(
+            f"<li>{escape(SCHEME_LABEL.get(s, s))}: the estate lacks {escape(', '.join(m))}. Signals built on those "
+            f"records could not fire, so a scheme of this type may be missed here.</li>" for s, m in weak.items()) + "</ul>")
     return "".join(parts)
 
 
